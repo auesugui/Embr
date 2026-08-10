@@ -8,6 +8,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PRFlash } from '@/components/celebration';
+import { ExerciseDemo } from '@/components/workout/ExerciseDemo';
 import { SetInputModal } from '@/components/workout/SetInputModal';
 import {
   usePlayerStore,
@@ -284,6 +285,10 @@ export default function WorkoutSessionScreen() {
       {/* Rest Timer Overlay */}
       {restTimer.running && (
         <Pressable style={styles.restOverlay} onPress={handleSkipRest}>
+          {/* Rest is the one moment in a session with time to look at a diagram,
+              so here it's open by default rather than behind a toggle. */}
+          <ExerciseDemo exerciseId={currentExercise.id.replace(/-\d+$/, '')} variant="overlay" />
+
           <Text style={styles.restLabel}>{restTimer.paused ? 'Paused' : 'Rest'}</Text>
           <Text style={[styles.restTimer, restTimer.remaining === 0 && styles.restTimerReady]}>
             {formatTime(restTimer.remaining)}
@@ -349,6 +354,10 @@ export default function WorkoutSessionScreen() {
         <View style={styles.exerciseCard}>
           <Text style={styles.exerciseName}>{currentExercise.name}</Text>
           <Text style={styles.exerciseMeta}>{currentExercise.muscleGroups.join(', ')}</Text>
+
+          {/* Collapsed by default — the 3-second rule means logging a set must
+              never be behind a picture. Opt in when you want the reminder. */}
+          <ExerciseDemo exerciseId={currentExercise.id.replace(/-\d+$/, '')} />
 
           {/* Sets */}
           <View style={styles.setsContainer}>

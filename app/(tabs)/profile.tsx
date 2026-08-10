@@ -7,18 +7,13 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-  downloadTextFile,
-  isFileIOSupported,
-  pickTextFile,
-  reloadApp,
-} from '@/lib/backup-file';
-import {
   BackupParseError,
   backupFilename,
   createBackup,
   parseBackup,
   restoreBackup,
 } from '@/lib/backup';
+import { downloadTextFile, isFileIOSupported, pickTextFile, reloadApp } from '@/lib/backup-file';
 import { showAlert } from '@/utils/alert';
 
 import { APP_NAME, GAMIFICATION_ENABLED } from '@/config';
@@ -152,8 +147,8 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your Data</Text>
           <Text style={styles.sectionNote}>
-            Everything lives on this device only. Export a backup regularly — if the browser
-            clears its storage, an export is the only way back.
+            Everything lives on this device only. Export a backup regularly — if the browser clears
+            its storage, an export is the only way back.
           </Text>
 
           <Pressable

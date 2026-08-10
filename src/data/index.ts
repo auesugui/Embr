@@ -19,6 +19,8 @@ export type {
   FPDistribution,
 } from './exercises';
 
+export { getExerciseDemoUri, hasExerciseDemo } from './exercise-demos';
+
 export {
   WORKOUT_TEMPLATES,
   getTemplateById,

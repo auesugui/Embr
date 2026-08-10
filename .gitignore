@@ -66,3 +66,6 @@ expo-env.d.ts
 # Vercel CLI link metadata (local only)
 .vercel/
 .vercel
+
+# Exercise demo source PNGs (~130MB) — local only; shipped JPEGs live in public/
+docs/03-workout-tracker/exercise-demo-refs/
