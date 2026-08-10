@@ -140,7 +140,12 @@ export default function WorkoutLoadoutScreen() {
     setIntent(value);
   };
 
+  // Mirrors the template-detail guard: an empty day can be reached directly by
+  // URL, so the last screen before the session refuses it too.
+  const isEmptyDay = day.exercises.length === 0;
+
   const handleBeginQuest = () => {
+    if (isEmptyDay) return;
     haptics.success();
     const exercises = buildExercises(day);
     startSession(template.id, exercises, intent);
@@ -250,7 +255,11 @@ export default function WorkoutLoadoutScreen() {
 
       {/* Start the session */}
       <View style={styles.startSection}>
-        <Pressable style={styles.startButton} onPress={handleBeginQuest}>
+        <Pressable
+          style={[styles.startButton, isEmptyDay && styles.startButtonDisabled]}
+          onPress={handleBeginQuest}
+          disabled={isEmptyDay}
+        >
           <Text style={styles.startButtonText}>
             {GAMIFICATION_ENABLED
               ? `Begin ${day.shortName} Quest`
@@ -258,7 +267,9 @@ export default function WorkoutLoadoutScreen() {
           </Text>
         </Pressable>
         <Text style={styles.startHint}>
-          Intent: {INTENT_OPTIONS.find((o) => o.value === intent)?.label}
+          {isEmptyDay
+            ? 'This day has no exercises yet.'
+            : `Intent: ${INTENT_OPTIONS.find((o) => o.value === intent)?.label}`}
         </Text>
       </View>
     </ScrollView>
@@ -436,6 +447,9 @@ const styles = StyleSheet.create({
   startSection: {
     marginTop: spacing[2],
     alignItems: 'center',
+  },
+  startButtonDisabled: {
+    opacity: 0.4,
   },
   startButton: {
     backgroundColor: colors.reward.fp,

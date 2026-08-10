@@ -38,6 +38,8 @@ interface SetRepPatch {
 }
 
 interface TemplateActions {
+  /** Create an empty single-day personal template from scratch. Returns the new id. */
+  createBlankTemplate: () => string;
   /** Deep-clone a built-in or personal template into a new personal copy. Returns the new id, or null if the source wasn't found. */
   duplicateTemplate: (sourceId: string) => string | null;
   /** Rename a personal copy. No-op on built-ins. */
@@ -98,6 +100,9 @@ const recalcDistributions = (t: WorkoutTemplateDefinition): WorkoutTemplateDefin
   return { ...t, days, totalFpDistribution: calculateTotalFPDistribution(days) };
 };
 
+/** Marks ids for templates built from scratch rather than copied. */
+const BLANK_ORIGIN = 'custom';
+
 /** Collision-resistant id for a personal copy. Never matches a built-in id. */
 const generateTemplateId = (sourceId: string): string => {
   const suffix = Math.random().toString(36).slice(2, 8);
@@ -129,6 +134,55 @@ const exerciseFromId = (exerciseId: string): TemplateExercise => {
 
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
   ...initialState,
+
+  createBlankTemplate: () => {
+    // The from-scratch path. Copying a built-in and deleting its exercises was
+    // the only way to get a custom workout, which is four screens and a pile of
+    // someone else's exercises before you can log your own.
+    //
+    // One day, no exercises. Multi-day programs still come from duplicating a
+    // built-in — the editor has no add/remove-day affordance, so a blank
+    // template can't grow past the days it's born with.
+    const now = Date.now();
+    const newId = generateTemplateId(BLANK_ORIGIN);
+
+    const blank: WorkoutTemplateDefinition = {
+      id: newId,
+      name: 'New Workout',
+      description: '',
+      // `category` and `difficulty` are required by the type and drive nothing
+      // for a personal copy beyond the card's badge. Neutral defaults.
+      category: 'full_body',
+      daysPerWeek: 1,
+      difficulty: 'beginner',
+      estimatedDuration: 45,
+      days: [
+        {
+          id: `${newId}__day0`,
+          name: 'Day 1',
+          shortName: 'Day 1',
+          exercises: [],
+          fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
+        },
+      ],
+      totalFpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
+      isCustom: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Distributions are already zeroed above; running them through the engine
+    // anyway keeps this path honest if the zero shape ever changes.
+    const finalized = recalcDistributions(blank);
+
+    set((state) => {
+      const nextState = { templates: [...state.templates, finalized] };
+      persistState(nextState).catch(console.warn);
+      return nextState;
+    });
+
+    return newId;
+  },
 
   duplicateTemplate: (sourceId) => {
     const source = getTemplateById(sourceId) ?? get().templates.find((t) => t.id === sourceId);

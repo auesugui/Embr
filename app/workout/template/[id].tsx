@@ -56,7 +56,13 @@ export default function TemplateDetailScreen() {
 
   const selectedDay = template.days[selectedDayIndex];
 
+  // A day with no exercises can't start a session — the session screen would
+  // render an empty list with nothing to log. Only reachable since blank custom
+  // templates exist; built-ins always ship exercises.
+  const isEmptyDay = (selectedDay?.exercises.length ?? 0) === 0;
+
   const handleStartWorkout = () => {
+    if (isEmptyDay) return;
     haptics.success();
     router.push({
       pathname: '/workout/loadout',
@@ -189,11 +195,17 @@ export default function TemplateDetailScreen() {
 
       {/* Start Button */}
       <View style={styles.startSection}>
-        <Pressable style={styles.startButton} onPress={handleStartWorkout}>
+        <Pressable
+          style={[styles.startButton, isEmptyDay && styles.startButtonDisabled]}
+          onPress={handleStartWorkout}
+          disabled={isEmptyDay}
+        >
           <Text style={styles.startButtonText}>Review {selectedDay?.shortName} & Start</Text>
         </Pressable>
         <Text style={styles.startHint}>
-          {selectedDay?.exercises.length ?? 0} exercises • ~{template.estimatedDuration} min
+          {isEmptyDay
+            ? 'Add an exercise before starting this workout.'
+            : `${selectedDay?.exercises.length ?? 0} exercises • ~${template.estimatedDuration} min`}
         </Text>
       </View>
     </ScrollView>
@@ -395,6 +407,9 @@ const styles = StyleSheet.create({
   startSection: {
     marginTop: spacing[4],
     alignItems: 'center',
+  },
+  startButtonDisabled: {
+    opacity: 0.4,
   },
   startButton: {
     backgroundColor: colors.reward.fp,

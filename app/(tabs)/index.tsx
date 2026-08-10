@@ -17,12 +17,14 @@ import {
   useWorkoutHistoryStore,
 } from '@/stores';
 import { colors, radius, spacing, textStyles } from '@/theme';
+import { haptics } from '@/utils/haptics';
 
 export default function QuestBoardScreen() {
   const totalFP = usePlayerStore(selectTotalFP);
   const streak = usePlayerStore((state) => state.streak.current);
   const totalWorkouts = usePlayerStore((state) => state.totalWorkouts);
   const personalTemplates = useTemplateStore((state) => state.templates);
+  const createBlankTemplate = useTemplateStore((state) => state.createBlankTemplate);
 
   // Quick Stats — real store data, not hardcoded literals.
   const workoutsThisWeek = useWorkoutHistoryStore((s) => countClaimedInLast7Days(s.logs));
@@ -30,6 +32,13 @@ export default function QuestBoardScreen() {
 
   const handleTemplatePress = (templateId: string) => {
     router.push(`/workout/template/${templateId}`);
+  };
+
+  // Straight into the editor — the point of this button is that building a
+  // workout from scratch doesn't route through somebody else's template.
+  const handleNewWorkout = () => {
+    haptics.tap();
+    router.push(`/workout/template-edit/${createBlankTemplate()}`);
   };
 
   return (
@@ -60,6 +69,19 @@ export default function QuestBoardScreen() {
             <StatCard label="Tower Floor" value={CURRENT_TOWER_FLOOR.toString()} />
           )}
         </View>
+      </View>
+
+      {/* Build from scratch. Sits above History so the two "start something"
+          actions aren't separated by the read-only one. */}
+      <View style={styles.section}>
+        <Pressable
+          style={styles.newWorkoutButton}
+          onPress={handleNewWorkout}
+          accessibilityRole="button"
+          accessibilityLabel="Create a new custom workout"
+        >
+          <Text style={styles.newWorkoutText}>+ New Workout</Text>
+        </Pressable>
       </View>
 
       {/* Workout History — reachable from the Quest Board (issue #18). */}
@@ -201,6 +223,17 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.text.secondary,
     marginTop: spacing[1],
+  },
+  newWorkoutButton: {
+    backgroundColor: colors.reward.fp,
+    borderRadius: radius.lg,
+    padding: spacing[4],
+    alignItems: 'center',
+  },
+  newWorkoutText: {
+    ...textStyles.button,
+    color: colors.background.primary,
+    fontWeight: '700',
   },
   historyButton: {
     backgroundColor: colors.background.secondary,

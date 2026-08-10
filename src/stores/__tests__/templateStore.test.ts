@@ -34,6 +34,74 @@ describe('Template Store', () => {
     jest.clearAllMocks();
   });
 
+  describe('createBlankTemplate', () => {
+    it('creates an empty single-day custom template', () => {
+      const id = useTemplateStore.getState().createBlankTemplate();
+      const blank = useTemplateStore.getState().getTemplate(id)!;
+
+      expect(blank).toBeDefined();
+      expect(blank.isCustom).toBe(true);
+      expect(blank.name).toBe('New Workout');
+      expect(blank.days).toHaveLength(1);
+      expect(blank.days[0].exercises).toEqual([]);
+      // Built from scratch, not copied — nothing to point back at.
+      expect(blank.sourceTemplateId).toBeUndefined();
+    });
+
+    it('zeroes both FP distributions rather than leaving them undefined', () => {
+      const id = useTemplateStore.getState().createBlankTemplate();
+      const blank = useTemplateStore.getState().getTemplate(id)!;
+
+      expect(blank.totalFpDistribution).toEqual(calculateTotalFPDistribution(blank.days));
+      expect(blank.days[0].fpDistribution).toEqual(calculateDayFPDistribution([]));
+      expect(Object.values(blank.totalFpDistribution).every((v) => v === 0)).toBe(true);
+    });
+
+    it('namespaces the day id under the template id', () => {
+      const id = useTemplateStore.getState().createBlankTemplate();
+      const blank = useTemplateStore.getState().getTemplate(id)!;
+
+      expect(blank.days[0].id).toBe(`${id}__day0`);
+    });
+
+    it('never collides with a built-in id', () => {
+      const id = useTemplateStore.getState().createBlankTemplate();
+
+      expect(getTemplateById(id)).toBeUndefined();
+      expect(WORKOUT_TEMPLATES.some((t) => t.id === id)).toBe(false);
+      expect(useTemplateStore.getState().isCustom(id)).toBe(true);
+    });
+
+    it('produces a distinct template on every call', () => {
+      const first = useTemplateStore.getState().createBlankTemplate();
+      const second = useTemplateStore.getState().createBlankTemplate();
+
+      expect(first).not.toBe(second);
+      expect(useTemplateStore.getState().templates).toHaveLength(2);
+    });
+
+    it('persists the new template', () => {
+      useTemplateStore.getState().createBlankTemplate();
+
+      expect(appStorage.setJSON).toHaveBeenCalledWith(
+        'personal_templates.full_state',
+        expect.objectContaining({ templates: expect.any(Array) })
+      );
+    });
+
+    it('accepts exercises through the normal editing actions', () => {
+      const id = useTemplateStore.getState().createBlankTemplate();
+      const dayId = useTemplateStore.getState().getTemplate(id)!.days[0].id;
+
+      useTemplateStore.getState().addExercise(id, dayId, 'barbell_bench_press');
+
+      const updated = useTemplateStore.getState().getTemplate(id)!;
+      expect(updated.days[0].exercises).toHaveLength(1);
+      // Distributions must come alive once there's something to distribute.
+      expect(Object.values(updated.totalFpDistribution).some((v) => v > 0)).toBe(true);
+    });
+  });
+
   describe('duplicateTemplate', () => {
     it('creates a personal copy from a built-in and returns its new id', () => {
       const newId = useTemplateStore.getState().duplicateTemplate(BUILT_IN_ID);
