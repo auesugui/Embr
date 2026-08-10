@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { TemplateCard } from '@/components/workout/TemplateCard';
-import { CURRENT_TOWER_FLOOR } from '@/config';
+import { CURRENT_TOWER_FLOOR, GAMIFICATION_ENABLED } from '@/config';
 import { WORKOUT_TEMPLATES } from '@/data';
 import { countClaimedInLast7Days } from '@/lib/history-stats';
 import {
@@ -34,13 +34,15 @@ export default function QuestBoardScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* FP Counter */}
-      <View style={styles.fpCard}>
-        <Text style={styles.fpLabel}>Total FP</Text>
-        <Text style={styles.fpValue}>{totalFP.toLocaleString()}</Text>
-      </View>
+      {/* FP Counter — game layer */}
+      {GAMIFICATION_ENABLED && (
+        <View style={styles.fpCard}>
+          <Text style={styles.fpLabel}>Total FP</Text>
+          <Text style={styles.fpValue}>{totalFP.toLocaleString()}</Text>
+        </View>
+      )}
 
-      {/* Streak */}
+      {/* Streak — tracker feature, shown in both builds */}
       <View style={styles.streakCard}>
         <Text style={styles.streakEmoji}>🔥</Text>
         <Text style={styles.streakValue}>{streak}</Text>
@@ -54,7 +56,9 @@ export default function QuestBoardScreen() {
           <StatCard label="Workouts" value={totalWorkouts.toString()} />
           <StatCard label="This Week" value={workoutsThisWeek.toString()} />
           <StatCard label="PRs" value={prCount.toString()} />
-          <StatCard label="Tower Floor" value={CURRENT_TOWER_FLOOR.toString()} />
+          {GAMIFICATION_ENABLED && (
+            <StatCard label="Tower Floor" value={CURRENT_TOWER_FLOOR.toString()} />
+          )}
         </View>
       </View>
 
@@ -87,7 +91,9 @@ export default function QuestBoardScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Workout Templates</Text>
         <Text style={styles.sectionSubtitle}>
-          Choose a program that fits your schedule. Each shows the FP distribution you'll earn.
+          {GAMIFICATION_ENABLED
+            ? "Choose a program that fits your schedule. Each shows the FP distribution you'll earn."
+            : 'Choose a program that fits your schedule. Each shows the muscle groups it targets.'}
         </Text>
 
         {WORKOUT_TEMPLATES.map((template) => (

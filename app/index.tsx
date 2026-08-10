@@ -11,12 +11,15 @@
 
 import { Redirect } from 'expo-router';
 
+import { GAMIFICATION_ENABLED } from '@/config';
 import { selectIsPetInitialized, usePetStore } from '@/stores';
 
 export default function IndexScreen() {
   const isPetInitialized = usePetStore(selectIsPetInitialized);
 
-  if (!isPetInitialized) {
+  // Onboarding exists to pick and name a pet. With the game layer off there is
+  // nothing to choose, so the tracker build goes straight to the tab navigator.
+  if (GAMIFICATION_ENABLED && !isPetInitialized) {
     return <Redirect href="/onboarding/type" />;
   }
 

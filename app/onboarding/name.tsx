@@ -4,10 +4,11 @@
 // Phase 2 (issue #33): 1–20 character name. Forwards {type, name} to the final
 // template step via router params. "Continue" is disabled on empty/whitespace.
 
-import { router, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { GAMIFICATION_ENABLED } from '@/config';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import type { PetType } from '@/types';
 import { haptics } from '@/utils/haptics';
@@ -15,6 +16,12 @@ import { haptics } from '@/utils/haptics';
 const MAX_NAME = 20;
 
 export default function OnboardingNameScreen() {
+  // Game-layer route: unreachable from the tab bar in the tracker build, but a
+  // deep link or a restored URL could still land here. Bounce to the tracker.
+  if (!GAMIFICATION_ENABLED) {
+    return <Redirect href="/(tabs)" />;
+  }
+
   const params = useLocalSearchParams<{ type?: string }>();
   const [name, setName] = useState('');
 

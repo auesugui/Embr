@@ -15,10 +15,12 @@ import Animated, {
 import { CELEBRATION } from '@/components/celebration';
 import { PetAvatar } from '@/components/pet';
 import { ShareCardModal } from '@/components/share';
+import { GAMIFICATION_ENABLED } from '@/config';
 import { selectTotalFP, usePetStore, usePlayerStore, useSettingsStore } from '@/stores';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import type { StatType } from '@/types';
 import { haptics } from '@/utils/haptics';
+import { Redirect } from 'expo-router';
 
 // Scaling stat costs:
 // - Physical stats: 5 FP (1-10), 8 FP (11-25), 12 FP (26-50)
@@ -34,6 +36,12 @@ const getStatCost = (stat: StatType, currentValue: number): number => {
 const FEED_COST = 20; // FP to feed pet (fully restores hunger)
 
 export default function DenScreen() {
+  // Game-layer route: unreachable from the tab bar in the tracker build, but a
+  // deep link or a restored URL could still land here. Bounce to the tracker.
+  if (!GAMIFICATION_ENABLED) {
+    return <Redirect href="/(tabs)" />;
+  }
+
   // Pet state
   const stats = usePetStore((state) => state.stats);
   const evolutionStage = usePetStore((state) => state.evolutionStage);

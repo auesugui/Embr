@@ -10,10 +10,11 @@
 // workout from any template, so this screen does not persist a "chosen"
 // template. Wiring a default template is a separate concern (see Findings).
 
-import { router, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { GAMIFICATION_ENABLED } from '@/config';
 import { WORKOUT_TEMPLATES } from '@/data';
 import { usePetStore } from '@/stores';
 import { colors, radius, spacing, textStyles } from '@/theme';
@@ -27,6 +28,12 @@ const countExercises = (template: (typeof WORKOUT_TEMPLATES)[number]): number =>
   template.days.reduce((sum, day) => sum + day.exercises.length, 0);
 
 export default function OnboardingTemplateScreen() {
+  // Game-layer route: unreachable from the tab bar in the tracker build, but a
+  // deep link or a restored URL could still land here. Bounce to the tracker.
+  if (!GAMIFICATION_ENABLED) {
+    return <Redirect href="/(tabs)" />;
+  }
+
   const params = useLocalSearchParams<{ type?: string; name?: string }>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const initializePet = usePetStore((state) => state.initializePet);

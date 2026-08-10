@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { APP_NAME } from '@/config';
 import { ROUTE_TITLES } from '@/navigation/routeTitles';
 import {
   useBaselineStore,
@@ -92,7 +93,7 @@ export default function RootLayout() {
   // Document title for web (browser tab, home-screen icon label, SEO).
   useEffect(() => {
     if (Platform.OS === 'web') {
-      document.title = 'IronQuest';
+      document.title = APP_NAME;
     }
   }, []);
 

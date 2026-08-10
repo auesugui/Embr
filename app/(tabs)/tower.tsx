@@ -4,9 +4,17 @@
 
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { GAMIFICATION_ENABLED } from '@/config';
 import { colors, spacing, textStyles } from '@/theme';
+import { Redirect } from 'expo-router';
 
 export default function TowerScreen() {
+  // Game-layer route: unreachable from the tab bar in the tracker build, but a
+  // deep link or a restored URL could still land here. Bounce to the tracker.
+  if (!GAMIFICATION_ENABLED) {
+    return <Redirect href="/(tabs)" />;
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Tower Visualization */}

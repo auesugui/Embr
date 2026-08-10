@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CountUpText, EvolutionCeremony, RevealRow } from '@/components/celebration';
 import { RadarChart } from '@/components/progress/RadarChart';
+import { GAMIFICATION_ENABLED } from '@/config';
 import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
 import {
   useBaselineStore,
@@ -90,14 +91,21 @@ export default function WorkoutSummaryScreen() {
 
     haptics.success();
 
-    // Add typed FP to player balance (distributed by muscle groups + Spirit)
-    usePlayerStore.getState().addMultipleFP(summary.typedFP);
-
-    // Add to pet's total FP earned (for evolution) — capturing the stage on
-    // both sides so a threshold crossing triggers the ceremony.
-    const stageBefore = usePetStore.getState().evolutionStage;
-    usePetStore.getState().addFP(summary.totalFP);
-    const stageAfter = usePetStore.getState().evolutionStage;
+    // Game-layer credit: FP to the player balance and to the pet's evolution
+    // total. Skipped entirely in the tracker build. The FP figure is still
+    // written onto the log above — it's derived metadata, cheap to keep, and
+    // keeping it means flipping the flag back on doesn't leave holes in
+    // history. (Past workouts logged with the flag off won't have been added
+    // to the player balance, so their FP badges won't sum to the total.)
+    if (GAMIFICATION_ENABLED) {
+      usePlayerStore.getState().addMultipleFP(summary.typedFP);
+      // Capture the stage on both sides so a threshold crossing triggers the
+      // major-tier ceremony rather than a silent number change.
+      const stageBefore = usePetStore.getState().evolutionStage;
+      usePetStore.getState().addFP(summary.totalFP);
+      const stageAfter = usePetStore.getState().evolutionStage;
+      if (stageAfter > stageBefore) setEvolvedTo(stageAfter);
+    }
 
     // Update streak
     usePlayerStore.getState().updateStreak(true);
@@ -122,9 +130,6 @@ export default function WorkoutSummaryScreen() {
     // summary — the UX spec wants a deliberate next action, not an auto-exit.
     useWorkoutStore.getState().endSession();
     setJustClaimed(true);
-    if (stageAfter > stageBefore) {
-      setEvolvedTo(stageAfter);
-    }
   };
 
   const formatDuration = (seconds: number) => {
@@ -176,56 +181,62 @@ export default function WorkoutSummaryScreen() {
           <Text style={styles.subtitle}>Great work getting stronger</Text>
         </View>
 
-        {/* FP Earned Card */}
-        <View style={styles.fpCard}>
-          <Text style={styles.fpLabel}>Forge Points Earned</Text>
-          <CountUpText value={summary.totalFP} style={styles.fpValue} />
-          <Text style={styles.fpUnit}>FP</Text>
-        </View>
+        {/* FP Earned Card — game layer */}
+        {GAMIFICATION_ENABLED && (
+          <View style={styles.fpCard}>
+            <Text style={styles.fpLabel}>Forge Points Earned</Text>
+            <CountUpText value={summary.totalFP} style={styles.fpValue} />
+            <Text style={styles.fpUnit}>FP</Text>
+          </View>
+        )}
 
-        {/* FP Breakdown */}
-        <View style={styles.breakdownCard}>
-          <Text style={styles.breakdownTitle}>Breakdown</Text>
+        {/* FP Breakdown — game layer */}
+        {GAMIFICATION_ENABLED && (
+          <View style={styles.breakdownCard}>
+            <Text style={styles.breakdownTitle}>Breakdown</Text>
 
-          <RevealRow index={0} style={styles.breakdownRow}>
-            <Text style={styles.breakdownLabel}>Base completion</Text>
-            <Text style={styles.breakdownValue}>{summary.breakdown.base} FP</Text>
-          </RevealRow>
-
-          <RevealRow index={1} style={styles.breakdownRow}>
-            <Text style={styles.breakdownLabel}>Volume bonus</Text>
-            <Text style={styles.breakdownValue}>+{summary.breakdown.volumeBonus} FP</Text>
-          </RevealRow>
-
-          <RevealRow index={2} style={styles.breakdownRow}>
-            <Text style={styles.breakdownLabel}>PR bonuses</Text>
-            <Text style={styles.breakdownValue}>+{summary.breakdown.prBonus} FP</Text>
-          </RevealRow>
-
-          {summary.breakdown.streakMultiplier > 1 && (
-            <RevealRow index={3} style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Streak multiplier</Text>
-              <Text style={styles.breakdownValueHighlight}>
-                x{summary.breakdown.streakMultiplier.toFixed(1)}
-              </Text>
+            <RevealRow index={0} style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Base completion</Text>
+              <Text style={styles.breakdownValue}>{summary.breakdown.base} FP</Text>
             </RevealRow>
-          )}
 
-          {summary.spiritFP > 0 && (
-            <RevealRow index={4} style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Spirit (streak bonus)</Text>
-              <Text style={styles.breakdownValueHighlight}>+{summary.spiritFP} Spirit FP</Text>
+            <RevealRow index={1} style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Volume bonus</Text>
+              <Text style={styles.breakdownValue}>+{summary.breakdown.volumeBonus} FP</Text>
             </RevealRow>
-          )}
-        </View>
+
+            <RevealRow index={2} style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>PR bonuses</Text>
+              <Text style={styles.breakdownValue}>+{summary.breakdown.prBonus} FP</Text>
+            </RevealRow>
+
+            {summary.breakdown.streakMultiplier > 1 && (
+              <RevealRow index={3} style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Streak multiplier</Text>
+                <Text style={styles.breakdownValueHighlight}>
+                  x{summary.breakdown.streakMultiplier.toFixed(1)}
+                </Text>
+              </RevealRow>
+            )}
+
+            {summary.spiritFP > 0 && (
+              <RevealRow index={4} style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Spirit (streak bonus)</Text>
+                <Text style={styles.breakdownValueHighlight}>+{summary.spiritFP} Spirit FP</Text>
+              </RevealRow>
+            )}
+          </View>
+        )}
 
         {/* Typed-FP radar — the "what did this build" picture (UX spec) */}
-        <View style={styles.radarCard}>
-          <Text style={styles.breakdownTitle}>FP by Type</Text>
-          <View style={styles.radarWrapper}>
-            <RadarChart values={radarValues} size={180} showLabels={true} />
+        {GAMIFICATION_ENABLED && (
+          <View style={styles.radarCard}>
+            <Text style={styles.breakdownTitle}>FP by Type</Text>
+            <View style={styles.radarWrapper}>
+              <RadarChart values={radarValues} size={180} showLabels={true} />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Streak state + milestone celebration */}
         <View style={styles.streakCard}>
@@ -289,21 +300,29 @@ export default function WorkoutSummaryScreen() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing[4] }]}>
         {justClaimed ? (
           <View style={styles.postClaimRow}>
+            {GAMIFICATION_ENABLED && (
+              <Pressable
+                style={styles.denButton}
+                onPress={() => router.replace('/(tabs)/den')}
+                accessibilityRole="button"
+                accessibilityLabel="Visit the Den"
+              >
+                <Text style={styles.finishButtonText}>Visit the Den</Text>
+              </Pressable>
+            )}
             <Pressable
-              style={styles.denButton}
-              onPress={() => router.replace('/(tabs)/den')}
-              accessibilityRole="button"
-              accessibilityLabel="Visit the Den"
-            >
-              <Text style={styles.finishButtonText}>Visit the Den</Text>
-            </Pressable>
-            <Pressable
-              style={styles.doneButton}
+              style={
+                GAMIFICATION_ENABLED
+                  ? styles.doneButton
+                  : [styles.finishButton, styles.postClaimSolo]
+              }
               onPress={() => router.replace('/(tabs)')}
               accessibilityRole="button"
               accessibilityLabel="Done"
             >
-              <Text style={styles.doneButtonText}>Done</Text>
+              <Text style={GAMIFICATION_ENABLED ? styles.doneButtonText : styles.finishButtonText}>
+                Done
+              </Text>
             </Pressable>
           </View>
         ) : (
@@ -313,7 +332,13 @@ export default function WorkoutSummaryScreen() {
             disabled={alreadyClaimed}
           >
             <Text style={styles.finishButtonText}>
-              {alreadyClaimed ? 'Rewards Claimed' : 'Claim Rewards'}
+              {GAMIFICATION_ENABLED
+                ? alreadyClaimed
+                  ? 'Rewards Claimed'
+                  : 'Claim Rewards'
+                : alreadyClaimed
+                  ? 'Workout Saved'
+                  : 'Save Workout'}
             </Text>
           </Pressable>
         )}
@@ -322,7 +347,7 @@ export default function WorkoutSummaryScreen() {
       {/* Major-tier ceremony: crossing an evolution threshold is held, named,
           and remembered — never a toast (avatar brief §6, Zelda reveal). */}
       <EvolutionCeremony
-        visible={evolvedTo !== null}
+        visible={GAMIFICATION_ENABLED && evolvedTo !== null}
         petType={usePetStore.getState().type}
         petName={usePetStore.getState().name}
         stats={usePetStore.getState().stats}
@@ -518,6 +543,12 @@ const styles = StyleSheet.create({
   postClaimRow: {
     flexDirection: 'row',
     gap: spacing[3],
+  },
+  // `finishButton` carries no flex of its own. In the tracker build it's the
+  // lone child of the post-claim row, so flex:1 keeps it full-width — matching
+  // the pre-claim state instead of shrinking to the text.
+  postClaimSolo: {
+    flex: 1,
   },
   denButton: {
     flex: 2,

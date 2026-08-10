@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { GAMIFICATION_ENABLED } from '@/config';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, spacing, textStyles } from '@/theme';
@@ -64,11 +65,14 @@ export default function HistoryScreen() {
           <Text style={styles.emptyEmoji}>📋</Text>
           <Text style={styles.emptyTitle}>No workouts logged yet</Text>
           <Text style={styles.emptyBody}>
-            Finish a workout and claim its Forge Points — it’ll show up here with the full
-            breakdown.
+            {GAMIFICATION_ENABLED
+              ? 'Finish a workout and claim its Forge Points — it’ll show up here with the full breakdown.'
+              : 'Finish and save a workout — it’ll show up here with the full breakdown.'}
           </Text>
           <Pressable style={styles.emptyButton} onPress={() => router.replace('/(tabs)')}>
-            <Text style={styles.emptyButtonText}>Start one from the Quest Board</Text>
+            <Text style={styles.emptyButtonText}>
+              {GAMIFICATION_ENABLED ? 'Start one from the Quest Board' : 'Start one from Workouts'}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -119,7 +123,11 @@ function WorkoutRow({
         onPress={onToggle}
         style={styles.cardHeader}
         accessibilityRole="button"
-        accessibilityLabel={`Workout on ${formatDate(log.timestamp)}, ${totalFP} Forge Points`}
+        accessibilityLabel={
+          GAMIFICATION_ENABLED
+            ? `Workout on ${formatDate(log.timestamp)}, ${totalFP} Forge Points`
+            : `Workout on ${formatDate(log.timestamp)}, ${exerciseCount} exercises`
+        }
         accessibilityHint={expanded ? 'Collapse exercise breakdown' : 'Expand exercise breakdown'}
       >
         <View style={styles.cardHeaderLeft}>
@@ -132,9 +140,11 @@ function WorkoutRow({
         </View>
 
         <View style={styles.cardHeaderRight}>
-          <View style={styles.fpBadge}>
-            <Text style={styles.fpBadgeText}>+{totalFP} FP</Text>
-          </View>
+          {GAMIFICATION_ENABLED && (
+            <View style={styles.fpBadge}>
+              <Text style={styles.fpBadgeText}>+{totalFP} FP</Text>
+            </View>
+          )}
           <Text style={styles.chevron}>{expanded ? '▴' : '▾'}</Text>
         </View>
       </Pressable>

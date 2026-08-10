@@ -2,5 +2,6 @@
 // IronQuest Config - Main Export
 // =============================================================================
 
+export * from './features';
 export * from './fp-values';
 export * from './tower';

@@ -40,6 +40,21 @@ The INDEX.md file contains:
 
 ---
 
+## Feature Flag: `GAMIFICATION_ENABLED`
+
+`src/config/features.ts` holds the seam between the tracker and the game layer — "Tracker First, Game Second" made executable. Off, the app is a plain workout tracker called **Ironlog**: no FP, no pet, no tower, no onboarding wizard. Sessions, templates, history, PRs, streaks, and units are untouched on both sides.
+
+| | Command |
+|---|---|
+| Gamified (default) | `npm start` · `npm run web` |
+| Tracker only | `npm run start:tracker` · `npm run web:tracker` |
+
+Build-time via `EXPO_PUBLIC_GAMIFICATION=off`, not a runtime toggle — the off build genuinely never renders the game layer. Unset or unrecognized values leave gamification **on**, so a typo can't silently ship the tracker build.
+
+**Why it exists:** the tracker+pet loop is code-complete but undogfooded. The flag lets the plain tracker get real daily use without forking the repo, so the "is the pet the reason I don't open this?" question gets answered with evidence instead of a guess. When adding a game-layer surface, gate it — don't assume the flag is on.
+
+---
+
 ## AI Asset Generation (Higgsfield)
 
 Pet art and other AI-generated assets are produced via Higgsfield MCP (`mcp.higgsfield.ai/mcp`, user scope). Plan: **Plus, 1,200 credits/month granted**.

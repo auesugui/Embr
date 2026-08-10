@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PetAvatar, createDefaultStats } from '@/components/pet';
+import { GAMIFICATION_ENABLED } from '@/config';
 import { selectIsPetInitialized, usePetStore } from '@/stores';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import type { PetType } from '@/types';
@@ -53,6 +54,12 @@ const TYPE_OPTIONS: TypeOption[] = [
 const PREVIEW_STATS = createDefaultStats();
 
 export default function OnboardingTypeScreen() {
+  // Game-layer route: unreachable from the tab bar in the tracker build, but a
+  // deep link or a restored URL could still land here. Bounce to the tracker.
+  if (!GAMIFICATION_ENABLED) {
+    return <Redirect href="/(tabs)" />;
+  }
+
   const isPetInitialized = usePetStore(selectIsPetInitialized);
   const [selected, setSelected] = useState<PetType | null>(null);
 

@@ -8,6 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { GAMIFICATION_ENABLED } from '@/config';
 import { FP_CONFIG } from '@/config/fp-values';
 import {
   type TemplateDay,
@@ -28,7 +29,10 @@ import { haptics } from '@/utils/haptics';
 interface IntentOption {
   value: SessionIntent;
   label: string;
+  /** Gamified copy — mentions the FP each intent earns. */
   description: string;
+  /** Tracker copy — same training meaning, no FP economy. */
+  trackerDescription: string;
   enabled: boolean;
 }
 
@@ -37,24 +41,28 @@ const INTENT_OPTIONS: IntentOption[] = [
     value: 'normal',
     label: 'Normal',
     description: 'Standard training. Earns base + volume + PR bonuses.',
+    trackerDescription: 'Standard training at your working weights.',
     enabled: true,
   },
   {
     value: 'deload',
     label: 'Deload',
     description: 'Recovery session. Flat 80 FP total, no volume scaling.',
+    trackerDescription: 'Recovery session. Lighter loads, lower volume.',
     enabled: true,
   },
   {
     value: 'tempo',
     label: 'Tempo (Phase 2)',
     description: '3–4 sec slow eccentrics. +15 FP per exercise.',
+    trackerDescription: '3–4 sec slow eccentrics.',
     enabled: false,
   },
   {
     value: 'pause',
     label: 'Pause Reps (Phase 2)',
     description: '1–3 sec hold at hardest point. +15 FP per exercise.',
+    trackerDescription: '1–3 sec hold at the hardest point.',
     enabled: false,
   },
 ];
@@ -213,7 +221,7 @@ export default function WorkoutLoadoutScreen() {
                     !option.enabled && styles.intentDescriptionDisabled,
                   ]}
                 >
-                  {option.description}
+                  {GAMIFICATION_ENABLED ? option.description : option.trackerDescription}
                 </Text>
               </Pressable>
             );
@@ -221,27 +229,33 @@ export default function WorkoutLoadoutScreen() {
         </View>
       </View>
 
-      {/* FP Forecast */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>FP Forecast</Text>
-        <View style={styles.forecastCard}>
-          <Text style={styles.forecastLabel}>Estimated base FP</Text>
-          <Text style={styles.forecastValue}>
-            {intent === 'deload' ? FP_CONFIG.base.deload : FP_CONFIG.base.completion}
-            <Text style={styles.forecastUnit}> FP</Text>
-          </Text>
-          <Text style={styles.forecastNote}>
-            {intent === 'deload'
-              ? 'Flat per workout. No volume bonus, no PR bonus, no streak multiplier scaling per rep.'
-              : 'Base per workout, plus volume (1 FP / 10 reps), PRs, and streak multiplier.'}
-          </Text>
+      {/* FP Forecast — game layer */}
+      {GAMIFICATION_ENABLED && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>FP Forecast</Text>
+          <View style={styles.forecastCard}>
+            <Text style={styles.forecastLabel}>Estimated base FP</Text>
+            <Text style={styles.forecastValue}>
+              {intent === 'deload' ? FP_CONFIG.base.deload : FP_CONFIG.base.completion}
+              <Text style={styles.forecastUnit}> FP</Text>
+            </Text>
+            <Text style={styles.forecastNote}>
+              {intent === 'deload'
+                ? 'Flat per workout. No volume bonus, no PR bonus, no streak multiplier scaling per rep.'
+                : 'Base per workout, plus volume (1 FP / 10 reps), PRs, and streak multiplier.'}
+            </Text>
+          </View>
         </View>
-      </View>
+      )}
 
-      {/* Begin Quest */}
+      {/* Start the session */}
       <View style={styles.startSection}>
         <Pressable style={styles.startButton} onPress={handleBeginQuest}>
-          <Text style={styles.startButtonText}>Begin {day.shortName} Quest</Text>
+          <Text style={styles.startButtonText}>
+            {GAMIFICATION_ENABLED
+              ? `Begin ${day.shortName} Quest`
+              : `Start ${day.shortName} Workout`}
+          </Text>
         </Pressable>
         <Text style={styles.startHint}>
           Intent: {INTENT_OPTIONS.find((o) => o.value === intent)?.label}

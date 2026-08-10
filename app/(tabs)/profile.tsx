@@ -5,6 +5,7 @@
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { APP_NAME, GAMIFICATION_ENABLED } from '@/config';
 import { usePlayerStore, useSettingsStore } from '@/stores';
 import { colors, spacing, textStyles } from '@/theme';
 
@@ -88,8 +89,10 @@ export default function ProfileScreen() {
       {/* App Info */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>About</Text>
-        <Text style={styles.versionText}>IronQuest v1.0.0</Text>
-        <Text style={styles.buildText}>Build: Phase 1</Text>
+        <Text style={styles.versionText}>{APP_NAME} v1.0.0</Text>
+        <Text style={styles.buildText}>
+          Build: {GAMIFICATION_ENABLED ? 'Phase 1' : 'Tracker only'}
+        </Text>
       </View>
     </ScrollView>
   );
