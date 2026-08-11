@@ -153,10 +153,6 @@ export function SetInputModal({
     onClose();
   }, [onClose]);
 
-  const dismissKeyboard = useCallback(() => {
-    Keyboard.dismiss();
-  }, []);
-
   // Stable increment/decrement functions
   const adjustReps = useCallback((amount: number) => {
     haptics.tap();
@@ -190,19 +186,25 @@ export function SetInputModal({
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <Pressable style={styles.overlay} onPress={handleClose}>
+      {/* The backdrop is a SIBLING of the sheet, not its parent. Wrapping the
+          sheet in a Pressable breaks the reps/weight fields on web: the press
+          handler fires after the TextInput takes focus and Keyboard.dismiss()
+          blurs it, so the field can't be typed into. Keeping tap-to-close
+          behind the sheet leaves the inputs with no press handler above them. */}
+      <View style={styles.overlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={handleClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close set input"
+        />
+
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <Pressable
-            style={styles.modal}
-            onPress={(e) => {
-              e.stopPropagation();
-              dismissKeyboard();
-            }}
-          >
+          <View style={styles.modal}>
             {/* Header */}
             <View style={styles.header}>
               <Text style={styles.title}>
@@ -302,9 +304,9 @@ export function SetInputModal({
                 <KeyboardAccessory inputId={WEIGHT_INPUT_ID} />
               </>
             )}
-          </Pressable>
+          </View>
         </KeyboardAvoidingView>
-      </Pressable>
+      </View>
     </Modal>
   );
 }

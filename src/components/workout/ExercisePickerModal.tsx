@@ -88,18 +88,25 @@ export function ExercisePickerModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
+      {/* The backdrop is a SIBLING of the sheet, not its parent. Wrapping the
+          sheet in a Pressable (to absorb taps) breaks the search field on web:
+          react-native-web's press responder claims the mouse events before the
+          TextInput can take focus, so the field can never be typed into. Keeping
+          the tap-to-close target behind the sheet means the sheet's own subtree
+          has no press handler above it and inputs behave normally. */}
+      <View style={styles.overlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close exercise picker"
+        />
+
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}
         >
-          <Pressable
-            style={styles.modal}
-            onPress={(e) => {
-              e.stopPropagation();
-              Keyboard.dismiss();
-            }}
-          >
+          <View style={styles.modal}>
             <View style={styles.header}>
               <Text style={styles.title}>{title}</Text>
               <Pressable hitSlop={12} onPress={onClose}>
@@ -125,9 +132,9 @@ export function ExercisePickerModal({
                 ))
               )}
             </ScrollView>
-          </Pressable>
+          </View>
         </KeyboardAvoidingView>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
