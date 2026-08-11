@@ -4,12 +4,6 @@
 // Pre-session staging: pick an intensity (Normal / Deload in Phase 1),
 // preview the exercise list, then begin the session.
 
-import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-
-import { GAMIFICATION_ENABLED } from '@/config';
-import { FP_CONFIG } from '@/config/fp-values';
 import {
   type TemplateDay,
   type WorkoutTemplateDefinition,
@@ -20,7 +14,10 @@ import { useTemplateStore, useWorkoutStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, SessionIntent } from '@/types';
 import { haptics } from '@/utils/haptics';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Check } from 'lucide-react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 // -----------------------------------------------------------------------------
 // Phase 1 intents: Normal + Deload only.
@@ -145,7 +142,7 @@ export default function WorkoutLoadoutScreen() {
   // URL, so the last screen before the session refuses it too.
   const isEmptyDay = day.exercises.length === 0;
 
-  const handleBeginQuest = () => {
+  const handleStartWorkout = () => {
     if (isEmptyDay) return;
     haptics.success();
     const exercises = buildExercises(day);
@@ -227,7 +224,7 @@ export default function WorkoutLoadoutScreen() {
                     !option.enabled && styles.intentDescriptionDisabled,
                   ]}
                 >
-                  {GAMIFICATION_ENABLED ? option.description : option.trackerDescription}
+                  {option.trackerDescription}
                 </Text>
               </Pressable>
             );
@@ -235,37 +232,14 @@ export default function WorkoutLoadoutScreen() {
         </View>
       </View>
 
-      {/* FP Forecast — game layer */}
-      {GAMIFICATION_ENABLED && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>FP Forecast</Text>
-          <View style={styles.forecastCard}>
-            <Text style={styles.forecastLabel}>Estimated base FP</Text>
-            <Text style={styles.forecastValue}>
-              {intent === 'deload' ? FP_CONFIG.base.deload : FP_CONFIG.base.completion}
-              <Text style={styles.forecastUnit}> FP</Text>
-            </Text>
-            <Text style={styles.forecastNote}>
-              {intent === 'deload'
-                ? 'Flat per workout. No volume bonus, no PR bonus, no streak multiplier scaling per rep.'
-                : 'Base per workout, plus volume (1 FP / 10 reps), PRs, and streak multiplier.'}
-            </Text>
-          </View>
-        </View>
-      )}
-
       {/* Start the session */}
       <View style={styles.startSection}>
         <Pressable
           style={[styles.startButton, isEmptyDay && styles.startButtonDisabled]}
-          onPress={handleBeginQuest}
+          onPress={handleStartWorkout}
           disabled={isEmptyDay}
         >
-          <Text style={styles.startButtonText}>
-            {GAMIFICATION_ENABLED
-              ? `Begin ${day.shortName} Quest`
-              : `Start ${day.shortName} Workout`}
-          </Text>
+          <Text style={styles.startButtonText}>Start {day.shortName} Workout</Text>
         </Pressable>
         <Text style={styles.startHint}>
           {isEmptyDay

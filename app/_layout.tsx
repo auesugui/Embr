@@ -14,7 +14,6 @@ import { ROUTE_TITLES } from '@/navigation/routeTitles';
 import {
   useBaselineStore,
   usePRStore,
-  usePetStore,
   usePlayerStore,
   useSettingsStore,
   useTemplateStore,
@@ -31,7 +30,6 @@ export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(getFontMap());
 
   const hydratePlayer = usePlayerStore((state) => state.hydrate);
-  const hydratePet = usePetStore((state) => state.hydrate);
   const hydrateWorkout = useWorkoutStore((state) => state.hydrate);
   const hydrateSettings = useSettingsStore((state) => state.hydrate);
   const hydrateWeightHistory = useWeightHistoryStore((state) => state.hydrate);
@@ -60,7 +58,6 @@ export default function RootLayout() {
         await migrateStorage();
         await Promise.all([
           hydratePlayer(),
-          hydratePet(),
           hydrateWorkout(),
           hydrateSettings(),
           hydrateWeightHistory(),
@@ -85,7 +82,6 @@ export default function RootLayout() {
     };
   }, [
     hydratePlayer,
-    hydratePet,
     hydrateWorkout,
     hydrateSettings,
     hydrateWeightHistory,

@@ -1,18 +1,8 @@
-// =============================================================================
-// IronQuest Dev Panel Actions — DEV-ONLY state seeding/mutation
-// =============================================================================
-// Never imported outside __DEV__ surfaces. Reuses existing store actions where
-// they exist (setFP, recordPR, reset); otherwise setState + persist to the
-// store's own FULL_STATE key — the identical pattern each store's private
-// persist helper uses internally. No new production store API.
-
-import { FP_CONFIG } from '@/config/fp-values';
 import { getExerciseById } from '@/data';
-import type { Exercise, FPBalances, PetStats, PetType, WeightUnit, WorkoutLog } from '@/types';
+import type { Exercise, FPBalances, WeightUnit, WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 
 import { useBaselineStore } from '@/stores/baselineStore';
-import { type EvolutionStage, usePetStore } from '@/stores/petStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePRStore } from '@/stores/prStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -21,64 +11,8 @@ import { useWeightHistoryStore } from '@/stores/weightHistoryStore';
 import { useWorkoutHistoryStore } from '@/stores/workoutHistoryStore';
 import { useWorkoutStore } from '@/stores/workoutStore';
 
-const persistPet = () =>
-  appStorage.setJSON(STORAGE_KEYS.PET.FULL_STATE, usePetStore.getState()).catch(console.warn);
 const persistPlayer = () =>
   appStorage.setJSON(STORAGE_KEYS.PLAYER.FULL_STATE, usePlayerStore.getState()).catch(console.warn);
-
-// FP_CONFIG.evolution.thresholds is [stage1, stage2, stage3, stage4] entry
-// FP — stage N's threshold lives at index N-1 (petStore destructures it the
-// same way).
-const STAGE_THRESHOLDS = FP_CONFIG.evolution.thresholds;
-
-// -----------------------------------------------------------------------------
-// Pet
-// -----------------------------------------------------------------------------
-
-export function devSetPetType(type: PetType) {
-  usePetStore.setState({ type });
-  persistPet();
-}
-
-/**
- * Sets the explicit stage AND snaps totalFPEarned to that stage's threshold.
- * PetSprite dispatches on evolutionStage, but addFP / the Den's progress and
- * canEvolve selectors read totalFPEarned — snapping keeps all three consistent
- * so a later real workout doesn't behave weirdly.
- */
-export function devSetStage(stage: EvolutionStage) {
-  usePetStore.setState({
-    evolutionStage: stage,
-    totalFPEarned: STAGE_THRESHOLDS[stage - 1],
-  });
-  persistPet();
-}
-
-export const STAT_PRESETS = {
-  empty: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
-  balanced: { power: 15, guard: 15, speed: 15, vigor: 15, focus: 15, spirit: 15 },
-  power: { power: 40, guard: 15, speed: 5, vigor: 10, focus: 5, spirit: 5 },
-  speed: { power: 5, guard: 5, speed: 40, vigor: 15, focus: 10, spirit: 5 },
-} as const satisfies Record<string, PetStats>;
-
-export type StatPresetName = keyof typeof STAT_PRESETS;
-
-export function devSetStats(stats: PetStats) {
-  usePetStore.setState({ stats: { ...stats } });
-  persistPet();
-}
-
-/**
- * Sets hunger with lastFedAt = now. The spec suggested backdating lastFedAt,
- * but calculateHungerDecay subtracts the FULL elapsed-since-fed decay from the
- * *current* hunger value — backdating 17h for hunger 15 would zero it on the
- * next decay pass. lastFedAt = now keeps the lever stable either way (decay
- * amount is 0 immediately after setting).
- */
-export function devSetHunger(hunger: number) {
-  usePetStore.setState({ hunger, lastFedAt: new Date().toISOString() });
-  persistPet();
-}
 
 // -----------------------------------------------------------------------------
 // Player
@@ -200,11 +134,9 @@ export function devSeedHistory() {
 
 /**
  * Full reset to fresh-install state. Each store's reset()/clearAll() deletes
- * its own AsyncStorage key, so no manual key cleanup is needed. With the pet
- * uninitialized (id === ''), app/index.tsx redirects to onboarding.
+ * its own AsyncStorage key, so no manual key cleanup is needed.
  */
 export function devResetAll() {
-  usePetStore.getState().reset();
   usePlayerStore.getState().reset();
   useWorkoutHistoryStore.getState().reset();
   usePRStore.getState().clearAll();

@@ -13,17 +13,12 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
-import { APP_NAME, GAMIFICATION_ENABLED } from '@/config';
+import { APP_NAME } from '@/config';
 import { WEB_THEME_BOOT_SCRIPT } from '@/theme/theme-boot';
 
 const THEME_COLOR = '#F5F1ED';
 
 export default function Root({ children }: PropsWithChildren) {
-  // The two builds ship different names and descriptions, so they get different
-  // manifests. Both are static files under public/; the flag only picks which
-  // one this document points at.
-  const manifest = GAMIFICATION_ENABLED ? '/manifest.json' : '/manifest-tracker.json';
-
   return (
     <html lang="en">
       <head>
@@ -41,7 +36,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="description" content={`${APP_NAME} — workout tracker`} />
 
         {/* --- PWA --- */}
-        <link rel="manifest" href={manifest} />
+        <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content={THEME_COLOR} />
         <meta name="color-scheme" content="light dark" />
 

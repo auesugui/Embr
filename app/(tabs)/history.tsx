@@ -13,7 +13,6 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { GAMIFICATION_ENABLED } from '@/config';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
@@ -66,14 +65,10 @@ export default function HistoryScreen() {
           <ClipboardList size={32} color={roles.textMuted} style={styles.emptyIcon} />
           <Text style={styles.emptyTitle}>No workouts logged yet</Text>
           <Text style={styles.emptyBody}>
-            {GAMIFICATION_ENABLED
-              ? 'Finish a workout and claim its Forge Points — it’ll show up here with the full breakdown.'
-              : 'Finish and save a workout — it’ll show up here with the full breakdown.'}
+            Finish and save a workout — it’ll show up here with the full breakdown.
           </Text>
           <Pressable style={styles.emptyButton} onPress={() => router.replace('/(tabs)')}>
-            <Text style={styles.emptyButtonText}>
-              {GAMIFICATION_ENABLED ? 'Start one from the Quest Board' : 'Start one from Workouts'}
-            </Text>
+            <Text style={styles.emptyButtonText}>Start one from Workouts</Text>
           </Pressable>
         </View>
       </View>
@@ -116,7 +111,6 @@ function WorkoutRow({
   onToggle: () => void;
 }) {
   const exerciseCount = log.exercises.length;
-  const totalFP = log.totalFP ?? 0;
 
   return (
     <View style={styles.card}>
@@ -124,11 +118,7 @@ function WorkoutRow({
         onPress={onToggle}
         style={styles.cardHeader}
         accessibilityRole="button"
-        accessibilityLabel={
-          GAMIFICATION_ENABLED
-            ? `Workout on ${formatDate(log.timestamp)}, ${totalFP} Forge Points`
-            : `Workout on ${formatDate(log.timestamp)}, ${exerciseCount} exercises`
-        }
+        accessibilityLabel={`Workout on ${formatDate(log.timestamp)}, ${exerciseCount} exercises`}
         accessibilityHint={expanded ? 'Collapse exercise breakdown' : 'Expand exercise breakdown'}
       >
         <View style={styles.cardHeaderLeft}>
@@ -141,11 +131,6 @@ function WorkoutRow({
         </View>
 
         <View style={styles.cardHeaderRight}>
-          {GAMIFICATION_ENABLED && (
-            <View style={styles.fpBadge}>
-              <Text style={styles.fpBadgeText}>+{totalFP} FP</Text>
-            </View>
-          )}
           {expanded ? (
             <ChevronUp size={18} color={roles.textMuted} />
           ) : (

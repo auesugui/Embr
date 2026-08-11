@@ -1,38 +1,20 @@
 // =============================================================================
-// Embr Feature Flags
+// Embr App Config
 // =============================================================================
-// `GAMIFICATION_ENABLED` is the seam between the tracker and the game layer.
-// Off, the app is a plain workout tracker: no Forge Points, no pet, no tower,
-// no onboarding wizard. Everything the tracker owns (sessions, templates,
-// history, PRs, streaks, units) stays untouched.
 //
-// Build-time, not runtime: Expo inlines `EXPO_PUBLIC_*` at bundle time, so the
-// off build genuinely never renders the game layer rather than hiding it behind
-// a toggle a stray tap could flip mid-dogfood.
+// `GAMIFICATION_ENABLED` used to live here — a build-time flag (ADR-0012) that
+// switched the app between IronQuest, a gamified tracker with a pet and a
+// battle tower, and Ironlog, the plain tracker underneath it. It existed to
+// answer one question through use: is the pet the friction or the point?
 //
-//   npm run web            → gamified (default)
-//   npm run web:tracker    → tracker-only
+// The question got answered by decision instead (ADR-0013): the game layer
+// isn't being built or used. ADR-0014 removed it. There's one app now.
 //
-// Streaks stay on both sides of the flag — a streak is a tracker feature (Hevy,
-// Strong, and Whoop all have one); Spirit FP is the gamified part and that goes.
+// Nothing replaces the flag. If a game layer ever returns it returns as a
+// feature with its own design, not as a branch inside every screen — the flag's
+// real cost was that every new surface had to remember to gate itself, and the
+// failure mode when one didn't was silent.
+// =============================================================================
 
-/**
- * Values that read as "off" in `EXPO_PUBLIC_GAMIFICATION`. Anything else —
- * including unset — leaves the game layer on, so the default build is the full
- * IronQuest experience and the tracker build is the deliberate opt-out.
- */
-const OFF_VALUES = new Set(['off', 'false', '0', 'no']);
-
-export const GAMIFICATION_ENABLED = !OFF_VALUES.has(
-  (process.env.EXPO_PUBLIC_GAMIFICATION ?? '').trim().toLowerCase()
-);
-
-/**
- * Product name shown in chrome (tab titles, About).
- *
- * The tracker build is now **Embr** (ADR-0013) — a real identity rather than
- * the placeholder "Ironlog" name it carried while it was just "IronQuest with
- * the game turned off". The gamified build keeps its old name; it's inert, and
- * collapsing the flag entirely is a separate pass.
- */
-export const APP_NAME = GAMIFICATION_ENABLED ? 'IronQuest' : 'Embr';
+/** Product name shown in chrome (tab titles, About). */
+export const APP_NAME = 'Embr';

@@ -6,8 +6,6 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { RadarChart } from '@/components/progress/RadarChart';
-import { GAMIFICATION_ENABLED } from '@/config';
 import { type WorkoutTemplateDefinition, getExerciseById, getTemplateById } from '@/data';
 import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
@@ -131,16 +129,6 @@ export default function TemplateDetailScreen() {
         </View>
       </View>
 
-      {/* Overall FP Distribution — game layer (pet-stat axes) */}
-      {GAMIFICATION_ENABLED && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Overall FP Distribution</Text>
-          <View style={styles.radarContainer}>
-            <RadarChart values={template.totalFpDistribution} size={180} showLabels={true} />
-          </View>
-        </View>
-      )}
-
       {/* Day Selection */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Select Session</Text>
@@ -166,11 +154,6 @@ export default function TemplateDetailScreen() {
         <View style={styles.section}>
           <View style={styles.dayHeader}>
             <Text style={styles.dayName}>{selectedDay.name}</Text>
-            {GAMIFICATION_ENABLED && (
-              <View style={styles.miniRadar}>
-                <RadarChart values={selectedDay.fpDistribution} size={80} showLabels={false} />
-              </View>
-            )}
           </View>
 
           {/* Exercise List */}

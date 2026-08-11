@@ -1,6 +1,4 @@
-import { RadarChart } from '@/components/progress/RadarChart';
 import { PressableScale } from '@/components/ui';
-import { GAMIFICATION_ENABLED } from '@/config';
 import type { WorkoutTemplateDefinition } from '@/data';
 import { radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
@@ -55,16 +53,6 @@ export function TemplateCard({ template, onPress }: TemplateCardProps) {
             <Text style={styles.statValue}>{template.days.length}</Text>
           </View>
         </View>
-
-        {/* The radar is plotted on the six pet stats (Power/Guard/Speed/Vigor/
-            Focus/Spirit). Those axis names are game vocabulary, and Spirit is
-            always 0 outside the streak system — so the tracker build drops it
-            rather than showing a chart labelled in jargon it no longer uses. */}
-        {GAMIFICATION_ENABLED && (
-          <View style={styles.radarContainer}>
-            <RadarChart values={template.totalFpDistribution} size={140} showLabels={true} />
-          </View>
-        )}
       </View>
     </PressableScale>
   );

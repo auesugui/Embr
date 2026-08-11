@@ -6,8 +6,10 @@
 // `settle` spring is deliberately shared all the way down to button presses
 // (see components/ui/PressableScale) — a press and a celebration should land
 // with the same physics.
-// Ceremony tiers (avatar brief §8): micro = PR gold flash, minor = gear
-// materializes (Phase: gear system), major = full evolution reveal.
+// The evolution-ceremony tier went with the game layer (ADR-0014). What
+// survives is the vocabulary the tracker actually uses: flash, settle, reveal,
+// count-up — plus the press feedback in components/ui/PressableScale, which
+// shares `settle` on purpose.
 
 import { Easing } from 'react-native-reanimated';
 
@@ -42,18 +44,4 @@ export const CELEBRATION = {
   countUp: {
     durationMs: 900,
   },
-
-  // Major tier: evolution ceremony (Zelda-style — time spent deliberately)
-  ceremony: {
-    minHoldMs: 3200, // continue button unlocks after this
-    glowInMs: 700,
-    spriteInMs: 900,
-  },
 } as const;
-
-export const STAGE_NAMES: Record<1 | 2 | 3 | 4, string> = {
-  1: 'Shard',
-  2: 'Form',
-  3: 'Prime',
-  4: 'Apex',
-};

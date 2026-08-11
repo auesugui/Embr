@@ -16,7 +16,7 @@ import {
 import { downloadTextFile, isFileIOSupported, pickTextFile, reloadApp } from '@/lib/backup-file';
 import { showAlert } from '@/utils/alert';
 
-import { APP_NAME, GAMIFICATION_ENABLED } from '@/config';
+import { APP_NAME } from '@/config';
 import { usePlayerStore, useSettingsStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
 import { ChevronRight, Download, Upload, User } from 'lucide-react-native';
@@ -246,9 +246,7 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>About</Text>
         <Text style={styles.versionText}>{APP_NAME} v1.0.0</Text>
-        <Text style={styles.buildText}>
-          Build: {GAMIFICATION_ENABLED ? 'Phase 1' : 'Tracker only'}
-        </Text>
+        <Text style={styles.buildText}>Workout tracker</Text>
       </View>
     </ScrollView>
   );

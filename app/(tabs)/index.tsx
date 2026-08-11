@@ -11,21 +11,13 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PressableScale } from '@/components/ui';
 import { TemplateCard } from '@/components/workout/TemplateCard';
-import { CURRENT_TOWER_FLOOR, GAMIFICATION_ENABLED } from '@/config';
 import { WORKOUT_TEMPLATES } from '@/data';
 import { countClaimedInLast7Days } from '@/lib/history-stats';
-import {
-  selectTotalFP,
-  usePRStore,
-  usePlayerStore,
-  useTemplateStore,
-  useWorkoutHistoryStore,
-} from '@/stores';
+import { usePRStore, usePlayerStore, useTemplateStore, useWorkoutHistoryStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
 
 export default function HomeScreen() {
-  const totalFP = usePlayerStore(selectTotalFP);
   const streak = usePlayerStore((state) => state.streak.current);
   const totalWorkouts = usePlayerStore((state) => state.totalWorkouts);
   const personalTemplates = useTemplateStore((state) => state.templates);
@@ -48,14 +40,6 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* FP Counter — game layer */}
-      {GAMIFICATION_ENABLED && (
-        <View style={styles.fpCard}>
-          <Text style={styles.fpLabel}>Total FP</Text>
-          <Text style={styles.fpValue}>{totalFP.toLocaleString()}</Text>
-        </View>
-      )}
-
       {/* Hero zone. Tracker feature, shown in both builds.
           RESERVED (ADR-0013): if the care-companion ever gets built, it lives
           here — that's why this card is tall and centered rather than a compact
@@ -81,12 +65,6 @@ export default function HomeScreen() {
           <StatCell label="This Week" value={workoutsThisWeek.toString()} />
           <View style={styles.statDivider} />
           <StatCell label="PRs" value={prCount.toString()} />
-          {GAMIFICATION_ENABLED && (
-            <>
-              <View style={styles.statDivider} />
-              <StatCell label="Tower" value={CURRENT_TOWER_FLOOR.toString()} />
-            </>
-          )}
         </View>
       </View>
 
@@ -137,9 +115,7 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Workout Templates</Text>
         <Text style={styles.sectionSubtitle}>
-          {GAMIFICATION_ENABLED
-            ? "Choose a program that fits your schedule. Each shows the FP distribution you'll earn."
-            : 'Choose a program that fits your schedule. Each shows the muscle groups it targets.'}
+          Choose a program that fits your schedule. Each shows the muscle groups it targets.
         </Text>
 
         {WORKOUT_TEMPLATES.map((template) => (
@@ -171,22 +147,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing[4],
     paddingBottom: spacing[8],
-  },
-  fpCard: {
-    backgroundColor: roles.surfaceRaised,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    alignItems: 'center',
-    marginBottom: spacing[4],
-  },
-  fpLabel: {
-    ...textStyles.label,
-    color: roles.textSecondary,
-    marginBottom: spacing[1],
-  },
-  fpValue: {
-    ...textStyles.numberLarge,
-    color: roles.accent,
   },
 
   // --- Hero -----------------------------------------------------------------

@@ -1,7 +1,7 @@
 {
-  "name": "IronQuest",
-  "short_name": "IronQuest",
-  "description": "A workout tracker where every rep you log raises a digital pet.",
+  "name": "Embr",
+  "short_name": "Embr",
+  "description": "Log sets, track PRs, keep the streak.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
