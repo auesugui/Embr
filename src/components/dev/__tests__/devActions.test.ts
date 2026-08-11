@@ -1,26 +1,19 @@
 // =============================================================================
 // Dev Panel Actions Unit Tests
 // =============================================================================
-// Three tests, per the dev-panel spec (§7): fixture shape (history screen must
-// never see null FP on seeded logs), stage snap (evolutionStage + totalFPEarned
-// stay consistent), and full reset (every store back to initial state).
+// Per the dev-panel spec (§7): fixture shape (the history screen must never see
+// null FP on seeded logs) and full reset (every store back to initial state).
+// The stage-snap test went with the pet store (ADR-0014).
 
-import { FP_CONFIG } from '@/config/fp-values';
-import { usePetStore } from '@/stores/petStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePRStore } from '@/stores/prStore';
 import { useWorkoutHistoryStore } from '@/stores/workoutHistoryStore';
 import {
   FP_PRESETS,
-  STAT_PRESETS,
   devResetAll,
   devSeedHistory,
   devSeedPRs,
   devSetFP,
-  devSetHunger,
-  devSetPetType,
-  devSetStage,
-  devSetStats,
   devSetStreak,
 } from '../devActions';
 
@@ -32,7 +25,6 @@ jest.mock('@/utils/storage', () => ({
     delete: jest.fn().mockResolvedValue(undefined),
   },
   STORAGE_KEYS: {
-    PET: { FULL_STATE: 'pet.full_state' },
     PLAYER: { FULL_STATE: 'player.full_state' },
     PR: { FULL_STATE: 'pr.full_state' },
     BASELINE: { FULL_STATE: 'baseline.full_state' },
@@ -68,36 +60,14 @@ describe('devActions', () => {
     }
   });
 
-  it('snaps totalFPEarned to the stage threshold on devSetStage', () => {
-    devSetStage(3);
-
-    const pet = usePetStore.getState();
-    expect(pet.evolutionStage).toBe(3);
-    // Stage N's threshold lives at thresholds[N - 1].
-    expect(pet.totalFPEarned).toBe(FP_CONFIG.evolution.thresholds[2]);
-
-    // Stage 4 must not index past the end of the tuple.
-    devSetStage(4);
-    expect(usePetStore.getState().totalFPEarned).toBe(FP_CONFIG.evolution.thresholds[3]);
-  });
-
   it('returns every store to initial state after devResetAll', () => {
-    // Seed across all four stores first.
-    devSetPetType('flux');
-    devSetStage(4);
-    devSetStats(STAT_PRESETS.power);
-    devSetHunger(15);
+    // Seed across every store first.
     devSetFP(FP_PRESETS['10k']);
     devSetStreak(7);
     devSeedPRs('lb');
     devSeedHistory();
 
     devResetAll();
-
-    const pet = usePetStore.getState();
-    expect(pet.id).toBe('');
-    expect(pet.evolutionStage).toBe(1);
-    expect(pet.totalFPEarned).toBe(0);
 
     const player = usePlayerStore.getState();
     expect(Object.values(player.fp).every((v) => v === 0)).toBe(true);

@@ -1,14 +1,32 @@
 // =============================================================================
-// IronQuest Typography System
+// Embr Typography System
+// =============================================================================
+//
+// Was: all four weights set to the literal string 'System', with `expo-font`
+// installed and never called. That's why the app had no typographic identity.
+//
+// Now: a real UI face for everything, and a warm serif reserved for display
+// moments. See `fonts.ts` for the faces and the Fontshare swap procedure.
 // =============================================================================
 
 import type { TextStyle as RNTextStyle } from 'react-native';
+import { fonts } from './fonts';
 
 export const fontFamilies = {
-  regular: 'System',
-  medium: 'System',
-  semibold: 'System',
-  bold: 'System',
+  regular: fonts.ui.regular,
+  medium: fonts.ui.medium,
+  semibold: fonts.ui.semibold,
+  bold: fonts.ui.bold,
+} as const;
+
+/**
+ * Display face — Finch register only. Home greeting, summary headline.
+ * Do not use on session, history, or template-edit; those are Hevy register.
+ */
+export const displayFamilies = {
+  regular: fonts.display.regular,
+  semibold: fonts.display.semibold,
+  bold: fonts.display.bold,
 } as const;
 
 export const fontSizes = {
@@ -157,6 +175,28 @@ export const textStyles: Record<string, RNTextStyle> = {
     fontSize: fontSizes.sm,
     fontWeight: fontWeights.medium,
     lineHeight: fontSizes.sm * lineHeights.normal,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Display — Finch register. Home greeting, summary headline. Nowhere else.
+  // ---------------------------------------------------------------------------
+  displayLarge: {
+    fontFamily: displayFamilies.semibold,
+    fontSize: fontSizes['4xl'],
+    fontWeight: fontWeights.semibold,
+    lineHeight: fontSizes['4xl'] * lineHeights.tight,
+  },
+  display: {
+    fontFamily: displayFamilies.semibold,
+    fontSize: fontSizes['3xl'],
+    fontWeight: fontWeights.semibold,
+    lineHeight: fontSizes['3xl'] * lineHeights.tight,
+  },
+  displaySmall: {
+    fontFamily: displayFamilies.regular,
+    fontSize: fontSizes['2xl'],
+    fontWeight: fontWeights.normal,
+    lineHeight: fontSizes['2xl'] * lineHeights.tight,
   },
 };
 

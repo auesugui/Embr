@@ -6,12 +6,11 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { RadarChart } from '@/components/progress/RadarChart';
-import { GAMIFICATION_ENABLED } from '@/config';
 import { type WorkoutTemplateDefinition, getExerciseById, getTemplateById } from '@/data';
 import { useTemplateStore } from '@/stores';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
+import { Copy, Pencil } from 'lucide-react-native';
 
 export default function TemplateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -114,29 +113,21 @@ export default function TemplateDetailScreen() {
         <View style={styles.customActions}>
           {isCustom ? (
             <Pressable style={[styles.actionButton, styles.actionPrimary]} onPress={handleEdit}>
-              <Text style={styles.actionPrimaryText}>✎ Edit Template</Text>
+              <Pencil size={16} color={roles.onAccent} />
+              <Text style={styles.actionPrimaryText}>Edit Template</Text>
             </Pressable>
           ) : null}
           <Pressable
             style={[styles.actionButton, isCustom ? styles.actionSecondary : styles.actionPrimary]}
             onPress={handleDuplicate}
           >
+            <Copy size={16} color={isCustom ? roles.textSecondary : roles.onAccent} />
             <Text style={isCustom ? styles.actionSecondaryText : styles.actionPrimaryText}>
-              {isCustom ? 'Duplicate' : '⧉ Copy & Customize'}
+              {isCustom ? 'Duplicate' : 'Copy & Customize'}
             </Text>
           </Pressable>
         </View>
       </View>
-
-      {/* Overall FP Distribution — game layer (pet-stat axes) */}
-      {GAMIFICATION_ENABLED && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Overall FP Distribution</Text>
-          <View style={styles.radarContainer}>
-            <RadarChart values={template.totalFpDistribution} size={180} showLabels={true} />
-          </View>
-        </View>
-      )}
 
       {/* Day Selection */}
       <View style={styles.section}>
@@ -163,11 +154,6 @@ export default function TemplateDetailScreen() {
         <View style={styles.section}>
           <View style={styles.dayHeader}>
             <Text style={styles.dayName}>{selectedDay.name}</Text>
-            {GAMIFICATION_ENABLED && (
-              <View style={styles.miniRadar}>
-                <RadarChart values={selectedDay.fpDistribution} size={80} showLabels={false} />
-              </View>
-            )}
           </View>
 
           {/* Exercise List */}
@@ -280,7 +266,7 @@ const styles = StyleSheet.create({
   },
   customBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.types.flux + '24',
+    backgroundColor: roles.accentSubtle,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
     borderRadius: radius.full,
@@ -288,7 +274,7 @@ const styles = StyleSheet.create({
   },
   customBadgeText: {
     ...textStyles.caption,
-    color: colors.types.flux,
+    color: roles.accentText,
     fontWeight: '700',
   },
   customActions: {
@@ -298,20 +284,24 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+    flexDirection: 'row',
+    gap: spacing[2],
     paddingVertical: spacing[3],
     borderRadius: radius.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   actionPrimary: {
-    backgroundColor: colors.types.flux,
+    // Was colors.types.flux — the pet element color on a tracker action.
+    backgroundColor: roles.accent,
   },
   actionPrimaryText: {
     ...textStyles.button,
-    color: colors.background.primary,
+    color: roles.onAccent,
     fontWeight: '600',
   },
   actionSecondary: {
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: roles.surfaceSunken,
   },
   actionSecondaryText: {
     ...textStyles.button,

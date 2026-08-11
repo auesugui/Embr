@@ -16,20 +16,33 @@ import {
 import { downloadTextFile, isFileIOSupported, pickTextFile, reloadApp } from '@/lib/backup-file';
 import { showAlert } from '@/utils/alert';
 
-import { APP_NAME, GAMIFICATION_ENABLED } from '@/config';
+import { APP_NAME } from '@/config';
 import { usePlayerStore, useSettingsStore } from '@/stores';
-import { colors, spacing, textStyles } from '@/theme';
+import { radius, roles, spacing, textStyles } from '@/theme';
+import { ChevronRight, Download, Upload, User } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const profile = usePlayerStore((state) => state.profile);
   const achievements = usePlayerStore((state) => state.achievements);
   const haptics = useSettingsStore((state) => state.haptics);
   const units = useSettingsStore((state) => state.units);
+  const themePref = useSettingsStore((state) => state.theme);
   const updateSetting = useSettingsStore((state) => state.updateSetting);
 
   // Single in-flight flag for both actions — they're mutually exclusive and a
   // double-tap mid-restore would race two writes into the same storage keys.
   const [busy, setBusy] = useState(false);
+
+  // Persist first, then restart. The write is fire-and-forget inside the store,
+  // so the reload is deferred a tick — reloading synchronously can beat the
+  // AsyncStorage write and silently discard the choice.
+  const handleThemeChange = (next: 'light' | 'dark' | 'system') => {
+    if (next === themePref) return;
+    updateSetting('theme', next);
+    if (isFileIOSupported) {
+      setTimeout(() => reloadApp(), 60);
+    }
+  };
 
   const handleExport = async () => {
     if (busy) return;
@@ -89,8 +102,13 @@ export default function ProfileScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Profile Header */}
       <View style={styles.profileHeader}>
+        {/* RESERVED (ADR-0013): this circle is where the care-companion goes if
+            it ever gets built. It's deliberately still a placeholder — a Lucide
+            glyph rather than drawn art — so nothing has to be undone later. The
+            80px emoji weightlifter that used to live here was the single
+            loudest "childlike" signal in the app. */}
         <View style={styles.avatarPlaceholder}>
-          <Text style={styles.avatarEmoji}>🏋️</Text>
+          <User size={34} color={roles.textMuted} strokeWidth={1.5} />
         </View>
         <Text style={styles.profileName}>{profile.name}</Text>
         <Text style={styles.joinDate}>
@@ -113,6 +131,37 @@ export default function ProfileScreen() {
           value={haptics}
           onToggle={() => updateSetting('haptics', !haptics)}
         />
+
+        <View style={styles.settingSpacer} />
+
+        {/* Appearance. The palette is baked into StyleSheet.create at module
+            scope (see src/theme/theme-boot.ts), so switching it has to restart
+            the app rather than re-render it — the row says so rather than
+            leaving the user tapping a control that appears to do nothing. */}
+        <View style={styles.settingRow}>
+          <Text style={styles.settingLabel}>Appearance</Text>
+          <View style={styles.unitPills}>
+            {(['light', 'dark', 'system'] as const).map((t) => (
+              <Pressable
+                key={t}
+                style={[styles.unitPill, themePref === t && styles.unitPillActive]}
+                onPress={() => handleThemeChange(t)}
+                accessibilityRole="button"
+                accessibilityLabel={`Use ${t} appearance`}
+                accessibilityState={{ selected: themePref === t }}
+              >
+                <Text style={[styles.unitPillText, themePref === t && styles.unitPillTextActive]}>
+                  {t === 'system' ? 'auto' : t}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        <Text style={styles.settingNote}>
+          {isFileIOSupported
+            ? 'Changing this restarts the app.'
+            : 'Takes effect the next time the app starts.'}
+        </Text>
 
         <View style={styles.settingSpacer} />
 
@@ -159,7 +208,7 @@ export default function ProfileScreen() {
             accessibilityLabel="Export a backup file"
           >
             <Text style={styles.settingLabel}>Export backup</Text>
-            <Text style={styles.settingChevron}>↓</Text>
+            <Download size={18} color={roles.textMuted} />
           </Pressable>
 
           <View style={styles.settingSpacer} />
@@ -172,7 +221,7 @@ export default function ProfileScreen() {
             accessibilityLabel="Restore from a backup file"
           >
             <Text style={styles.settingLabel}>Restore from backup</Text>
-            <Text style={styles.settingChevron}>↑</Text>
+            <Upload size={18} color={roles.textMuted} />
           </Pressable>
         </View>
       )}
@@ -188,7 +237,7 @@ export default function ProfileScreen() {
             accessibilityLabel="Open dev panel"
           >
             <Text style={styles.settingLabel}>Dev Panel</Text>
-            <Text style={styles.settingChevron}>›</Text>
+            <ChevronRight size={18} color={roles.textMuted} />
           </Pressable>
         </View>
       )}
@@ -197,9 +246,7 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>About</Text>
         <Text style={styles.versionText}>{APP_NAME} v1.0.0</Text>
-        <Text style={styles.buildText}>
-          Build: {GAMIFICATION_ENABLED ? 'Phase 1' : 'Tracker only'}
-        </Text>
+        <Text style={styles.buildText}>Workout tracker</Text>
       </View>
     </ScrollView>
   );
@@ -227,7 +274,7 @@ function SettingRow({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: roles.surface,
   },
   content: {
     padding: spacing[4],
@@ -240,22 +287,21 @@ const styles = StyleSheet.create({
   avatarPlaceholder: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.background.secondary,
+    borderRadius: radius.full,
+    backgroundColor: roles.surfaceRaised,
+    borderWidth: 1,
+    borderColor: roles.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing[3],
   },
-  avatarEmoji: {
-    fontSize: 40,
-  },
   profileName: {
     ...textStyles.h3,
-    color: colors.text.primary,
+    color: roles.textPrimary,
   },
   joinDate: {
     ...textStyles.body,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
     marginTop: spacing[1],
   },
   section: {
@@ -263,16 +309,16 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...textStyles.h4,
-    color: colors.text.primary,
+    color: roles.textPrimary,
     marginBottom: spacing[3],
   },
   achievementCount: {
     ...textStyles.body,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
   },
   sectionNote: {
     ...textStyles.bodySmall,
-    color: colors.text.muted,
+    color: roles.textMuted,
     marginBottom: spacing[3],
   },
   settingRowBusy: {
@@ -283,39 +329,43 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing[3],
-    backgroundColor: colors.background.secondary,
+    backgroundColor: roles.surfaceRaised,
+    borderWidth: 1,
+    borderColor: roles.border,
     paddingHorizontal: spacing[4],
-    borderRadius: 12,
+    borderRadius: radius.lg,
   },
   settingLabel: {
     ...textStyles.body,
-    color: colors.text.primary,
-  },
-  settingChevron: {
-    ...textStyles.body,
-    color: colors.text.muted,
+    color: roles.textPrimary,
   },
   toggle: {
     width: 44,
     height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.background.tertiary,
+    borderRadius: radius.full,
+    backgroundColor: roles.surfaceSunken,
     padding: 2,
   },
   toggleActive: {
-    backgroundColor: colors.reward.fp,
+    backgroundColor: roles.accent,
   },
   toggleKnob: {
     width: 20,
     height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.text.primary,
+    borderRadius: radius.full,
+    backgroundColor: roles.surfaceRaised,
   },
   toggleKnobActive: {
     transform: [{ translateX: 20 }],
   },
   settingSpacer: {
     height: spacing[2],
+  },
+  settingNote: {
+    ...textStyles.caption,
+    color: roles.textMuted,
+    marginTop: spacing[2],
+    marginLeft: spacing[1],
   },
   unitPills: {
     flexDirection: 'row',
@@ -324,27 +374,27 @@ const styles = StyleSheet.create({
   unitPill: {
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
-    borderRadius: 12,
-    backgroundColor: colors.background.tertiary,
+    borderRadius: radius.md,
+    backgroundColor: roles.surfaceSunken,
   },
   unitPillActive: {
-    backgroundColor: colors.reward.fp,
+    backgroundColor: roles.accent,
   },
   unitPillText: {
     ...textStyles.body,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
   },
   unitPillTextActive: {
-    color: colors.background.primary,
+    color: roles.onAccent,
     fontWeight: '600',
   },
   versionText: {
     ...textStyles.body,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
   },
   buildText: {
     ...textStyles.body,
-    color: colors.text.muted,
+    color: roles.textMuted,
     marginTop: spacing[1],
   },
 });

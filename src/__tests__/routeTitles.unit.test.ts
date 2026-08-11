@@ -50,9 +50,11 @@ describe('ROUTE_TITLES (issue #24 A2)', () => {
   });
 
   it('matches the expected human titles', () => {
-    expect(ROUTE_TITLES['workout/loadout']).toBe('Loadout');
+    // "Loadout"/"Session" were game vocabulary leaking into the tracker build —
+    // this map isn't flag-aware, so both showed regardless of the flag (ADR-0013).
+    expect(ROUTE_TITLES['workout/loadout']).toBe('Start Workout');
     expect(ROUTE_TITLES['workout/summary']).toBe('Workout Summary');
-    expect(ROUTE_TITLES['workout/session']).toBe('Session');
+    expect(ROUTE_TITLES['workout/session']).toBe('Workout');
     expect(ROUTE_TITLES['(tabs)/dev']).toBe('Dev Panel');
   });
 

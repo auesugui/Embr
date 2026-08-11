@@ -1,25 +1,28 @@
-# IronQuest - Project Instructions
+# Embr — Project Instructions
 
-> **Version:** 1.2 | **Status:** Phase 1 shipped July 2026; Phase 2 (Pet Attachment) scoping | **Updated:** July 2026
+> **Version:** 2.0 | **Status:** redesigned + de-gamified, Aug 2026 | **Updated:** 2026-08-11
 
 ---
 
 ## Project Overview
 
-**IronQuest** is a gamified workout tracking mobile application where every rep logged earns currency (Forge Points) to raise, feed, and strengthen a digital pet that battles its way up an endless tower.
+**Embr** is a workout tracker. Log sets, track PRs, keep a streak. That's the whole product.
 
-**One-Line Pitch:** A workout tracker where every rep you log earns currency to raise, feed, and strengthen a digital pet that battles its way up an endless tower.
+It used to be **IronQuest** — a gamified tracker where every rep earned Forge Points to raise
+a digital pet that battled up an endless tower. That game layer was built, never used, and
+removed (ADR-0014). The pet, tower, and game-systems docs were deleted with it.
 
----
+What's left in `docs/` is a mix: the tracker and technical specs still broadly describe real
+code, while `01-product-overview/` and `02-forge-points/` describe a product that no longer
+exists and are marked historical in `docs/INDEX.md`.
 
-## Documentation Entry Point
+**Read the ADRs before the docs.** They're the current truth:
 
-**Start here:** [`docs/INDEX.md`](docs/INDEX.md)
-
-The INDEX.md file contains:
-- Complete navigation to all documentation sections
-- Quick-reference tables for core design rules, FP earning, pet stats, evolution stages
-- Links to the original PRD and amendment documents
+| ADR | What |
+|---|---|
+| `~/.claude/context/decisions/0013-embr-rebrand-and-visual-redesign.md` | The rebrand + the whole visual system |
+| `~/.claude/context/decisions/0014-*` | Removing the game layer |
+| `~/.claude/context/active/Embr.md` | Live project state — start here |
 
 ---
 
@@ -29,169 +32,73 @@ The INDEX.md file contains:
 |-------|-----------|
 | **Framework** | React Native + Expo (Managed) |
 | **Language** | TypeScript (end-to-end) |
-| **JS Engine** | Hermes |
-| **Pet Rendering** | React Native SVG |
-| **Animations** | Reanimated v3 (+ Skia Phase 2+, Rive Phase 3+) |
-| **State Management** | Zustand |
+| **Delivery** | **PWA on Vercel.** Not native — the $99/yr Apple fee was declined |
+| **Animations** | Reanimated v3 |
+| **State** | Zustand |
 | **Local Persistence** | AsyncStorage (MMKV removed for Expo Go compatibility) |
-| **Backend** | Supabase (Phase 3) |
-| **Notifications** | Expo Notifications |
-| **AI Asset Gen** | Higgsfield MCP (Phase 2+ — see usage policy below) |
+| **Icons** | Lucide (`lucide-react-native`) |
+| **Type** | Plus Jakarta Sans (UI) + Fraunces (display), via `expo-font` |
+
+There is **no backend and no sync.** Everything lives on-device. On web that's
+`localStorage`, which the browser can evict — `src/lib/backup.ts` (Profile → Export) is the
+only thing between a storage sweep and losing every logged workout. Treat it as critical.
 
 ---
 
-## Feature Flag: `GAMIFICATION_ENABLED`
+## Design System
 
-`src/config/features.ts` holds the seam between the tracker and the game layer — "Tracker First, Game Second" made executable. Off, the app is a plain workout tracker called **Ironlog**: no FP, no pet, no tower, no onboarding wizard. Sessions, templates, history, PRs, streaks, and units are untouched on both sides.
+All of it lives in `src/theme/`. **`roles` is the API** — semantic tokens (`surface`,
+`surfaceRaised`, `textPrimary`, `accent`, `border`, …), not raw hex.
 
-| | Command |
-|---|---|
-| Gamified (default) | `npm start` · `npm run web` |
-| Tracker only | `npm run start:tracker` · `npm run web:tracker` |
+- **One accent.** Ember orange. If something needs a second accent color, it almost
+  certainly doesn't — the old six-color RPG palette is exactly what made this look amateur.
+- **`colors.*` is deprecated.** It's a legacy alias mapped onto the active palette so
+  pre-redesign screens still render. Don't add new call sites; migrate ones you touch.
+- **Light and dark both ship.** The palette is resolved *before* the bundle initializes
+  (`src/theme/theme-boot.ts`) because styles bake colors at module scope. Consequence:
+  changing the appearance setting restarts the app. Don't "fix" this without reading that
+  file's header.
+- **Register split.** Hevy where you're working (session, template edit, history): dense,
+  tabular, undecorated. Finch where you're arriving (home, summary, profile): breathing
+  room, the display serif, warmth. Don't mix them.
+- **Reserved zones.** The home hero card and the profile avatar circle are deliberately
+  under-filled, held for a possible care-companion. Don't fill them with layout.
 
-Build-time via `EXPO_PUBLIC_GAMIFICATION=off`, not a runtime toggle — the off build genuinely never renders the game layer. Unset or unrecognized values leave gamification **on**, so a typo can't silently ship the tracker build.
-
-**Why it exists:** the tracker+pet loop is code-complete but undogfooded. The flag lets the plain tracker get real daily use without forking the repo, so the "is the pet the reason I don't open this?" question gets answered with evidence instead of a guess. When adding a game-layer surface, gate it — don't assume the flag is on.
-
----
-
-## AI Asset Generation (Higgsfield)
-
-Pet art and other AI-generated assets are produced via Higgsfield MCP (`mcp.higgsfield.ai/mcp`, user scope). Plan: **Plus, 1,200 credits/month granted**.
-
-**Usage policy (set 2026-07-04):**
-
-| Guardrail | Value |
-|-----------|-------|
-| Monthly hard ceiling | **400 credits** (33% of grant — leaves 800 buffer) |
-| Per-batch approval | Any single op >10 credits needs explicit user OK |
-| Video / 3D rule | Always preflight (`get_cost: true`) + explicit approval |
-| Default | Preflight every generation before committing |
-
-**Cost reference:** Nano Banana Pro (characters) = 2 cr/image · GPT Image 2 (text/design) = 0.5 cr/image at low-Q default · Seedance 2.0 (video) = 22.5 cr/5s clip.
-
-**Phase 2 estimated need:** ~120-220 credits (item 9 avatar art is the bulk at ~72).
-
-**Scope rule:** Agent ticks do NOT generate Higgsfield assets as part of routine code work. Image generation is pair-work for the avatar identity pass (item 9), not feature work. If an issue seems to require generated assets, flag it in `## Findings (out of scope)` instead of generating.
+**No emoji as UI. No Unicode glyphs as icons.** Both were removed on purpose; reintroducing
+either undoes the redesign.
 
 ---
 
 ## Core Design Rules
 
-These principles must be upheld in all implementations:
-
 | Rule | Detail |
 |------|--------|
-| **Tracker First, Game Second** | Workout logging is the highest priority. Game layer is a reward, not a requirement |
 | **3-Second Rule** | Logging a set must be completable in 3 seconds |
-| **No FP from Money** | FP earned exclusively through logged workouts. Cannot be purchased |
-| **Rest Time ≠ FP** | Rest and pause time have zero impact on FP calculations |
-| **Spirit = Streak Only** | Spirit FP earned only through streak system — no exercise or cardio generates it |
-| **No Punishment for Absence** | Pet never dies or loses stats permanently. Vacation mode freezes decay |
-| **Hybrid Pet Rendering** | Base art = 12 AI-generated sprites (3 types × 4 stages via Higgsfield). Stats drive procedural overlays (tint/glow/scale/particles), not base geometry. See ADR-0006 |
-| **Self-Contained** | No integration with external workout apps. Owns the full data pipeline |
+| **Offline-first** | Local persistence only. No cloud, no accounts, no sync |
+| **Export or it's gone** | Any change touching persisted shapes must keep `backup.ts` round-tripping old files |
+| **Self-Contained** | No integration with external workout apps |
+| **Motion is shared** | One vocabulary (`src/components/celebration/vocabulary.ts`). A button press and a celebration use the same `settle` spring |
 
 ---
 
-## Development Phases
+## Things That Look Removable But Aren't
 
-| Phase | Scope | Focus |
-|-------|-------|-------|
-| **Phase 1** ✅ | Tracker + Pet | Workout logging, FP engine, pet care, SVG renderer, evolution stages 1-2 _(shipped July 2026)_ |
-| **Phase 2** | Pet Attachment | Onboarding flow, pet type migration (5→3 Ferro/Flux/Terra), avatar identity pass, celebration layer, pet-care depth, typed-FP recalibration, share cards, kg support |
-| **Phase 3** | Battle Tower + Polish | Auto-battle engine, tower generation, ability system, evolution stages 3-4, Supabase, leaderboards, push notifications |
-| **Phase 4** | Expansion | Multiple pets, PvP, custom builders, health integrations, seasonal events |
-
-> **Phase re-sequencing note (July 2026):** Original docs called Phase 2 = Battle Tower. The 2026-07 audit (`AUDIT-AND-ROADMAP-2026-07.md`) re-sequenced: pet attachment now precedes the Tower — *"Don't build the Tower on an exploitable economy and an unloved pet."* Economy integrity shipped in Phase 1; this phase ships the pet attachment the differentiator depends on.
-
-See [`docs/07-technical/architecture-and-roadmap.md`](docs/07-technical/architecture-and-roadmap.md) for detailed phase requirements.
+- **`WorkoutLog.claimedAt`** — named for the deleted "claim rewards" flow, but it's the
+  save-once idempotency key (issue #16 / audit C1). Removing it reintroduces double-save.
+- **`WorkoutLog.totalFP` / `fpEarned`** — dead metadata, still populated, still persisted.
+  Kept deliberately so existing backups round-trip without a migration (ADR-0014).
+- **The hydration gate in `app/_layout.tsx`** — prevents React #418 on the static web
+  export. The pre-hydration shell is transparent on web for the same reason.
 
 ---
 
-## Agent Architecture
+## Verification
 
-IronQuest uses a single collapsed engineer agent for Phase 1+ work — covering mobile, state, and game-logic layers. UX reference lives in `docs/09-ux-design/ux-spec.md` (not as an agent). Database/Supabase work is Phase 3 and deferred.
+Chrome DevTools MCP against the web build is the primary in-loop check. Playwright is frozen
+at the golden-path specs and runs in CI.
 
-| When | Use |
-|------|-----|
-| Interactive pairing or AFK queue task | `ironquest-engineer` agent |
-
-Agent definition: [`.claude/agents/ironquest-engineer.md`](.claude/agents/ironquest-engineer.md)
-
-**Verification model:** Chrome DevTools MCP is the primary in-loop verification tool (token-cheap a11y snapshots). Playwright is frozen at the 4 golden-path specs and runs in CI — agents do not author new Playwright tests as part of routine task work.
+Before calling anything done: `npm run typecheck`, `npm test`, and actually look at the app.
 
 ---
 
-## Key Files & Directories
-
-```
-/IronQuest
-├── docs/                          # All PRD documentation
-│   ├── INDEX.md                   # START HERE - Documentation entry point
-│   ├── 01-product-overview/       # Vision, core loop, design pillars
-│   ├── 02-forge-points/           # FP economy, earning, spending
-│   ├── 03-workout-tracker/        # Session flow, rest timer, cardio, exercise DB
-│   ├── 04-pet-system/             # Pet care, evolution, types, rendering
-│   ├── 05-battle-tower/           # Tower mechanics, auto-battle
-│   ├── 06-game-systems/           # Cosmetics, achievements, quests
-│   ├── 07-technical/              # Architecture, roadmap, implementation priority
-│   └── 08-decisions/              # Decision log, amendments
-├── .claude/
-│   └── agents/
-│       └── ironquest-engineer.md  # Collapsed engineer agent (mobile + state + game-logic)
-└── CLAUDE.md                      # This file
-```
-
----
-
-## Quick Reference: FP Sources
-
-| Source | FP Amount | Type |
-|--------|-----------|------|
-| Base completion | 100 FP flat | Generic |
-| Volume bonus | 1 FP per 10 reps | Generic |
-| Personal record | 50 FP | Generic |
-| Rep PR (same weight) | 25 FP | Generic |
-| Streak multiplier | 1.0x + 0.1x/day, max 2.0x | Multiplier |
-| Training variable | 10–20 FP per exercise/set | Generic |
-| Spirit (streak only) | 5 FP/day + milestones | Spirit |
-
----
-
-## Quick Reference: Pet Stats
-
-| Stat | Source Workout | FP Cost | Visual Effect |
-|------|---------------|---------|---------------|
-| **Power** | Push (Chest/Shoulders) | 5 FP/pt | Spikier, larger core |
-| **Guard** | Pull (Back/Traps) | 5 FP/pt | Thicker, layered |
-| **Speed** | Legs (Quads/Hams) | 5 FP/pt | Elongated, motion lines |
-| **Vigor** | Legs (Core/Calves) | 5 FP/pt | Symmetrical, stable |
-| **Focus** | Arms (Biceps/Triceps) | 5 FP/pt | Sharp points, eye detail |
-| **Spirit** | Streak only | **10 FP/pt** | Glow, particles |
-
----
-
-## Implementation Priority
-
-| Priority | Meaning |
-|----------|---------|
-| **P0** | Must ship in Phase 1 |
-| **P1** | Should ship in target phase, critical for experience |
-| **P2** | Nice-to-have, can slip without blocking launch |
-
-See [`docs/07-technical/implementation-priority.md`](docs/07-technical/implementation-priority.md) for detailed feature priorities.
-
----
-
-## Development Guidelines
-
-1. **Read the docs first** - Always consult the relevant documentation in `docs/` before implementing
-2. **Respect the design rules** - The core rules above are non-negotiable constraints
-3. **Use the right agent** - Match tasks to specialized agents for best results
-4. **Phase-aware development** - Don't implement Phase 3 features in Phase 1
-5. **Type safety matters** - TypeScript end-to-end for game state, FP math, battle formulas
-6. **Offline-first** - Local persistence with AsyncStorage + MMKV before cloud sync
-
----
-
-*This file guides AI assistants working on IronQuest. For detailed requirements, always start with `docs/INDEX.md`.*
+*For live project state, read `~/.claude/context/active/Embr.md` first.*

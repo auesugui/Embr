@@ -12,19 +12,17 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CountUpText, EvolutionCeremony, RevealRow } from '@/components/celebration';
-import { RadarChart } from '@/components/progress/RadarChart';
-import { GAMIFICATION_ENABLED } from '@/config';
+import { RevealRow } from '@/components/celebration';
 import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
 import {
   useBaselineStore,
-  usePetStore,
   usePlayerStore,
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
+import { Flame } from 'lucide-react-native';
 
 // Streak milestones celebrated by the docs' streak system (fp-earning.md).
 const STREAK_MILESTONES = [3, 7, 14, 30];
@@ -42,11 +40,9 @@ export default function WorkoutSummaryScreen() {
   );
   const hydrated = useWorkoutHistoryStore((s) => s.hydrated);
 
-  // Post-claim UI state: swaps the footer to "Visit the Den / Done" and, when
-  // the claim crossed an evolution threshold, runs the major-tier ceremony
-  // (issue #40 — evolution must never be a silent text flip / audit A7).
+  // Post-save UI state: swaps the footer to a deliberate "Done" rather than
+  // auto-exiting the screen that closes out a workout.
   const [justClaimed, setJustClaimed] = useState(false);
-  const [evolvedTo, setEvolvedTo] = useState<1 | 2 | 3 | 4 | null>(null);
 
   const summary: WorkoutSummary | null = useMemo(() => {
     if (!log) return null;
@@ -91,21 +87,10 @@ export default function WorkoutSummaryScreen() {
 
     haptics.success();
 
-    // Game-layer credit: FP to the player balance and to the pet's evolution
-    // total. Skipped entirely in the tracker build. The FP figure is still
-    // written onto the log above — it's derived metadata, cheap to keep, and
-    // keeping it means flipping the flag back on doesn't leave holes in
-    // history. (Past workouts logged with the flag off won't have been added
-    // to the player balance, so their FP badges won't sum to the total.)
-    if (GAMIFICATION_ENABLED) {
-      usePlayerStore.getState().addMultipleFP(summary.typedFP);
-      // Capture the stage on both sides so a threshold crossing triggers the
-      // major-tier ceremony rather than a silent number change.
-      const stageBefore = usePetStore.getState().evolutionStage;
-      usePetStore.getState().addFP(summary.totalFP);
-      const stageAfter = usePetStore.getState().evolutionStage;
-      if (stageAfter > stageBefore) setEvolvedTo(stageAfter);
-    }
+    // FP is still computed and written onto the log above — derived metadata,
+    // cheap to keep, and dropping it from the persisted shape would be a schema
+    // change for no benefit (ADR-0014). Nothing credits a player balance or a
+    // pet any more; those stores are gone.
 
     // Update streak
     usePlayerStore.getState().updateStreak(true);
@@ -175,79 +160,27 @@ export default function WorkoutSummaryScreen() {
           { paddingTop: insets.top + spacing[4], paddingBottom: insets.bottom + spacing[6] },
         ]}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.celebration}>Workout Complete!</Text>
-          <Text style={styles.subtitle}>Great work getting stronger</Text>
-        </View>
-
-        {/* FP Earned Card — game layer */}
-        {GAMIFICATION_ENABLED && (
-          <View style={styles.fpCard}>
-            <Text style={styles.fpLabel}>Forge Points Earned</Text>
-            <CountUpText value={summary.totalFP} style={styles.fpValue} />
-            <Text style={styles.fpUnit}>FP</Text>
+        {/* Header. The summary is the one screen that should feel like an
+            arrival, so its content enters rather than appearing — the same
+            staggered reveal the FP breakdown already used, now available to the
+            tracker build, which previously got no motion here at all. */}
+        <RevealRow index={0}>
+          <View style={styles.header}>
+            <Text style={styles.celebration}>Workout complete</Text>
           </View>
-        )}
-
-        {/* FP Breakdown — game layer */}
-        {GAMIFICATION_ENABLED && (
-          <View style={styles.breakdownCard}>
-            <Text style={styles.breakdownTitle}>Breakdown</Text>
-
-            <RevealRow index={0} style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Base completion</Text>
-              <Text style={styles.breakdownValue}>{summary.breakdown.base} FP</Text>
-            </RevealRow>
-
-            <RevealRow index={1} style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Volume bonus</Text>
-              <Text style={styles.breakdownValue}>+{summary.breakdown.volumeBonus} FP</Text>
-            </RevealRow>
-
-            <RevealRow index={2} style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>PR bonuses</Text>
-              <Text style={styles.breakdownValue}>+{summary.breakdown.prBonus} FP</Text>
-            </RevealRow>
-
-            {summary.breakdown.streakMultiplier > 1 && (
-              <RevealRow index={3} style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>Streak multiplier</Text>
-                <Text style={styles.breakdownValueHighlight}>
-                  x{summary.breakdown.streakMultiplier.toFixed(1)}
-                </Text>
-              </RevealRow>
-            )}
-
-            {summary.spiritFP > 0 && (
-              <RevealRow index={4} style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>Spirit (streak bonus)</Text>
-                <Text style={styles.breakdownValueHighlight}>+{summary.spiritFP} Spirit FP</Text>
-              </RevealRow>
-            )}
-          </View>
-        )}
-
-        {/* Typed-FP radar — the "what did this build" picture (UX spec) */}
-        {GAMIFICATION_ENABLED && (
-          <View style={styles.radarCard}>
-            <Text style={styles.breakdownTitle}>FP by Type</Text>
-            <View style={styles.radarWrapper}>
-              <RadarChart values={radarValues} size={180} showLabels={true} />
-            </View>
-          </View>
-        )}
+        </RevealRow>
 
         {/* Streak state + milestone celebration */}
-        <View style={styles.streakCard}>
+        <RevealRow index={1} style={styles.streakCard}>
+          <Flame size={18} color={roles.accent} strokeWidth={2} />
           <Text style={styles.streakText}>
-            🔥 {log.streakDays} day streak
-            {STREAK_MILESTONES.includes(log.streakDays) ? ' — milestone!' : ''}
+            {log.streakDays} day streak
+            {STREAK_MILESTONES.includes(log.streakDays) ? ' — milestone' : ''}
           </Text>
-        </View>
+        </RevealRow>
 
         {/* Stats */}
-        <View style={styles.statsCard}>
+        <RevealRow index={2} style={styles.statsCard}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{formatDuration(summary.duration)}</Text>
             <Text style={styles.statLabel}>Duration</Text>
@@ -266,10 +199,10 @@ export default function WorkoutSummaryScreen() {
             <Text style={styles.statValue}>{summary.totalReps}</Text>
             <Text style={styles.statLabel}>Reps</Text>
           </View>
-        </View>
+        </RevealRow>
 
         {/* Exercise Summary */}
-        <View style={styles.exercisesCard}>
+        <RevealRow index={3} style={styles.exercisesCard}>
           <Text style={styles.exercisesTitle}>Exercises Completed</Text>
 
           {summary.exercises.map((exercise) => {
@@ -292,37 +225,21 @@ export default function WorkoutSummaryScreen() {
               </View>
             );
           })}
-        </View>
+        </RevealRow>
       </ScrollView>
 
-      {/* Footer: claim first, then a deliberate next action (UX spec — no
-          auto-exit from the game layer's most important screen) */}
+      {/* Footer: save first, then a deliberate next action (UX spec — no
+          auto-exit from the screen that closes out a workout) */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing[4] }]}>
         {justClaimed ? (
           <View style={styles.postClaimRow}>
-            {GAMIFICATION_ENABLED && (
-              <Pressable
-                style={styles.denButton}
-                onPress={() => router.replace('/(tabs)/den')}
-                accessibilityRole="button"
-                accessibilityLabel="Visit the Den"
-              >
-                <Text style={styles.finishButtonText}>Visit the Den</Text>
-              </Pressable>
-            )}
             <Pressable
-              style={
-                GAMIFICATION_ENABLED
-                  ? styles.doneButton
-                  : [styles.finishButton, styles.postClaimSolo]
-              }
+              style={[styles.finishButton, styles.postClaimSolo]}
               onPress={() => router.replace('/(tabs)')}
               accessibilityRole="button"
               accessibilityLabel="Done"
             >
-              <Text style={GAMIFICATION_ENABLED ? styles.doneButtonText : styles.finishButtonText}>
-                Done
-              </Text>
+              <Text style={styles.finishButtonText}>Done</Text>
             </Pressable>
           </View>
         ) : (
@@ -332,31 +249,11 @@ export default function WorkoutSummaryScreen() {
             disabled={alreadyClaimed}
           >
             <Text style={styles.finishButtonText}>
-              {GAMIFICATION_ENABLED
-                ? alreadyClaimed
-                  ? 'Rewards Claimed'
-                  : 'Claim Rewards'
-                : alreadyClaimed
-                  ? 'Workout Saved'
-                  : 'Save Workout'}
+              {alreadyClaimed ? 'Workout Saved' : 'Save Workout'}
             </Text>
           </Pressable>
         )}
       </View>
-
-      {/* Major-tier ceremony: crossing an evolution threshold is held, named,
-          and remembered — never a toast (avatar brief §6, Zelda reveal). */}
-      <EvolutionCeremony
-        visible={GAMIFICATION_ENABLED && evolvedTo !== null}
-        petType={usePetStore.getState().type}
-        petName={usePetStore.getState().name}
-        stats={usePetStore.getState().stats}
-        newStage={evolvedTo ?? 1}
-        onDone={() => {
-          setEvolvedTo(null);
-          router.replace('/(tabs)/den');
-        }}
-      />
     </View>
   );
 }
@@ -397,14 +294,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing[6],
   },
   celebration: {
-    ...textStyles.h1,
-    color: colors.reward.fp,
+    // The one screen that should feel good rather than efficient — so it's the
+    // one screen that gets the display face. Quieter than the 36px gold shout
+    // it replaced; warmth comes from the typeface, not the volume.
+    ...textStyles.displayLarge,
+    color: roles.textPrimary,
     textAlign: 'center',
-  },
-  subtitle: {
-    ...textStyles.body,
-    color: colors.text.secondary,
-    marginTop: spacing[1],
   },
   fpCard: {
     backgroundColor: colors.reward.fp + '20',
@@ -578,15 +473,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   streakCard: {
-    backgroundColor: colors.background.secondary,
+    backgroundColor: roles.surfaceRaised,
     borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: roles.border,
     padding: spacing[4],
     marginBottom: spacing[4],
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'center',
     alignItems: 'center',
   },
   streakText: {
-    ...textStyles.h4,
-    color: colors.reward.streak,
+    ...textStyles.labelLarge,
+    color: roles.textPrimary,
   },
   finishButtonText: {
     ...textStyles.buttonLarge,

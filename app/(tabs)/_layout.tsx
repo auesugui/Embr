@@ -1,15 +1,15 @@
 // =============================================================================
-// IronQuest Tab Navigation Layout
+// Embr Tab Navigation Layout
 // =============================================================================
 
 import { Tabs, router } from 'expo-router';
-import { Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { ChevronLeft } from 'lucide-react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TabIcon } from '@/components/icons/TabIcon';
-import { GAMIFICATION_ENABLED } from '@/config';
 import { ROUTE_TITLES } from '@/navigation/routeTitles';
-import { colors, spacing } from '@/theme';
+import { roles, spacing, textStyles } from '@/theme';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -18,23 +18,24 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerStyle: {
-          backgroundColor: colors.background.primary,
+          backgroundColor: roles.surface,
         },
-        headerTintColor: colors.text.primary,
+        headerTintColor: roles.textPrimary,
         headerTitleStyle: {
+          fontFamily: textStyles.h4.fontFamily,
           fontWeight: '600',
         },
         tabBarStyle: {
-          backgroundColor: colors.background.primary,
-          borderTopColor: colors.ui.border,
+          backgroundColor: roles.surface,
+          borderTopColor: roles.border,
           borderTopWidth: 1,
           // Dynamic height based on device safe areas
           height: 60 + insets.bottom,
           paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: colors.reward.fp,
-        tabBarInactiveTintColor: colors.text.muted,
+        tabBarActiveTintColor: roles.accent,
+        tabBarInactiveTintColor: roles.textMuted,
         // Ensure content doesn't go under the tab bar
         tabBarItemStyle: {
           paddingBottom: Platform.OS === 'ios' ? 0 : 8,
@@ -44,28 +45,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: GAMIFICATION_ENABLED ? 'Quest Board' : 'Workouts',
+          title: 'Workouts',
           tabBarIcon: ({ focused }) => <TabIcon name="quest" focused={focused} />,
-        }}
-      />
-      {/* Den and Tower are the game layer's homes. The routes stay registered
-          with the tracker build (expo-router auto-surfaces unregistered files
-          as tabs, and the screens themselves render a redirect), but `href:
-          null` keeps them out of the tab bar — same pattern as history/dev. */}
-      <Tabs.Screen
-        name="den"
-        options={{
-          title: 'The Den',
-          href: GAMIFICATION_ENABLED ? undefined : null,
-          tabBarIcon: ({ focused }) => <TabIcon name="den" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="tower"
-        options={{
-          title: 'Tower',
-          href: GAMIFICATION_ENABLED ? undefined : null,
-          tabBarIcon: ({ focused }) => <TabIcon name="tower" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -89,7 +70,10 @@ export default function TabLayout() {
               onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.headerBack}>‹ Back</Text>
+              <View style={styles.headerBack}>
+                <ChevronLeft size={20} color={roles.accent} />
+                <Text style={styles.headerBackText}>Back</Text>
+              </View>
             </Pressable>
           ),
         }}
@@ -110,7 +94,10 @@ export default function TabLayout() {
               }
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.headerBack}>‹ Back</Text>
+              <View style={styles.headerBack}>
+                <ChevronLeft size={20} color={roles.accent} />
+                <Text style={styles.headerBackText}>Back</Text>
+              </View>
             </Pressable>
           ),
         }}
@@ -121,8 +108,12 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   headerBack: {
-    fontSize: 17,
-    color: colors.reward.fp,
+    flexDirection: 'row',
+    alignItems: 'center',
     marginLeft: spacing[2],
+  },
+  headerBackText: {
+    ...textStyles.body,
+    color: roles.accent,
   },
 });

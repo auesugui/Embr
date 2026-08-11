@@ -1,29 +1,29 @@
 {
   "expo": {
-    "name": "IronQuest",
-    "slug": "ironquest",
+    "name": "Embr",
+    "slug": "embr",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.svg",
-    "scheme": "ironquest",
+    "scheme": "embr",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
+      "backgroundColor": "#1F1B18"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ironquest.app",
+      "bundleIdentifier": "com.embr.app",
       "config": {
         "usesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0F172A"
+        "backgroundColor": "#1F1B18"
       },
-      "package": "com.ironquest.app"
+      "package": "com.embr.app"
     },
     "web": {
       "bundler": "metro",

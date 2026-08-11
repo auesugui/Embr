@@ -10,8 +10,6 @@
 // Alert.alert) and web (react-native-web's Alert is a no-op, so the app
 // supplies a DOM renderer — see src/utils/alert.ts).
 
-import { GAMIFICATION_ENABLED } from '@/config';
-
 export type AlertButtonStyle = 'default' | 'cancel' | 'destructive';
 
 export interface AlertButton {
@@ -67,7 +65,7 @@ export const buildEndSessionMessage = (completedSets: number): string => {
   const noun = completedSets === 1 ? 'set' : 'sets';
   // "Claimed" is game-layer vocabulary; the tracker build says "saved" for the
   // same act (finishing the workout and writing it to history).
-  const verb = GAMIFICATION_ENABLED ? 'been claimed' : 'been saved';
+  const verb = 'been saved';
   return `You have ${completedSets} logged ${noun} that haven't ${verb}. Ending now will discard them.`;
 };
 

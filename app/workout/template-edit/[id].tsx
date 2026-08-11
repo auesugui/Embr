@@ -23,8 +23,16 @@ import {
 import { ExercisePickerModal } from '@/components/workout/ExercisePickerModal';
 import { getExerciseById } from '@/data';
 import { useTemplateStore } from '@/stores';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronRight,
+  type LucideIcon,
+  RefreshCw,
+  X,
+} from 'lucide-react-native';
 
 interface EditTarget {
   dayId: string;
@@ -204,12 +212,16 @@ export default function TemplateEditScreen() {
                         {Math.round(templateEx.restSeconds / 60)}m rest
                       </Text>
                     </View>
-                    <Text style={styles.editHint}>Edit ›</Text>
+                    <View style={styles.editHint}>
+                      <Text style={styles.editHintText}>Edit</Text>
+                      <ChevronRight size={14} color={roles.textMuted} />
+                    </View>
                   </Pressable>
 
                   <View style={styles.rowControls}>
                     <ControlButton
-                      label="▲"
+                      icon={ArrowUp}
+                      label="Move up"
                       disabled={index === 0}
                       onPress={() => {
                         haptics.tap();
@@ -217,7 +229,8 @@ export default function TemplateEditScreen() {
                       }}
                     />
                     <ControlButton
-                      label="▼"
+                      icon={ArrowDown}
+                      label="Move down"
                       disabled={index === selectedDay.exercises.length - 1}
                       onPress={() => {
                         haptics.tap();
@@ -225,7 +238,8 @@ export default function TemplateEditScreen() {
                       }}
                     />
                     <ControlButton
-                      label="✕"
+                      icon={X}
+                      label="Remove exercise"
                       tone="danger"
                       onPress={() => {
                         haptics.warning();
@@ -375,7 +389,8 @@ function EditExerciseSheet({
             </View>
 
             <Pressable style={sheetStyles.swapButton} onPress={onSwap}>
-              <Text style={sheetStyles.swapButtonText}>↻ Swap Exercise</Text>
+              <RefreshCw size={15} color={roles.accentText} />
+              <Text style={sheetStyles.swapButtonText}>Swap Exercise</Text>
             </Pressable>
 
             {/* Sets stepper */}
@@ -451,16 +466,21 @@ function MetaChip({ label }: { label: string }) {
 }
 
 function ControlButton({
+  icon: Icon,
   label,
   onPress,
   disabled,
   tone = 'default',
 }: {
+  icon: LucideIcon;
+  /** Screen-reader label. The button itself is icon-only. */
   label: string;
   onPress: () => void;
   disabled?: boolean;
   tone?: 'default' | 'danger';
 }) {
+  const color = disabled ? roles.textMuted : tone === 'danger' ? roles.error : roles.textPrimary;
+
   return (
     <Pressable
       style={[
@@ -470,16 +490,10 @@ function ControlButton({
       ]}
       disabled={disabled}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
-      <Text
-        style={[
-          styles.controlButtonText,
-          tone === 'danger' && styles.controlButtonTextDanger,
-          disabled && styles.controlButtonTextDisabled,
-        ]}
-      >
-        {label}
-      </Text>
+      <Icon size={16} color={color} />
     </Pressable>
   );
 }
@@ -532,7 +546,7 @@ const styles = StyleSheet.create({
   },
   customBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.types.flux + '24',
+    backgroundColor: roles.accentSubtle,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
     borderRadius: radius.full,
@@ -540,7 +554,7 @@ const styles = StyleSheet.create({
   },
   customBadgeText: {
     ...textStyles.caption,
-    color: colors.types.flux,
+    color: roles.accentText,
     fontWeight: '700',
   },
   nameInput: {
@@ -654,9 +668,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   editHint: {
-    ...textStyles.caption,
-    color: colors.types.flux,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
     marginLeft: spacing[2],
+  },
+  editHintText: {
+    ...textStyles.caption,
+    color: roles.textMuted,
   },
   rowControls: {
     flexDirection: 'row',
@@ -678,17 +697,6 @@ const styles = StyleSheet.create({
   controlButtonDisabled: {
     opacity: 0.35,
   },
-  controlButtonText: {
-    ...textStyles.body,
-    color: colors.text.primary,
-    fontWeight: '600',
-  },
-  controlButtonTextDanger: {
-    color: colors.danger.DEFAULT,
-  },
-  controlButtonTextDisabled: {
-    color: colors.text.muted,
-  },
   addButton: {
     borderWidth: 1,
     borderStyle: 'dashed',
@@ -700,7 +708,7 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     ...textStyles.button,
-    color: colors.types.flux,
+    color: roles.accentText,
   },
   dangerSection: {
     marginTop: spacing[4],
@@ -760,15 +768,18 @@ const sheetStyles = StyleSheet.create({
     maxWidth: '85%',
   },
   swapButton: {
-    backgroundColor: colors.types.flux + '20',
+    backgroundColor: roles.accentSubtle,
     borderRadius: radius.md,
     paddingVertical: spacing[3],
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing[4],
   },
   swapButtonText: {
     ...textStyles.button,
-    color: colors.types.flux,
+    color: roles.accentText,
     fontWeight: '600',
   },
   field: {

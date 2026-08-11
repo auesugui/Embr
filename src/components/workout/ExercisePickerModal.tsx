@@ -19,8 +19,9 @@ import {
 } from 'react-native';
 
 import { type ExerciseDefinition, searchExercises } from '@/data';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
+import { ChevronRight } from 'lucide-react-native';
 
 interface ExercisePickerModalProps {
   visible: boolean;
@@ -50,7 +51,7 @@ function ExerciseRow({
           {exercise.primaryMuscle} · {exercise.equipment.join('/')}
         </Text>
       </View>
-      <Text style={styles.rowChevron}>›</Text>
+      <ChevronRight size={18} color={roles.textMuted} style={styles.rowChevron} />
     </Pressable>
   );
 }
@@ -203,8 +204,6 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
   rowChevron: {
-    ...textStyles.h3,
-    color: colors.text.muted,
     marginLeft: spacing[3],
   },
   emptyText: {

@@ -33,13 +33,13 @@ describe('End-Session Guard', () => {
   describe('buildEndSessionMessage', () => {
     it('pluralizes "set" for a single logged set', () => {
       expect(buildEndSessionMessage(1)).toBe(
-        "You have 1 logged set that haven't been claimed. Ending now will discard them."
+        "You have 1 logged set that haven't been saved. Ending now will discard them."
       );
     });
 
     it('pluralizes "sets" for multiple logged sets', () => {
       expect(buildEndSessionMessage(7)).toBe(
-        "You have 7 logged sets that haven't been claimed. Ending now will discard them."
+        "You have 7 logged sets that haven't been saved. Ending now will discard them."
       );
     });
 
@@ -59,7 +59,7 @@ describe('End-Session Guard', () => {
 
     it('carries the correct set count in the message', () => {
       expect(alert.message).toBe(
-        "You have 3 logged sets that haven't been claimed. Ending now will discard them."
+        "You have 3 logged sets that haven't been saved. Ending now will discard them."
       );
     });
 
@@ -115,7 +115,7 @@ describe('End-Session Guard', () => {
       const config = showAlert.mock.calls[0][0];
       expect(config.title).toBe('End workout?');
       expect(config.message).toBe(
-        "You have 7 logged sets that haven't been claimed. Ending now will discard them."
+        "You have 7 logged sets that haven't been saved. Ending now will discard them."
       );
     });
 

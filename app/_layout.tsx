@@ -1,7 +1,8 @@
 // =============================================================================
-// IronQuest App Root Layout
+// Embr App Root Layout
 // =============================================================================
 
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -13,7 +14,6 @@ import { ROUTE_TITLES } from '@/navigation/routeTitles';
 import {
   useBaselineStore,
   usePRStore,
-  usePetStore,
   usePlayerStore,
   useSettingsStore,
   useTemplateStore,
@@ -21,12 +21,15 @@ import {
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
-import { colors } from '@/theme';
+import { ACTIVE_THEME, getFontMap, roles, textStyles } from '@/theme';
 import { migrateStorage } from '@/utils/storage';
 
 export default function RootLayout() {
+  // Embr's two faces (ADR-0013). Loading is gated with hydration below so text
+  // never paints in the system fallback and then reflows.
+  const [fontsLoaded, fontError] = useFonts(getFontMap());
+
   const hydratePlayer = usePlayerStore((state) => state.hydrate);
-  const hydratePet = usePetStore((state) => state.hydrate);
   const hydrateWorkout = useWorkoutStore((state) => state.hydrate);
   const hydrateSettings = useSettingsStore((state) => state.hydrate);
   const hydrateWeightHistory = useWeightHistoryStore((state) => state.hydrate);
@@ -55,7 +58,6 @@ export default function RootLayout() {
         await migrateStorage();
         await Promise.all([
           hydratePlayer(),
-          hydratePet(),
           hydrateWorkout(),
           hydrateSettings(),
           hydrateWeightHistory(),
@@ -80,7 +82,6 @@ export default function RootLayout() {
     };
   }, [
     hydratePlayer,
-    hydratePet,
     hydrateWorkout,
     hydrateSettings,
     hydrateWeightHistory,
@@ -97,33 +98,53 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Determine color scheme
-  const isDark = theme === 'dark' || theme === 'system';
+  // The palette is resolved before this component ever runs (see
+  // src/theme/theme-boot.ts) — the settings value is read there, from
+  // localStorage on web, so `theme` here is only useful for reacting to a change
+  // the user just made. Changing it triggers a reload, handled in Profile.
+  void theme;
+
+  // Fonts failing to load is not fatal — better to paint in the system face than
+  // to hang on a blank screen — but it should be loud, since it silently undoes
+  // the entire typographic identity.
+  if (fontError) {
+    console.warn('Font load failed; falling back to system face:', fontError);
+  }
+  const fontsReady = fontsLoaded || !!fontError;
 
   // Stable pre-hydration shell. No store-derived content reaches the DOM here,
   // so server HTML and client first paint are byte-identical.
-  if (!isHydrated) {
+  if (!isHydrated || !fontsReady) {
     return (
       <SafeAreaProvider>
-        <View style={{ flex: 1, backgroundColor: colors.background.primary }} />
+        {/* Transparent on web: the document background is already painted the
+            right color by the boot script, and keeping this shell theme-free is
+            what lets server HTML and client first paint stay identical. */}
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: Platform.OS === 'web' ? 'transparent' : roles.surface,
+          }}
+        />
       </SafeAreaProvider>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style={ACTIVE_THEME === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerStyle: {
-            backgroundColor: colors.background.primary,
+            backgroundColor: roles.surface,
           },
-          headerTintColor: colors.text.primary,
+          headerTintColor: roles.textPrimary,
           headerTitleStyle: {
+            fontFamily: textStyles.h4.fontFamily,
             fontWeight: '600',
           },
           contentStyle: {
-            backgroundColor: colors.background.primary,
+            backgroundColor: roles.surface,
           },
           animation: 'slide_from_right',
         }}
