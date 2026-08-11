@@ -22,7 +22,7 @@ import {
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
-import { getFontMap, roles, textStyles } from '@/theme';
+import { ACTIVE_THEME, getFontMap, roles, textStyles } from '@/theme';
 import { migrateStorage } from '@/utils/storage';
 
 export default function RootLayout() {
@@ -102,8 +102,10 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Embr ships light-only for now; the dark palette exists in the theme but is
-  // tuned in a later pass. `theme` from settings stays wired for that pass.
+  // The palette is resolved before this component ever runs (see
+  // src/theme/theme-boot.ts) — the settings value is read there, from
+  // localStorage on web, so `theme` here is only useful for reacting to a change
+  // the user just made. Changing it triggers a reload, handled in Profile.
   void theme;
 
   // Fonts failing to load is not fatal — better to paint in the system face than
@@ -119,14 +121,22 @@ export default function RootLayout() {
   if (!isHydrated || !fontsReady) {
     return (
       <SafeAreaProvider>
-        <View style={{ flex: 1, backgroundColor: roles.surface }} />
+        {/* Transparent on web: the document background is already painted the
+            right color by the boot script, and keeping this shell theme-free is
+            what lets server HTML and client first paint stay identical. */}
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: Platform.OS === 'web' ? 'transparent' : roles.surface,
+          }}
+        />
       </SafeAreaProvider>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style={ACTIVE_THEME === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerStyle: {

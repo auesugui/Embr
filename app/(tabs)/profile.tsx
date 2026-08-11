@@ -26,11 +26,23 @@ export default function ProfileScreen() {
   const achievements = usePlayerStore((state) => state.achievements);
   const haptics = useSettingsStore((state) => state.haptics);
   const units = useSettingsStore((state) => state.units);
+  const themePref = useSettingsStore((state) => state.theme);
   const updateSetting = useSettingsStore((state) => state.updateSetting);
 
   // Single in-flight flag for both actions — they're mutually exclusive and a
   // double-tap mid-restore would race two writes into the same storage keys.
   const [busy, setBusy] = useState(false);
+
+  // Persist first, then restart. The write is fire-and-forget inside the store,
+  // so the reload is deferred a tick — reloading synchronously can beat the
+  // AsyncStorage write and silently discard the choice.
+  const handleThemeChange = (next: 'light' | 'dark' | 'system') => {
+    if (next === themePref) return;
+    updateSetting('theme', next);
+    if (isFileIOSupported) {
+      setTimeout(() => reloadApp(), 60);
+    }
+  };
 
   const handleExport = async () => {
     if (busy) return;
@@ -119,6 +131,37 @@ export default function ProfileScreen() {
           value={haptics}
           onToggle={() => updateSetting('haptics', !haptics)}
         />
+
+        <View style={styles.settingSpacer} />
+
+        {/* Appearance. The palette is baked into StyleSheet.create at module
+            scope (see src/theme/theme-boot.ts), so switching it has to restart
+            the app rather than re-render it — the row says so rather than
+            leaving the user tapping a control that appears to do nothing. */}
+        <View style={styles.settingRow}>
+          <Text style={styles.settingLabel}>Appearance</Text>
+          <View style={styles.unitPills}>
+            {(['light', 'dark', 'system'] as const).map((t) => (
+              <Pressable
+                key={t}
+                style={[styles.unitPill, themePref === t && styles.unitPillActive]}
+                onPress={() => handleThemeChange(t)}
+                accessibilityRole="button"
+                accessibilityLabel={`Use ${t} appearance`}
+                accessibilityState={{ selected: themePref === t }}
+              >
+                <Text style={[styles.unitPillText, themePref === t && styles.unitPillTextActive]}>
+                  {t === 'system' ? 'auto' : t}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        <Text style={styles.settingNote}>
+          {isFileIOSupported
+            ? 'Changing this restarts the app.'
+            : 'Takes effect the next time the app starts.'}
+        </Text>
 
         <View style={styles.settingSpacer} />
 
@@ -319,6 +362,12 @@ const styles = StyleSheet.create({
   },
   settingSpacer: {
     height: spacing[2],
+  },
+  settingNote: {
+    ...textStyles.caption,
+    color: roles.textMuted,
+    marginTop: spacing[2],
+    marginLeft: spacing[1],
   },
   unitPills: {
     flexDirection: 'row',

@@ -7,6 +7,7 @@
 // =============================================================================
 
 import colors, {
+  ACTIVE_THEME,
   type ColorRoles,
   type ThemeName,
   type colors as colorsType,
@@ -43,6 +44,7 @@ import {
 
 export const theme = {
   roles,
+  activeTheme: ACTIVE_THEME,
   fonts,
   colors,
   spacing,
@@ -61,7 +63,7 @@ export type Theme = typeof theme;
 export type Colors = typeof colorsType;
 
 // Re-export individual modules
-export { roles, lightRoles, darkRoles, themes, ember, sand };
+export { roles, ACTIVE_THEME, lightRoles, darkRoles, themes, ember, sand };
 export { fonts, getFontMap };
 export { colors, spacing, layout, touchTarget, radius, shadows };
 export { fontFamilies, displayFamilies, fontSizes, lineHeights, fontWeights, textStyles };

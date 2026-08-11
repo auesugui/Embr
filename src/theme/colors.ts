@@ -17,6 +17,8 @@
 // Light ships first. Dark is built theme-ready here but tuned in a later pass.
 // =============================================================================
 
+import { resolveInitialTheme } from './theme-boot';
+
 // -----------------------------------------------------------------------------
 // 1. Raw ramps
 // -----------------------------------------------------------------------------
@@ -142,22 +144,41 @@ export const darkRoles = {
   overlay: 'rgba(10, 8, 7, 0.6)',
 } as const;
 
-export type ColorRoles = typeof lightRoles;
-
-/** Light ships first; the dark values above are staged for a later pass. */
-export const roles: ColorRoles = lightRoles;
+/**
+ * Both palettes are `as const`, so their inferred types are literal hex strings
+ * and structurally incompatible with each other. Widen the values to `string`
+ * while keeping the key set exact — that's what makes the two palettes
+ * interchangeable and a missing key in one of them a compile error.
+ */
+export type ColorRoles = { readonly [K in keyof typeof lightRoles]: string };
 
 export const themes = { light: lightRoles, dark: darkRoles } as const;
 export type ThemeName = keyof typeof themes;
+
+/**
+ * The active palette for this launch.
+ *
+ * Resolved at module init — before any `StyleSheet.create` in the app runs —
+ * because styles bake their colors in at import time. See `theme-boot.ts` for
+ * how the answer is known that early, and why changing the setting needs a
+ * reload rather than re-rendering.
+ */
+export const ACTIVE_THEME: ThemeName = resolveInitialTheme();
+
+export const roles: ColorRoles = themes[ACTIVE_THEME];
 
 // -----------------------------------------------------------------------------
 // 4. Legacy alias — DEPRECATED
 // -----------------------------------------------------------------------------
 //
-// The old IronQuest shape, remapped onto the light roles. This exists so the app
-// renders in the new palette *immediately*, without a 40-file edit landing in the
-// same commit as the foundation. Phase 2 migrates call sites to `roles.*`; this
-// block is deleted when the last one is gone.
+// The old IronQuest shape, remapped onto the ACTIVE roles. This exists so the
+// app renders in the new palette *immediately*, without a 40-file edit landing
+// in the same commit as the foundation. Remaining call sites migrate to
+// `roles.*` opportunistically; this block is deleted when the last one is gone.
+//
+// It tracks `roles`, not `lightRoles` — otherwise every screen still on the
+// legacy names would stay stubbornly light in dark mode, which is exactly the
+// kind of half-themed UI that reads as broken.
 //
 // Values stay 6-digit hex because ~12 call sites build alpha variants by string
 // concatenation (`colors.reward.fp + '22'`). Don't switch these to rgba().
@@ -169,20 +190,20 @@ export const colors = {
 
   /** @deprecated use `roles.surface*` */
   background: {
-    primary: lightRoles.surface,
-    secondary: lightRoles.surfaceRaised,
-    tertiary: lightRoles.surfaceSunken,
-    surface: lightRoles.surfaceRaised,
-    elevated: lightRoles.surfaceRaised,
+    primary: roles.surface,
+    secondary: roles.surfaceRaised,
+    tertiary: roles.surfaceSunken,
+    surface: roles.surfaceRaised,
+    elevated: roles.surfaceRaised,
   },
 
   /** @deprecated use `roles.text*` */
   text: {
-    primary: lightRoles.textPrimary,
-    secondary: lightRoles.textSecondary,
-    tertiary: lightRoles.textTertiary,
-    muted: lightRoles.textMuted,
-    inverse: lightRoles.textInverse,
+    primary: roles.textPrimary,
+    secondary: roles.textSecondary,
+    tertiary: roles.textTertiary,
+    muted: roles.textMuted,
+    inverse: roles.textInverse,
   },
 
   /**
@@ -202,9 +223,9 @@ export const colors = {
 
   /** @deprecated use `roles.accent` — all three collapse to the single accent */
   reward: {
-    fp: lightRoles.accent,
-    pr: lightRoles.accent,
-    streak: lightRoles.accent,
+    fp: roles.accent,
+    pr: roles.accent,
+    streak: roles.accent,
   },
 
   /**
@@ -220,37 +241,37 @@ export const colors = {
 
   /** @deprecated use `roles.success` / `.warning` / `.error` / `.info` */
   semantic: {
-    success: lightRoles.success,
-    warning: lightRoles.warning,
-    error: lightRoles.error,
-    info: lightRoles.info,
+    success: roles.success,
+    warning: roles.warning,
+    error: roles.error,
+    info: roles.info,
   },
 
   /** @deprecated map onto `roles.*` at the call site */
   timer: {
-    resting: lightRoles.info,
+    resting: roles.info,
     approaching: ember[400],
-    ready: lightRoles.accent,
-    overrun: lightRoles.textMuted,
-    paused: lightRoles.textTertiary,
-    transition: lightRoles.accentText,
+    ready: roles.accent,
+    overrun: roles.textMuted,
+    paused: roles.textTertiary,
+    transition: roles.accentText,
   },
 
   /** @deprecated use `roles.border` / `.surface*` / `.textMuted` */
   ui: {
-    border: lightRoles.border,
-    borderLight: lightRoles.borderStrong,
-    divider: lightRoles.divider,
-    overlay: lightRoles.overlay,
-    card: lightRoles.surfaceRaised,
-    input: lightRoles.surfaceSunken,
-    placeholder: lightRoles.textMuted,
+    border: roles.border,
+    borderLight: roles.borderStrong,
+    divider: roles.divider,
+    overlay: roles.overlay,
+    card: roles.surfaceRaised,
+    input: roles.surfaceSunken,
+    placeholder: roles.textMuted,
   },
 
   /** @deprecated use `roles.error` */
   danger: {
     light: '#E39189',
-    DEFAULT: lightRoles.error,
+    DEFAULT: roles.error,
     dark: '#9A362C',
   },
 } as const;
