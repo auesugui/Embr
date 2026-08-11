@@ -1,6 +1,6 @@
 # Exercise Demo Stills — generation recipe
 
-> **Status:** 61/62 exercises covered · generated 2026-08-10 · ~57 credits
+> **Status:** 62/63 exercises covered · generated 2026-08-10, push-ups added 2026-08-11 · ~58 credits
 > **Shipped assets:** `public/exercise-demos/<exercise_id>.jpg` (720px, ~56 KB each, 4 MB total)
 > **Lookup:** `src/data/exercise-demos.ts` — filename must equal the exercise id
 

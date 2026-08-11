@@ -12,7 +12,7 @@
 // this again?" at the rack; not good enough to learn a lift from. The UI labels
 // them accordingly and must keep doing so.
 //
-// Served from public/ rather than bundled: ~4 MB across 61 files would be dead
+// Served from public/ rather than bundled: ~4 MB across 62 files would be dead
 // weight in the JS bundle, and the web build streams them on demand. That does
 // mean they are unavailable offline until the browser has cached them.
 
@@ -70,6 +70,7 @@ const EXERCISE_DEMO_IDS = new Set<string>([
   'plank',
   'prone_incline_reverse_fly',
   'pull_ups',
+  'push_ups',
   'rear_delt_flyes',
   'romanian_deadlift',
   'russian_twist',
@@ -83,7 +84,7 @@ const EXERCISE_DEMO_IDS = new Set<string>([
 
 /**
  * Public path for an exercise's demo image, or null when there isn't one.
- * Callers must handle null — coverage is 61/62 (cable_crunch was refused by
+ * Callers must handle null — coverage is 62/63 (cable_crunch was refused by
  * the image model's content filter across three attempts).
  */
 export function getExerciseDemoUri(exerciseId: string): string | null {

@@ -247,6 +247,21 @@ export const EXERCISE_DATABASE: ExerciseDefinition[] = [
     isCompound: true,
     fpDistribution: { power: 0.8, focus: 0.2 },
   },
+  {
+    id: 'push_ups',
+    name: 'Push-ups',
+    muscleGroups: ['chest', 'triceps', 'shoulders', 'core'],
+    primaryMuscle: 'chest',
+    movementPattern: 'push_horizontal',
+    equipment: ['bodyweight'],
+    defaultSets: 3,
+    defaultReps: '10-20',
+    defaultRestSeconds: 60,
+    isCompound: true,
+    // Mirrors the bench press split (the same horizontal press pattern), with a
+    // slice of vigor for the braced plank position the movement is done in.
+    fpDistribution: { power: 0.7, focus: 0.2, vigor: 0.1 },
+  },
 
   // =========== PULL (Back, Biceps, Traps) ===========
   {
