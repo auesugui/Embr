@@ -1,6 +1,20 @@
-# Iron Quest — Documentation Index
+# Embr — Documentation Index
 
-> **Version:** 2.0 + Addendum 2.1 + Amendments | **Status:** Phase 1 shipped (July 2026); Phase 2 (Pet Attachment) in progress | **Updated:** July 2026
+> **Status:** partially historical. **Updated:** 2026-08-11
+
+> **Read this first.** These docs were written for **IronQuest**, a gamified tracker where
+> reps earned Forge Points to raise a pet that battled up a tower. That game layer was
+> deleted (ADR-0014) and the app was redesigned and renamed to **Embr** (ADR-0013).
+>
+> The pet, tower, and game-systems specs have been removed outright. What remains is a mix:
+> the tracker and technical docs still broadly describe real code, while the product
+> overview and the FP economy describe a product that no longer exists.
+>
+> **The ADRs are the current truth**, not this tree:
+> - `~/.claude/context/decisions/0013-embr-rebrand-and-visual-redesign.md`
+> - `~/.claude/context/decisions/0014-remove-the-game-layer.md`
+> - `~/.claude/context/active/Embr.md` — live state
+> - the repo `CLAUDE.md`
 
 ---
 
@@ -8,17 +22,12 @@
 
 | Section | Doc | Key Contents |
 |---------|-----|-------------|
-| Product Overview | [01 — Product Overview](01-product-overview/product-overview.md) | Vision, core loop, design pillars, target user |
-| Forge Points | [02 — FP Economy](02-forge-points/fp-economy.md) | Earning formula, typed FP, relative scaling, Spirit rules, cardio FP, anti-gaming |
+| Product Overview | [01 — Product Overview](01-product-overview/product-overview.md) | ⚠️ **HISTORICAL** — pitches the pet/tower product |
+| Forge Points | [02 — FP Economy](02-forge-points/fp-economy.md) | ⚠️ **HISTORICAL** — FP is still computed and stamped on logs but nothing reads it (ADR-0014) |
 | Workout Tracker | [03 — Session Flow](03-workout-tracker/session-flow.md) | Templates, loadout, in-session UX, post-session summary |
 | | [03 — Rest Timer](03-workout-tracker/rest-timer.md) | 3 timer modes, equipment transitions, overrun handling, Gym Rush |
 | | [03 — Cardio](03-workout-tracker/cardio.md) | Cardio types, FP mapping, session screens, calculation |
 | | [03 — Exercise Database](03-workout-tracker/exercise-database.md) | Muscle group → FP type mapping, auto-tagging |
-| Pet System | [04 — Pet Care](04-pet-system/pet-care.md) | Feeding, stat allocation, training, mood, vacation mode |
-| | [04 — Evolution & Rendering](04-pet-system/evolution-and-rendering.md) | 4 evolution stages, SVG pipeline, stat-driven geometry |
-| | [04 — Pet Types](04-pet-system/pet-types.md) | Ferro/Terra/Flux, type advantages (1.3x/0.8x) |
-| Battle Tower | [05 — Tower](05-battle-tower/tower.md) | Floor tiers, auto-battle, attempts, prestige system |
-| Game Systems | [06 — Cosmetics, Achievements, Quests](06-game-systems/cosmetics-achievements-quests.md) | Shop structure, achievement badges, weekly quests |
 | UX Design | [09 — UX Specification](09-ux-design/ux-spec.md) | Emotional arc, animation timing, haptics, color language, accessibility, anti-patterns |
 | Technical | [07 — Architecture & Roadmap](07-technical/architecture-and-roadmap.md) | Tech stack, data model, phases, estimates, risks |
 | | [07 — Implementation Priority](07-technical/implementation-priority.md) | P0/P1/P2 build order by phase |
@@ -33,7 +42,7 @@
 
 | Rule | Detail | Source |
 |------|--------|--------|
-| **Tracker First, Game Second** | Workout logging is the highest priority. Game layer is a reward, not a requirement | PRD §1.3 |
+| ~~Tracker First, Game Second~~ | Moot — there is no game layer (ADR-0014) | — |
 | **3-Second Rule** | Logging a set must be completable in 3 seconds | Tracker Spec §3.1 |
 | **No FP from Money** | FP earned exclusively through logged workouts. Cannot be purchased | PRD §3.2 |
 | **Rest Time ≠ FP** | Rest and pause time have zero impact on FP calculations | Timer Amendment §2.6 |

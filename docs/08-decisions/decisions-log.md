@@ -1,5 +1,10 @@
 # Decisions Log
 
+> **Note (2026-08-11):** some links below point at `04-pet-system/`, `05-battle-tower/`, or
+> `06-game-systems/`, which were deleted with the game layer (ADR-0014). Those links are
+> dead on purpose — the content is in git history. See `docs/INDEX.md`.
+
+
 > Sources: Addendum v2.1 §§A, D · PRD v2.0 §12 · Timer Amendment
 
 ---

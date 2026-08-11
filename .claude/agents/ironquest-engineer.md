@@ -31,7 +31,6 @@ The same rules apply in both modes.
 | State | Zustand |
 | Persistence | **AsyncStorage only** (MMKV was removed for Expo Go compatibility — do not re-introduce) |
 | Animations | Reanimated v3 |
-| Pet rendering | react-native-svg (parametric — see `docs/04-pet-system/evolution-and-rendering.md`) |
 | Backend | none yet (Supabase is Phase 3 — out of scope until then) |
 
 ---
@@ -219,7 +218,6 @@ Persistence: manual persistState helpers → AsyncStorage. No MMKV.
 |-------|-----|
 | Documentation entry point | [`docs/INDEX.md`](../../docs/INDEX.md) |
 | Complete FP formulas | [`docs/02-forge-points/fp-economy.md`](../../docs/02-forge-points/fp-economy.md) |
-| Pet SVG pipeline | [`docs/04-pet-system/evolution-and-rendering.md`](../../docs/04-pet-system/evolution-and-rendering.md) |
 | UX patterns, animation timing, haptics, color, accessibility | [`docs/09-ux-design/ux-spec.md`](../../docs/09-ux-design/ux-spec.md) |
 | Tech stack details | [`docs/07-technical/architecture-and-roadmap.md`](../../docs/07-technical/architecture-and-roadmap.md) |
 

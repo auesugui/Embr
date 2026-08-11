@@ -10,8 +10,11 @@
 
 It used to be **IronQuest** — a gamified tracker where every rep earned Forge Points to raise
 a digital pet that battled up an endless tower. That game layer was built, never used, and
-removed (ADR-0014). Large parts of `docs/` still describe it; treat anything in
-`docs/04-pet-system/`, `docs/05-battle-tower/`, and `docs/06-game-systems/` as **historical**.
+removed (ADR-0014). The pet, tower, and game-systems docs were deleted with it.
+
+What's left in `docs/` is a mix: the tracker and technical specs still broadly describe real
+code, while `01-product-overview/` and `02-forge-points/` describe a product that no longer
+exists and are marked historical in `docs/INDEX.md`.
 
 **Read the ADRs before the docs.** They're the current truth:
 

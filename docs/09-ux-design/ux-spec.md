@@ -1,5 +1,10 @@
 # IronQuest — UX Specification
 
+> **Note (2026-08-11):** some links below point at `04-pet-system/`, `05-battle-tower/`, or
+> `06-game-systems/`, which were deleted with the game layer (ADR-0014). Those links are
+> dead on purpose — the content is in git history. See `docs/INDEX.md`.
+
+
 > **Version:** 1.0 | **Status:** Reference | **Scope:** Experiential layer — everything the player sees, feels, and emotionally responds to.
 
 This document defines the UX patterns, animation timing, haptic feedback, color language, and accessibility requirements for IronQuest. It is the authoritative reference for any UI work.
