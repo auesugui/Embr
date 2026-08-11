@@ -176,10 +176,15 @@ export default function WorkoutSummaryScreen() {
           { paddingTop: insets.top + spacing[4], paddingBottom: insets.bottom + spacing[6] },
         ]}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.celebration}>Workout complete</Text>
-        </View>
+        {/* Header. The summary is the one screen that should feel like an
+            arrival, so its content enters rather than appearing — the same
+            staggered reveal the FP breakdown already used, now available to the
+            tracker build, which previously got no motion here at all. */}
+        <RevealRow index={0}>
+          <View style={styles.header}>
+            <Text style={styles.celebration}>Workout complete</Text>
+          </View>
+        </RevealRow>
 
         {/* FP Earned Card — game layer */}
         {GAMIFICATION_ENABLED && (
@@ -239,16 +244,16 @@ export default function WorkoutSummaryScreen() {
         )}
 
         {/* Streak state + milestone celebration */}
-        <View style={styles.streakCard}>
+        <RevealRow index={1} style={styles.streakCard}>
           <Flame size={18} color={roles.accent} strokeWidth={2} />
           <Text style={styles.streakText}>
             {log.streakDays} day streak
             {STREAK_MILESTONES.includes(log.streakDays) ? ' — milestone' : ''}
           </Text>
-        </View>
+        </RevealRow>
 
         {/* Stats */}
-        <View style={styles.statsCard}>
+        <RevealRow index={2} style={styles.statsCard}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{formatDuration(summary.duration)}</Text>
             <Text style={styles.statLabel}>Duration</Text>
@@ -267,10 +272,10 @@ export default function WorkoutSummaryScreen() {
             <Text style={styles.statValue}>{summary.totalReps}</Text>
             <Text style={styles.statLabel}>Reps</Text>
           </View>
-        </View>
+        </RevealRow>
 
         {/* Exercise Summary */}
-        <View style={styles.exercisesCard}>
+        <RevealRow index={3} style={styles.exercisesCard}>
           <Text style={styles.exercisesTitle}>Exercises Completed</Text>
 
           {summary.exercises.map((exercise) => {
@@ -293,7 +298,7 @@ export default function WorkoutSummaryScreen() {
               </View>
             );
           })}
-        </View>
+        </RevealRow>
       </ScrollView>
 
       {/* Footer: claim first, then a deliberate next action (UX spec — no

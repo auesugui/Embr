@@ -7,8 +7,9 @@
 
 import { router } from 'expo-router';
 import { ChevronRight, Flame, Plus } from 'lucide-react-native';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { PressableScale } from '@/components/ui';
 import { TemplateCard } from '@/components/workout/TemplateCard';
 import { CURRENT_TOWER_FLOOR, GAMIFICATION_ENABLED } from '@/config';
 import { WORKOUT_TEMPLATES } from '@/data';
@@ -92,7 +93,7 @@ export default function HomeScreen() {
       {/* Build from scratch. Sits above History so the two "start something"
           actions aren't separated by the read-only one. */}
       <View style={styles.section}>
-        <Pressable
+        <PressableScale
           style={styles.primaryButton}
           onPress={handleNewWorkout}
           accessibilityRole="button"
@@ -100,15 +101,19 @@ export default function HomeScreen() {
         >
           <Plus size={18} color={roles.onAccent} strokeWidth={2.5} />
           <Text style={styles.primaryButtonText}>New Workout</Text>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Workout History — reachable from home (issue #18). */}
       <View style={styles.section}>
-        <Pressable style={styles.rowButton} onPress={() => router.push('/(tabs)/history')}>
+        <PressableScale
+          style={styles.rowButton}
+          activeScale={0.985}
+          onPress={() => router.push('/(tabs)/history')}
+        >
           <Text style={styles.rowButtonText}>Workout History</Text>
           <ChevronRight size={20} color={roles.textMuted} />
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Templates Section */}

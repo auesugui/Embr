@@ -1,9 +1,10 @@
 import { RadarChart } from '@/components/progress/RadarChart';
+import { PressableScale } from '@/components/ui';
 import { GAMIFICATION_ENABLED } from '@/config';
 import type { WorkoutTemplateDefinition } from '@/data';
 import { radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 interface TemplateCardProps {
   template: WorkoutTemplateDefinition;
@@ -17,7 +18,7 @@ export function TemplateCard({ template, onPress }: TemplateCardProps) {
   };
 
   return (
-    <Pressable style={styles.card} onPress={handlePress}>
+    <PressableScale style={styles.card} activeScale={0.985} onPress={handlePress}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <View style={styles.nameWrap}>
@@ -65,7 +66,7 @@ export function TemplateCard({ template, onPress }: TemplateCardProps) {
           </View>
         )}
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
