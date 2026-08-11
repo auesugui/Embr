@@ -50,7 +50,7 @@ export function ExerciseDemo({ exerciseId, variant = 'card' }: ExerciseDemoProps
         style={styles.image}
         resizeMode="contain"
         onError={() => setFailed(true)}
-        accessibilityLabel={`Form diagram: start and end positions`}
+        accessibilityLabel="Form diagram: start and end positions"
       />
       <Text style={styles.caption}>Start / end positions · reference only, not a form guide</Text>
     </View>

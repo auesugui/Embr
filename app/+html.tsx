@@ -59,6 +59,9 @@ export default function Root({ children }: PropsWithChildren) {
             they do on native. Required by expo-router's web setup. */}
         <ScrollViewStyleReset />
 
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a module-level
+            constant with no user input — the documented expo-router way to inject
+            critical CSS into the static HTML shell */}
         <style dangerouslySetInnerHTML={{ __html: BASE_STYLE }} />
       </head>
       <body>{children}</body>

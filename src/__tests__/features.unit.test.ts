@@ -11,6 +11,7 @@ describe('GAMIFICATION_ENABLED', () => {
 
   afterEach(() => {
     if (original === undefined) {
+      // biome-ignore lint/performance/noDelete: unsetting the var is the state under test — assigning undefined would leave the key present as the string "undefined"
       delete process.env.EXPO_PUBLIC_GAMIFICATION;
     } else {
       process.env.EXPO_PUBLIC_GAMIFICATION = original;
@@ -20,6 +21,7 @@ describe('GAMIFICATION_ENABLED', () => {
 
   const load = (value?: string) => {
     if (value === undefined) {
+      // biome-ignore lint/performance/noDelete: see above — the unset case is a real permutation
       delete process.env.EXPO_PUBLIC_GAMIFICATION;
     } else {
       process.env.EXPO_PUBLIC_GAMIFICATION = value;
