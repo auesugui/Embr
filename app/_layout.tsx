@@ -1,7 +1,8 @@
 // =============================================================================
-// IronQuest App Root Layout
+// Embr App Root Layout
 // =============================================================================
 
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -21,10 +22,14 @@ import {
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
-import { colors } from '@/theme';
+import { getFontMap, roles, textStyles } from '@/theme';
 import { migrateStorage } from '@/utils/storage';
 
 export default function RootLayout() {
+  // Embr's two faces (ADR-0013). Loading is gated with hydration below so text
+  // never paints in the system fallback and then reflows.
+  const [fontsLoaded, fontError] = useFonts(getFontMap());
+
   const hydratePlayer = usePlayerStore((state) => state.hydrate);
   const hydratePet = usePetStore((state) => state.hydrate);
   const hydrateWorkout = useWorkoutStore((state) => state.hydrate);
@@ -97,33 +102,43 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Determine color scheme
-  const isDark = theme === 'dark' || theme === 'system';
+  // Embr ships light-only for now; the dark palette exists in the theme but is
+  // tuned in a later pass. `theme` from settings stays wired for that pass.
+  void theme;
+
+  // Fonts failing to load is not fatal — better to paint in the system face than
+  // to hang on a blank screen — but it should be loud, since it silently undoes
+  // the entire typographic identity.
+  if (fontError) {
+    console.warn('Font load failed; falling back to system face:', fontError);
+  }
+  const fontsReady = fontsLoaded || !!fontError;
 
   // Stable pre-hydration shell. No store-derived content reaches the DOM here,
   // so server HTML and client first paint are byte-identical.
-  if (!isHydrated) {
+  if (!isHydrated || !fontsReady) {
     return (
       <SafeAreaProvider>
-        <View style={{ flex: 1, backgroundColor: colors.background.primary }} />
+        <View style={{ flex: 1, backgroundColor: roles.surface }} />
       </SafeAreaProvider>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerStyle: {
-            backgroundColor: colors.background.primary,
+            backgroundColor: roles.surface,
           },
-          headerTintColor: colors.text.primary,
+          headerTintColor: roles.textPrimary,
           headerTitleStyle: {
+            fontFamily: textStyles.h4.fontFamily,
             fontWeight: '600',
           },
           contentStyle: {
-            backgroundColor: colors.background.primary,
+            backgroundColor: roles.surface,
           },
           animation: 'slide_from_right',
         }}
