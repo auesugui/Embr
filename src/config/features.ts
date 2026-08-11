@@ -1,5 +1,5 @@
 // =============================================================================
-// IronQuest Feature Flags
+// Embr Feature Flags
 // =============================================================================
 // `GAMIFICATION_ENABLED` is the seam between the tracker and the game layer.
 // Off, the app is a plain workout tracker: no Forge Points, no pet, no tower,
@@ -28,8 +28,11 @@ export const GAMIFICATION_ENABLED = !OFF_VALUES.has(
 );
 
 /**
- * Product name shown in chrome (tab titles, About). The tracker build isn't
- * "IronQuest" — calling it that in the UI would undercut the whole point of
- * finding out whether the plain tracker stands on its own.
+ * Product name shown in chrome (tab titles, About).
+ *
+ * The tracker build is now **Embr** (ADR-0013) — a real identity rather than
+ * the placeholder "Ironlog" name it carried while it was just "IronQuest with
+ * the game turned off". The gamified build keeps its old name; it's inert, and
+ * collapsing the flag entirely is a separate pass.
  */
-export const APP_NAME = GAMIFICATION_ENABLED ? 'IronQuest' : 'Ironlog';
+export const APP_NAME = GAMIFICATION_ENABLED ? 'IronQuest' : 'Embr';

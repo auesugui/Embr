@@ -1,8 +1,12 @@
 // =============================================================================
-// IronQuest Quest Board (Home Tab)
+// Embr Home Tab
 // =============================================================================
+// Finch register (ADR-0013): this is an *arrival* screen, not a working screen.
+// It gets breathing room, the display face, and the one emotional beat the
+// tracker has — the streak. Density belongs on session/history, not here.
 
 import { router } from 'expo-router';
+import { ChevronRight, Flame, Plus } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { TemplateCard } from '@/components/workout/TemplateCard';
@@ -16,10 +20,10 @@ import {
   useTemplateStore,
   useWorkoutHistoryStore,
 } from '@/stores';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
 
-export default function QuestBoardScreen() {
+export default function HomeScreen() {
   const totalFP = usePlayerStore(selectTotalFP);
   const streak = usePlayerStore((state) => state.streak.current);
   const totalWorkouts = usePlayerStore((state) => state.totalWorkouts);
@@ -51,22 +55,36 @@ export default function QuestBoardScreen() {
         </View>
       )}
 
-      {/* Streak — tracker feature, shown in both builds */}
-      <View style={styles.streakCard}>
-        <Text style={styles.streakEmoji}>🔥</Text>
-        <Text style={styles.streakValue}>{streak}</Text>
-        <Text style={styles.streakLabel}>day streak</Text>
+      {/* Hero zone. Tracker feature, shown in both builds.
+          RESERVED (ADR-0013): if the care-companion ever gets built, it lives
+          here — that's why this card is tall and centered rather than a compact
+          stat row. Don't fill the space with layout. */}
+      <View style={styles.hero}>
+        <View style={styles.heroMark}>
+          <Flame size={28} color={streak > 0 ? roles.accent : roles.textMuted} strokeWidth={1.75} />
+        </View>
+        <Text style={styles.heroValue}>{streak}</Text>
+        <Text style={styles.heroLabel}>day streak</Text>
+        <Text style={styles.heroCaption}>
+          {streak > 0 ? 'Keep it going.' : 'Log a workout to start one.'}
+        </Text>
       </View>
 
-      {/* Quick Stats */}
+      {/* Quick Stats — one card, divided. Three separate cards read as three
+          unrelated things; the numbers belong to the same story. */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Stats</Text>
-        <View style={styles.statsGrid}>
-          <StatCard label="Workouts" value={totalWorkouts.toString()} />
-          <StatCard label="This Week" value={workoutsThisWeek.toString()} />
-          <StatCard label="PRs" value={prCount.toString()} />
+        <View style={styles.statsRow}>
+          <StatCell label="Workouts" value={totalWorkouts.toString()} />
+          <View style={styles.statDivider} />
+          <StatCell label="This Week" value={workoutsThisWeek.toString()} />
+          <View style={styles.statDivider} />
+          <StatCell label="PRs" value={prCount.toString()} />
           {GAMIFICATION_ENABLED && (
-            <StatCard label="Tower Floor" value={CURRENT_TOWER_FLOOR.toString()} />
+            <>
+              <View style={styles.statDivider} />
+              <StatCell label="Tower" value={CURRENT_TOWER_FLOOR.toString()} />
+            </>
           )}
         </View>
       </View>
@@ -75,20 +93,21 @@ export default function QuestBoardScreen() {
           actions aren't separated by the read-only one. */}
       <View style={styles.section}>
         <Pressable
-          style={styles.newWorkoutButton}
+          style={styles.primaryButton}
           onPress={handleNewWorkout}
           accessibilityRole="button"
           accessibilityLabel="Create a new custom workout"
         >
-          <Text style={styles.newWorkoutText}>+ New Workout</Text>
+          <Plus size={18} color={roles.onAccent} strokeWidth={2.5} />
+          <Text style={styles.primaryButtonText}>New Workout</Text>
         </Pressable>
       </View>
 
-      {/* Workout History — reachable from the Quest Board (issue #18). */}
+      {/* Workout History — reachable from home (issue #18). */}
       <View style={styles.section}>
-        <Pressable style={styles.historyButton} onPress={() => router.push('/(tabs)/history')}>
-          <Text style={styles.historyButtonText}>Workout History</Text>
-          <Text style={styles.historyChevron}>›</Text>
+        <Pressable style={styles.rowButton} onPress={() => router.push('/(tabs)/history')}>
+          <Text style={styles.rowButtonText}>Workout History</Text>
+          <ChevronRight size={20} color={roles.textMuted} />
         </Pressable>
       </View>
 
@@ -130,9 +149,9 @@ export default function QuestBoardScreen() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCell({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.statCard}>
+    <View style={styles.statCell}>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
@@ -142,14 +161,14 @@ function StatCard({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: roles.surface,
   },
   content: {
     padding: spacing[4],
     paddingBottom: spacing[8],
   },
   fpCard: {
-    backgroundColor: colors.background.secondary,
+    backgroundColor: roles.surfaceRaised,
     borderRadius: radius.lg,
     padding: spacing[4],
     alignItems: 'center',
@@ -157,98 +176,118 @@ const styles = StyleSheet.create({
   },
   fpLabel: {
     ...textStyles.label,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
     marginBottom: spacing[1],
   },
   fpValue: {
     ...textStyles.numberLarge,
-    color: colors.reward.fp,
+    color: roles.accent,
   },
-  streakCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    flexDirection: 'row',
+
+  // --- Hero -----------------------------------------------------------------
+  hero: {
+    backgroundColor: roles.surfaceRaised,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: roles.border,
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[4],
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing[2],
-    marginBottom: spacing[4],
+    marginBottom: spacing[6],
   },
-  streakEmoji: {
-    fontSize: 24,
+  heroMark: {
+    marginBottom: spacing[2],
   },
-  streakValue: {
-    ...textStyles.number,
-    color: colors.text.primary,
+  heroValue: {
+    ...textStyles.hero,
+    color: roles.textPrimary,
+    fontSize: 56,
+    lineHeight: 62,
   },
-  streakLabel: {
-    ...textStyles.body,
-    color: colors.text.secondary,
+  heroLabel: {
+    ...textStyles.label,
+    color: roles.textSecondary,
+    letterSpacing: 0.3,
   },
+  heroCaption: {
+    ...textStyles.displaySmall,
+    color: roles.textMuted,
+    fontSize: 16,
+    marginTop: spacing[3],
+  },
+
+  // --- Sections -------------------------------------------------------------
   section: {
     marginBottom: spacing[6],
   },
   sectionTitle: {
     ...textStyles.h4,
-    color: colors.text.primary,
+    color: roles.textPrimary,
     marginBottom: spacing[1],
   },
   sectionSubtitle: {
     ...textStyles.bodySmall,
-    color: colors.text.muted,
+    color: roles.textMuted,
     marginBottom: spacing[4],
   },
-  statsGrid: {
+
+  // --- Quick stats ----------------------------------------------------------
+  statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[3],
+    alignItems: 'stretch',
+    backgroundColor: roles.surfaceRaised,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: roles.border,
+    paddingVertical: spacing[4],
+    marginTop: spacing[2],
   },
-  statCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.md,
-    padding: spacing[3],
-    // 47% basis forces 2-per-row wrap; flexGrow fills the leftover gap so the
-    // right edge aligns exactly with the full-width cards above/below.
-    // (Previously `width: '47%'` left an ~8px shortfall on the right.)
-    flexBasis: '47%',
-    flexGrow: 1,
-    flexShrink: 0,
+  statCell: {
+    flex: 1,
     alignItems: 'center',
   },
+  statDivider: {
+    width: 1,
+    backgroundColor: roles.border,
+    marginVertical: spacing[1],
+  },
   statValue: {
-    ...textStyles.numberSmall,
-    color: colors.text.primary,
+    ...textStyles.number,
+    color: roles.textPrimary,
   },
   statLabel: {
     ...textStyles.caption,
-    color: colors.text.secondary,
+    color: roles.textMuted,
     marginTop: spacing[1],
   },
-  newWorkoutButton: {
-    backgroundColor: colors.reward.fp,
+
+  // --- Actions --------------------------------------------------------------
+  primaryButton: {
+    backgroundColor: roles.accent,
     borderRadius: radius.lg,
-    padding: spacing[4],
+    paddingVertical: spacing[4],
+    flexDirection: 'row',
+    gap: spacing[2],
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  newWorkoutText: {
+  primaryButtonText: {
     ...textStyles.button,
-    color: colors.background.primary,
+    color: roles.onAccent,
     fontWeight: '700',
   },
-  historyButton: {
-    backgroundColor: colors.background.secondary,
+  rowButton: {
+    backgroundColor: roles.surfaceRaised,
     borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: roles.border,
     padding: spacing[4],
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  historyButtonText: {
-    ...textStyles.h4,
-    color: colors.text.primary,
-  },
-  historyChevron: {
-    ...textStyles.h3,
-    color: colors.text.muted,
+  rowButtonText: {
+    ...textStyles.labelLarge,
+    color: roles.textPrimary,
   },
 });

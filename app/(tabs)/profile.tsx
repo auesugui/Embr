@@ -18,7 +18,8 @@ import { showAlert } from '@/utils/alert';
 
 import { APP_NAME, GAMIFICATION_ENABLED } from '@/config';
 import { usePlayerStore, useSettingsStore } from '@/stores';
-import { colors, spacing, textStyles } from '@/theme';
+import { radius, roles, spacing, textStyles } from '@/theme';
+import { ChevronRight, Download, Upload, User } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const profile = usePlayerStore((state) => state.profile);
@@ -89,8 +90,13 @@ export default function ProfileScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Profile Header */}
       <View style={styles.profileHeader}>
+        {/* RESERVED (ADR-0013): this circle is where the care-companion goes if
+            it ever gets built. It's deliberately still a placeholder — a Lucide
+            glyph rather than drawn art — so nothing has to be undone later. The
+            80px emoji weightlifter that used to live here was the single
+            loudest "childlike" signal in the app. */}
         <View style={styles.avatarPlaceholder}>
-          <Text style={styles.avatarEmoji}>🏋️</Text>
+          <User size={34} color={roles.textMuted} strokeWidth={1.5} />
         </View>
         <Text style={styles.profileName}>{profile.name}</Text>
         <Text style={styles.joinDate}>
@@ -159,7 +165,7 @@ export default function ProfileScreen() {
             accessibilityLabel="Export a backup file"
           >
             <Text style={styles.settingLabel}>Export backup</Text>
-            <Text style={styles.settingChevron}>↓</Text>
+            <Download size={18} color={roles.textMuted} />
           </Pressable>
 
           <View style={styles.settingSpacer} />
@@ -172,7 +178,7 @@ export default function ProfileScreen() {
             accessibilityLabel="Restore from a backup file"
           >
             <Text style={styles.settingLabel}>Restore from backup</Text>
-            <Text style={styles.settingChevron}>↑</Text>
+            <Upload size={18} color={roles.textMuted} />
           </Pressable>
         </View>
       )}
@@ -188,7 +194,7 @@ export default function ProfileScreen() {
             accessibilityLabel="Open dev panel"
           >
             <Text style={styles.settingLabel}>Dev Panel</Text>
-            <Text style={styles.settingChevron}>›</Text>
+            <ChevronRight size={18} color={roles.textMuted} />
           </Pressable>
         </View>
       )}
@@ -227,7 +233,7 @@ function SettingRow({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: roles.surface,
   },
   content: {
     padding: spacing[4],
@@ -240,22 +246,21 @@ const styles = StyleSheet.create({
   avatarPlaceholder: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.background.secondary,
+    borderRadius: radius.full,
+    backgroundColor: roles.surfaceRaised,
+    borderWidth: 1,
+    borderColor: roles.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing[3],
   },
-  avatarEmoji: {
-    fontSize: 40,
-  },
   profileName: {
     ...textStyles.h3,
-    color: colors.text.primary,
+    color: roles.textPrimary,
   },
   joinDate: {
     ...textStyles.body,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
     marginTop: spacing[1],
   },
   section: {
@@ -263,16 +268,16 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...textStyles.h4,
-    color: colors.text.primary,
+    color: roles.textPrimary,
     marginBottom: spacing[3],
   },
   achievementCount: {
     ...textStyles.body,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
   },
   sectionNote: {
     ...textStyles.bodySmall,
-    color: colors.text.muted,
+    color: roles.textMuted,
     marginBottom: spacing[3],
   },
   settingRowBusy: {
@@ -283,33 +288,31 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing[3],
-    backgroundColor: colors.background.secondary,
+    backgroundColor: roles.surfaceRaised,
+    borderWidth: 1,
+    borderColor: roles.border,
     paddingHorizontal: spacing[4],
-    borderRadius: 12,
+    borderRadius: radius.lg,
   },
   settingLabel: {
     ...textStyles.body,
-    color: colors.text.primary,
-  },
-  settingChevron: {
-    ...textStyles.body,
-    color: colors.text.muted,
+    color: roles.textPrimary,
   },
   toggle: {
     width: 44,
     height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.background.tertiary,
+    borderRadius: radius.full,
+    backgroundColor: roles.surfaceSunken,
     padding: 2,
   },
   toggleActive: {
-    backgroundColor: colors.reward.fp,
+    backgroundColor: roles.accent,
   },
   toggleKnob: {
     width: 20,
     height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.text.primary,
+    borderRadius: radius.full,
+    backgroundColor: roles.surfaceRaised,
   },
   toggleKnobActive: {
     transform: [{ translateX: 20 }],
@@ -324,27 +327,27 @@ const styles = StyleSheet.create({
   unitPill: {
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
-    borderRadius: 12,
-    backgroundColor: colors.background.tertiary,
+    borderRadius: radius.md,
+    backgroundColor: roles.surfaceSunken,
   },
   unitPillActive: {
-    backgroundColor: colors.reward.fp,
+    backgroundColor: roles.accent,
   },
   unitPillText: {
     ...textStyles.body,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
   },
   unitPillTextActive: {
-    color: colors.background.primary,
+    color: roles.onAccent,
     fontWeight: '600',
   },
   versionText: {
     ...textStyles.body,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
   },
   buildText: {
     ...textStyles.body,
-    color: colors.text.muted,
+    color: roles.textMuted,
     marginTop: spacing[1],
   },
 });

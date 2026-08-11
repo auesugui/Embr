@@ -77,9 +77,15 @@ const statusDark = {
 
 export const lightRoles = {
   // Surfaces
-  surface: sand[50], // app background
+  //
+  // On the old dark palette, raised cards separated from the background for
+  // free (#1E293B on #0F172A). On light they don't — so the app background sits
+  // a full step down from white rather than a hair below it. Hevy does the same
+  // thing: warm-gray canvas, white cards. This is what stops every screen from
+  // needing a hand-added border.
+  surface: sand[100], // app background
   surfaceRaised: sand[0], // cards, sheets
-  surfaceSunken: sand[100], // inputs, wells, pressed states
+  surfaceSunken: sand[200], // inputs, wells, pressed states
   surfaceInverse: sand[900],
 
   // Lines

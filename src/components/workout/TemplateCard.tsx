@@ -1,7 +1,7 @@
 import { RadarChart } from '@/components/progress/RadarChart';
 import { GAMIFICATION_ENABLED } from '@/config';
 import type { WorkoutTemplateDefinition } from '@/data';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -9,12 +9,6 @@ interface TemplateCardProps {
   template: WorkoutTemplateDefinition;
   onPress: () => void;
 }
-
-const DIFFICULTY_COLORS = {
-  beginner: colors.stats.vigor,
-  intermediate: colors.stats.speed,
-  advanced: colors.stats.power,
-};
 
 export function TemplateCard({ template, onPress }: TemplateCardProps) {
   const handlePress = () => {
@@ -34,18 +28,11 @@ export function TemplateCard({ template, onPress }: TemplateCardProps) {
               </View>
             )}
           </View>
-          <View
-            style={[
-              styles.difficultyBadge,
-              { backgroundColor: DIFFICULTY_COLORS[template.difficulty] + '20' },
-            ]}
-          >
-            <Text
-              style={[styles.difficultyText, { color: DIFFICULTY_COLORS[template.difficulty] }]}
-            >
-              {template.difficulty.charAt(0).toUpperCase() + template.difficulty.slice(1)}
-            </Text>
-          </View>
+          {/* Difficulty used to be a filled pill colored from the RPG stat
+              palette — green for intermediate, red for advanced. Three
+              decorative colors on a tracker card, none of them meaningful.
+              It's a label; it reads as one now. */}
+          <Text style={styles.difficultyText}>{template.difficulty.toUpperCase()}</Text>
         </View>
         <Text style={styles.description} numberOfLines={2}>
           {template.description}
@@ -78,18 +65,19 @@ export function TemplateCard({ template, onPress }: TemplateCardProps) {
           </View>
         )}
       </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.tapHint}>Tap to view sessions</Text>
-      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.background.secondary,
+    backgroundColor: roles.surfaceRaised,
     borderRadius: radius.lg,
+    // On the old dark palette, a raised card separated itself from the
+    // background for free. On warm off-white it doesn't — white on #FBF9F7 is
+    // nearly invisible — so raised surfaces carry an explicit hairline now.
+    borderWidth: 1,
+    borderColor: roles.border,
     padding: spacing[4],
     marginBottom: spacing[3],
   },
@@ -104,7 +92,7 @@ const styles = StyleSheet.create({
   },
   name: {
     ...textStyles.h3,
-    color: colors.text.primary,
+    color: roles.textPrimary,
   },
   nameWrap: {
     flexDirection: 'row',
@@ -114,29 +102,28 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   customBadge: {
-    backgroundColor: colors.types.flux + '24',
+    // Was tinted with colors.types.flux — the pet *element* color, neon purple.
+    backgroundColor: roles.accentSubtle,
     paddingHorizontal: spacing[2],
     paddingVertical: 2,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
   },
   customBadgeText: {
     ...textStyles.caption,
-    color: colors.types.flux,
+    color: roles.accentText,
     fontWeight: '700',
     fontSize: 10,
-  },
-  difficultyBadge: {
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    borderRadius: radius.full,
+    letterSpacing: 0.4,
   },
   difficultyText: {
-    ...textStyles.caption,
+    ...textStyles.captionSmall,
+    color: roles.textMuted,
     fontWeight: '600',
+    letterSpacing: 0.8,
   },
   description: {
     ...textStyles.bodySmall,
-    color: colors.text.secondary,
+    color: roles.textSecondary,
   },
   content: {
     flexDirection: 'row',
@@ -155,24 +142,16 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     ...textStyles.bodySmall,
-    color: colors.text.muted,
+    color: roles.textMuted,
   },
   statValue: {
-    ...textStyles.body,
-    color: colors.text.primary,
+    ...textStyles.numberSmall,
+    color: roles.textPrimary,
     fontWeight: '600',
   },
   radarContainer: {
     marginLeft: spacing[3],
     marginRight: -spacing[2],
     overflow: 'visible',
-  },
-  footer: {
-    marginTop: spacing[3],
-    alignItems: 'center',
-  },
-  tapHint: {
-    ...textStyles.caption,
-    color: colors.text.muted,
   },
 });

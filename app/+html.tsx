@@ -15,7 +15,7 @@ import type { PropsWithChildren } from 'react';
 
 import { APP_NAME, GAMIFICATION_ENABLED } from '@/config';
 
-const THEME_COLOR = '#0F172A';
+const THEME_COLOR = '#F5F1ED';
 
 export default function Root({ children }: PropsWithChildren) {
   // The two builds ship different names and descriptions, so they get different

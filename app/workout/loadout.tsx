@@ -1,7 +1,7 @@
 // =============================================================================
 // IronQuest Workout Loadout Screen
 // =============================================================================
-// Pre-session staging: pick a Session Intent (Normal / Deload in Phase 1),
+// Pre-session staging: pick an intensity (Normal / Deload in Phase 1),
 // preview the exercise list, then begin the session.
 
 import { router, useLocalSearchParams } from 'expo-router';
@@ -17,9 +17,10 @@ import {
   getTemplateById,
 } from '@/data';
 import { useTemplateStore, useWorkoutStore } from '@/stores';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, SessionIntent } from '@/types';
 import { haptics } from '@/utils/haptics';
+import { Check } from 'lucide-react-native';
 
 // -----------------------------------------------------------------------------
 // Phase 1 intents: Normal + Deload only.
@@ -187,9 +188,9 @@ export default function WorkoutLoadoutScreen() {
         </View>
       </View>
 
-      {/* Session Intent */}
+      {/* Intensity */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Session Intent</Text>
+        <Text style={styles.sectionTitle}>Intensity</Text>
         <Text style={styles.sectionHint}>
           Pick a default modifier for this session. Phase 1 ships Normal and Deload.
         </Text>
@@ -218,7 +219,7 @@ export default function WorkoutLoadoutScreen() {
                   >
                     {option.label}
                   </Text>
-                  {selected && <Text style={styles.intentSelectedDot}>●</Text>}
+                  {selected && <Check size={16} color={roles.accent} strokeWidth={2.5} />}
                 </View>
                 <Text
                   style={[
@@ -409,10 +410,6 @@ const styles = StyleSheet.create({
   },
   intentLabelDisabled: {
     color: colors.text.muted,
-  },
-  intentSelectedDot: {
-    color: colors.reward.fp,
-    fontSize: 12,
   },
   intentDescription: {
     ...textStyles.bodySmall,

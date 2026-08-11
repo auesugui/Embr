@@ -44,7 +44,7 @@ describe('GAMIFICATION_ENABLED', () => {
   });
 
   it('renames the app in the tracker build', () => {
-    expect(load('off').APP_NAME).toBe('Ironlog');
+    expect(load('off').APP_NAME).toBe('Embr');
     expect(load().APP_NAME).toBe('IronQuest');
   });
 });

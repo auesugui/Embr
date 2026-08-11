@@ -16,8 +16,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GAMIFICATION_ENABLED } from '@/config';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, LoggedSet, WorkoutLog } from '@/types';
+import { ChevronDown, ChevronUp, ClipboardList } from 'lucide-react-native';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -62,7 +63,7 @@ export default function HistoryScreen() {
     return (
       <View style={styles.stateContainer}>
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyEmoji}>📋</Text>
+          <ClipboardList size={32} color={roles.textMuted} style={styles.emptyIcon} />
           <Text style={styles.emptyTitle}>No workouts logged yet</Text>
           <Text style={styles.emptyBody}>
             {GAMIFICATION_ENABLED
@@ -145,7 +146,11 @@ function WorkoutRow({
               <Text style={styles.fpBadgeText}>+{totalFP} FP</Text>
             </View>
           )}
-          <Text style={styles.chevron}>{expanded ? '▴' : '▾'}</Text>
+          {expanded ? (
+            <ChevronUp size={18} color={roles.textMuted} />
+          ) : (
+            <ChevronDown size={18} color={roles.textMuted} />
+          )}
         </View>
       </Pressable>
 
@@ -269,8 +274,7 @@ const styles = StyleSheet.create({
     maxWidth: 440,
     width: '100%',
   },
-  emptyEmoji: {
-    fontSize: 40,
+  emptyIcon: {
     marginBottom: spacing[3],
   },
   emptyTitle: {
@@ -351,10 +355,6 @@ const styles = StyleSheet.create({
   fpBadgeText: {
     ...textStyles.buttonSmall,
     color: colors.reward.fp,
-  },
-  chevron: {
-    fontSize: 14,
-    color: colors.text.muted,
   },
   // Expanded breakdown
   breakdown: {

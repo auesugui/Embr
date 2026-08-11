@@ -13,10 +13,13 @@
 //  - `workout/template-edit/[id]` is also self-declared inside the screen; the
 //    value here is kept in sync as the canonical string.
 
+// "Loadout" and "Session" were game vocabulary that leaked into the tracker
+// build: this map isn't flag-aware, so the gamified copy showed up on a screen
+// that had nothing to do with the game layer (ADR-0013).
 export const ROUTE_TITLES = {
-  'workout/loadout': 'Loadout',
+  'workout/loadout': 'Start Workout',
   'workout/summary': 'Workout Summary',
-  'workout/session': 'Session',
+  'workout/session': 'Workout',
   'workout/template/[id]': 'Template',
   'workout/template-edit/[id]': 'Edit Template',
   // __DEV__-only hidden tab (href: null). Declared here so the title stays

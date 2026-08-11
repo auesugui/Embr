@@ -1,8 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Embr app icon.
+
+  Replaces the IronQuest anvil-with-eyes glyph, which shipped in both builds and
+  was the first thing anyone saw — a cartoon face on the home screen, before the
+  app even opened.
+
+  An ember: the thing that goes out without consistency and grows with it. Warm
+  dark ground so it holds against any wallpaper; the flame and its core are the
+  ember ramp (500 / 300) from src/theme/colors.ts.
+
+  The silhouette is Lucide's `flame` (ISC), filled rather than stroked and
+  scaled off its 24x24 grid — same icon family the app's UI uses, so the mark
+  and the interface are drawn in one language.
+-->
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1024" height="1024" fill="#0F172A"/>
-  <polygon points="512,200 700,450 620,450 620,700 404,700 404,450 324,450" fill="#F59E0B"/>
-  <polygon points="512,250 650,440 580,440 580,660 444,660 444,440 374,440" fill="#FBBF24"/>
-  <circle cx="460" cy="380" r="20" fill="#0F172A"/>
-  <circle cx="564" cy="380" r="20" fill="#0F172A"/>
+  <rect width="1024" height="1024" fill="#1F1B18"/>
+  <g transform="translate(224 208) scale(24)">
+    <path
+      d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"
+      fill="#D4633C"/>
+  </g>
+  <path
+    d="M512 566c34 42 60 70 60 103a60 60 0 0 1-120 0c0-33 26-61 60-103z"
+    fill="#ECA88B"/>
 </svg>

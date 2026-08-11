@@ -23,8 +23,9 @@ import {
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
+import { Flame } from 'lucide-react-native';
 
 // Streak milestones celebrated by the docs' streak system (fp-earning.md).
 const STREAK_MILESTONES = [3, 7, 14, 30];
@@ -177,8 +178,7 @@ export default function WorkoutSummaryScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.celebration}>Workout Complete!</Text>
-          <Text style={styles.subtitle}>Great work getting stronger</Text>
+          <Text style={styles.celebration}>Workout complete</Text>
         </View>
 
         {/* FP Earned Card — game layer */}
@@ -240,9 +240,10 @@ export default function WorkoutSummaryScreen() {
 
         {/* Streak state + milestone celebration */}
         <View style={styles.streakCard}>
+          <Flame size={18} color={roles.accent} strokeWidth={2} />
           <Text style={styles.streakText}>
-            🔥 {log.streakDays} day streak
-            {STREAK_MILESTONES.includes(log.streakDays) ? ' — milestone!' : ''}
+            {log.streakDays} day streak
+            {STREAK_MILESTONES.includes(log.streakDays) ? ' — milestone' : ''}
           </Text>
         </View>
 
@@ -397,14 +398,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing[6],
   },
   celebration: {
-    ...textStyles.h1,
-    color: colors.reward.fp,
+    // The one screen that should feel good rather than efficient — so it's the
+    // one screen that gets the display face. Quieter than the 36px gold shout
+    // it replaced; warmth comes from the typeface, not the volume.
+    ...textStyles.displayLarge,
+    color: roles.textPrimary,
     textAlign: 'center',
-  },
-  subtitle: {
-    ...textStyles.body,
-    color: colors.text.secondary,
-    marginTop: spacing[1],
   },
   fpCard: {
     backgroundColor: colors.reward.fp + '20',
@@ -578,15 +577,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   streakCard: {
-    backgroundColor: colors.background.secondary,
+    backgroundColor: roles.surfaceRaised,
     borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: roles.border,
     padding: spacing[4],
     marginBottom: spacing[4],
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'center',
     alignItems: 'center',
   },
   streakText: {
-    ...textStyles.h4,
-    color: colors.reward.streak,
+    ...textStyles.labelLarge,
+    color: roles.textPrimary,
   },
   finishButtonText: {
     ...textStyles.buttonLarge,
