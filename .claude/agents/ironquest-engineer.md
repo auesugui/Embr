@@ -30,7 +30,7 @@ The same rules apply in both modes.
 | Routing | Expo Router (`app/` directory — **not** `src/screens/`) |
 | State | Zustand |
 | Persistence | **AsyncStorage only** (MMKV was removed for Expo Go compatibility — do not re-introduce) |
-| Animations | Reanimated v3 (repo currently ships `react-native-reanimated` ~4.1.1) |
+| Animations | Reanimated v3 |
 | Pet rendering | react-native-svg (parametric — see `docs/04-pet-system/evolution-and-rendering.md`) |
 | Backend | none yet (Supabase is Phase 3 — out of scope until then) |
 
@@ -89,17 +89,6 @@ CDT MCP is available in interactive mode AND in AFK headless mode (via `scripts/
    - `mcp__chrome-devtools__take_screenshot` for visual confirmation on key transitions
 4. Stop the dev server before committing.
 5. Reference snapshot evidence in your summary file.
-
-### Playwright fallback (legitimized by issue #5)
-
-If CDT MCP is hard-blocked — typically a stale `chrome-devtools-mcp` Chrome holding the profile `SingletonLock`, with `kill`/`pkill` permission-gated in the autonomous environment — Playwright's own Chromium with a separate profile is an acceptable substitute. It drives the identical acceptance flow with the same evidence quality; only the driver differs.
-
-When you fall back, the summary must:
-- Name the fallback explicitly (don't pretend CDT was used)
-- Document what you tried before falling back (CDT `new_page`, `list_pages`, lock-clear attempts)
-- Capture the same evidence (snapshots/screenshots per criterion)
-
-Precedent: issue #5's summary documented exactly this and shipped `verification-browser-checked` on the strength of Playwright evidence.
 
 ### If CDT genuinely fails
 
@@ -172,35 +161,16 @@ volume_bonus = floor((session_volume / baseline_volume - 1) × 100)
 
 Single source of truth: `src/config/fp-values.ts`. All tuneable values live there.
 
-### Type Triangle — RESOLVED 2026-07-03 (Q1 → 3 types)
+### Type Triangle — ⚠️ DECISION PENDING (do not propagate either taxonomy)
+The docs specify **3 types (Ferro/Terra/Flux)**; the code ships **5 different
+types** (`ignis/terra/aqua/ventus/umbra` in `src/types/index.ts`). Both appear
+in the live UI. This is open question **Q1** in `AUDIT-AND-ROADMAP-2026-07.md`
+and is Adrian's call. Until resolved: do NOT write new UI copy, onboarding, or
+battle logic that hard-codes either set. If an issue requires touching pet
+types, flag the conflict in your summary's Findings section and stop.
 
-**Decision:** 3 types — Ferro / Flux / Terra (cyclic triangle). Resolves Q1 from `AUDIT-AND-ROADMAP-2026-07.md`.
-
-The codebase currently ships 5 stale types (`ignis/terra/aqua/ventus/umbra` in `src/types/index.ts`) — leftovers from an earlier exploration that was never reverted. The migration to 3 types is part of NEXT-phase pet work (onboarding flow + avatar identity pass). Until that migration ships:
-- New UI copy, onboarding, battle logic, and pet onboarding MUST use the 3-type taxonomy (Ferro/Flux/Terra)
-- Touching existing 5-type code is fine if you're migrating it toward 3 types as part of NEXT-phase work
-- Do NOT add new 5-type references anywhere
-
-Reference triangle:
-```
+Docs' intended triangle (reference, once Q1 resolves to 3 types):
 Ferro → Flux → Terra → Ferro (cyclic) · advantage 1.3x dealt / 0.8x taken
-```
-
-### Avatar Rendering Architecture — RESOLVED 2026-07-04 (Option C: Hybrid)
-
-**Decision:** AI-generated base art + procedural overlays (ADR-0006 in `~/.claude/context/decisions/`). 12 base illustrations (3 types × 4 stages) via Higgsfield MCP, used as fixed sprites. Procedural overlays (tint, glow, scale, particles) driven by stats in real time via Reanimated.
-
-Replaces the Phase 1 procedural-only approach (`PetShapes.ts`) for the BASE layer. `PetShapes.ts` may still back the overlay/particle system — open for item 9 to determine.
-
-**What this means for code work:**
-- Stats no longer drive base geometry (spike count, body shape). They drive overlays: tint intensity, glow opacity, scale pulse, particle density.
-- Evolution is a discrete sprite swap (with Reanimated morph animation), not a continuous geometry morph.
-- Tap reactions, mood, blink animation all run as overlays/procedural layers on top of the fixed base sprite.
-- Tier swaps within a stage (e.g. Power tier 1/2/3) are optional for conveying progression; overlay intensity is the primary signal.
-
-**Walked back from audit §5.3:** "When +1 Power is tapped, animate only the spikes growing" — spikes are now baked into the base PNG; can't grow continuously. Acceptable per ADR-0006 (Pokémon-style discrete swaps retain users).
-
-**Higgsfield gating:** Agent ticks do NOT generate base art. The 12-illustration set is pair work for item 9, generated interactively with art-direction iteration. See `CLAUDE.md` → "AI Asset Generation" and Operational Note #7 below.
 
 ### Stat Cost Scaling
 - Tier 1 (1–10): 5 FP per point
@@ -218,7 +188,6 @@ Spirit FP comes ONLY from streaks (5/day + milestones: 15 at 7-day, 30 at 14-day
 - Rapid PR: weight jumps >40% with no history → delayed until confirmed
 
 ### Zustand Store Architecture (actual filenames — verified 2026-07)
-```
 src/stores/playerStore.ts        — profile, FP balances, streak, achievements
 src/stores/petStore.ts           — stats, evolution stage, hunger, type, name
 src/stores/workoutStore.ts       — active session, sets, rest timer, intent
@@ -227,11 +196,10 @@ src/stores/baselineStore.ts      — per-exercise rolling volume baselines
 src/stores/weightHistoryStore.ts — last-used weight per exercise (auto-fill)
 src/stores/prStore.ts            — weight/rep PR records
 src/stores/settingsStore.ts      — preferences (haptics)
-```
 
-No tower store yet (Phase 2). No workout-history store yet (audit gap C3). If an issue needs either, creating it is in scope — don't assume it exists.
-
-Persistence: manual `persistState` helpers → AsyncStorage. **No MMKV.**
+No tower store yet (Phase 2). No workout-history store yet (audit gap C3).
+If an issue needs either, creating it is in scope — don't assume it exists.
+Persistence: manual persistState helpers → AsyncStorage. No MMKV.
 
 ---
 
@@ -239,6 +207,7 @@ Persistence: manual `persistState` helpers → AsyncStorage. **No MMKV.**
 
 | Situation | Skill |
 |-----------|-------|
+| General React patterns, memoization, hooks, state optimization | `vercel-react-best-practices` (web-leaning but applies to shared React fundamentals) |
 | UX/UI polish, color, typography, motion design | `impeccable` |
 | Debugging complex calc bugs, FP formula issues, battle edge cases | `systematic-debugging` |
 
@@ -264,4 +233,3 @@ Persistence: manual `persistState` helpers → AsyncStorage. **No MMKV.**
 4. **Type safety matters.** Game state, FP math, and battle formulas must all be typed end-to-end.
 5. **Single source of truth for tuneable values.** `src/config/fp-values.ts`.
 6. **Read `docs/09-ux-design/ux-spec.md` before any UI work.** Animation timing, haptic patterns, color language, and anti-patterns are defined there.
-7. **Higgsfield usage is gated.** AI asset generation (images/video/3D) via Higgsfield MCP has a 400 credit/month ceiling + per-batch approval rules (see `CLAUDE.md` → "AI Asset Generation"). Agent ticks do NOT generate Higgsfield assets as part of routine code work — image generation is pair work for the avatar identity pass (item 9), not feature work. If an issue seems to require generated assets, flag it in `## Findings (out of scope)` instead of generating.
