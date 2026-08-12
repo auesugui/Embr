@@ -14,6 +14,13 @@ import { ExerciseDemo } from '@/components/workout/ExerciseDemo';
 import { RestTimerRing } from '@/components/workout/RestTimerRing';
 import { SetInputModal } from '@/components/workout/SetInputModal';
 import {
+  AMRAP_REPS_LABEL,
+  amrapDuration,
+  formatAmrapWindow,
+  formatClock,
+  isAmrap,
+} from '@/lib/amrap';
+import {
   usePlayerStore,
   useSettingsStore,
   useWeightHistoryStore,
@@ -39,16 +46,23 @@ export default function WorkoutSessionScreen() {
   const exercises = useWorkoutStore((state) => state.exercises);
   const currentExerciseIndex = useWorkoutStore((state) => state.currentExerciseIndex);
   const restTimer = useWorkoutStore((state) => state.restTimer);
+  const amrapTimer = useWorkoutStore((state) => state.amrapTimer);
 
   // Store actions
   const logSet = useWorkoutStore((state) => state.logSet);
   const editSet = useWorkoutStore((state) => state.editSet);
   const clearSet = useWorkoutStore((state) => state.clearSet);
+  const addSet = useWorkoutStore((state) => state.addSet);
   const startRestTimer = useWorkoutStore((state) => state.startRestTimer);
   const pauseRestTimer = useWorkoutStore((state) => state.pauseRestTimer);
   const resumeRestTimer = useWorkoutStore((state) => state.resumeRestTimer);
   const resetRestTimer = useWorkoutStore((state) => state.resetRestTimer);
   const tickRestTimer = useWorkoutStore((state) => state.tickRestTimer);
+  const startAmrapTimer = useWorkoutStore((state) => state.startAmrapTimer);
+  const pauseAmrapTimer = useWorkoutStore((state) => state.pauseAmrapTimer);
+  const resumeAmrapTimer = useWorkoutStore((state) => state.resumeAmrapTimer);
+  const resetAmrapTimer = useWorkoutStore((state) => state.resetAmrapTimer);
+  const tickAmrapTimer = useWorkoutStore((state) => state.tickAmrapTimer);
   const nextExercise = useWorkoutStore((state) => state.nextExercise);
   const previousExercise = useWorkoutStore((state) => state.previousExercise);
   const setCurrentExercise = useWorkoutStore((state) => state.setCurrentExercise);
@@ -86,8 +100,40 @@ export default function WorkoutSessionScreen() {
     };
   }, [restTimer.running, restTimer.paused, tickRestTimer]);
 
+  // AMRAP window ticks on its own interval so it keeps running while a rest
+  // timer isn't (and vice versa). The store derives remaining from a wall-clock
+  // end time, so a dropped tick can't slow the clock down.
+  const amrapRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (amrapTimer.running && !amrapTimer.paused) {
+      amrapRef.current = setInterval(() => {
+        tickAmrapTimer();
+      }, 1000);
+    } else if (amrapRef.current) {
+      clearInterval(amrapRef.current);
+      amrapRef.current = null;
+    }
+
+    return () => {
+      if (amrapRef.current) {
+        clearInterval(amrapRef.current);
+      }
+    };
+  }, [amrapTimer.running, amrapTimer.paused, tickAmrapTimer]);
+
   const currentExercise = exercises[currentExerciseIndex];
   const totalReps = getTotalReps();
+
+  const currentIsAmrap = isAmrap(currentExercise);
+  const currentAmrapDuration = currentIsAmrap ? amrapDuration(currentExercise) : 0;
+  // The clock belongs to one exercise at a time — tabbing away from an AMRAP
+  // block leaves its window running, but the controls only show on its own card.
+  const amrapForThisExercise = amrapTimer.exerciseIndex === currentExerciseIndex;
+  const amrapRunning = amrapForThisExercise && amrapTimer.running;
+  const amrapPaused = amrapForThisExercise && amrapTimer.paused;
+  const amrapFinished = amrapForThisExercise && !amrapTimer.running && amrapTimer.remaining === 0;
+  const amrapRemaining = amrapForThisExercise ? amrapTimer.remaining : currentAmrapDuration;
 
   // Reactive last-used weight for the current exercise — drives the chip-row
   // hint AND mirrors what the next quick-tap will log. Subscribing (rather
@@ -128,6 +174,23 @@ export default function WorkoutSessionScreen() {
 
     haptics.success();
     logSet(currentExerciseIndex, setIndex, reps, quickWeight);
+    afterLog(setIndex);
+  };
+
+  // What happens once a set lands. In a set scheme that's rest; in an AMRAP
+  // block it's the opposite — the clock is the whole constraint, so we never
+  // interrupt it with a rest overlay, and we open the next round's row instead
+  // (rounds are open-ended: there is no planned last set to stop at).
+  const afterLog = (setIndex: number) => {
+    if (!currentExercise) return;
+
+    if (currentIsAmrap) {
+      if (setIndex === currentExercise.sets.length - 1) {
+        addSet(currentExerciseIndex);
+      }
+      return;
+    }
+
     startRestTimer(currentExercise.restSeconds);
   };
 
@@ -159,9 +222,9 @@ export default function WorkoutSessionScreen() {
       // Editing existing set - don't restart timer
       editSet(setEdit.exerciseIndex, setEdit.setIndex, reps, weight);
     } else {
-      // New set - log and start timer
+      // New set - log, then rest (sets) or open the next round (AMRAP)
       logSet(setEdit.exerciseIndex, setEdit.setIndex, reps, weight);
-      startRestTimer(currentExercise?.restSeconds ?? 90);
+      afterLog(setEdit.setIndex);
     }
   };
 
@@ -246,17 +309,29 @@ export default function WorkoutSessionScreen() {
     }
   };
 
+  const handleStartAmrap = () => {
+    haptics.success();
+    startAmrapTimer(currentExerciseIndex, currentAmrapDuration);
+  };
+
+  const handleToggleAmrapPause = () => {
+    haptics.selection();
+    if (amrapPaused) {
+      resumeAmrapTimer();
+    } else {
+      pauseAmrapTimer();
+    }
+  };
+
+  const handleResetAmrap = () => {
+    haptics.tap();
+    resetAmrapTimer();
+  };
+
   const handleExerciseTabPress = (index: number) => {
     haptics.tap();
     setCurrentExercise(index);
     resetRestTimer();
-  };
-
-  // Format time as MM:SS
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Get the set being edited
@@ -300,7 +375,7 @@ export default function WorkoutSessionScreen() {
             size={200}
           >
             <Text style={[styles.restTimer, restTimer.remaining === 0 && styles.restTimerReady]}>
-              {formatTime(restTimer.remaining)}
+              {formatClock(restTimer.remaining)}
             </Text>
           </RestTimerRing>
 
@@ -372,6 +447,61 @@ export default function WorkoutSessionScreen() {
               never be behind a picture. Opt in when you want the reminder. */}
           <ExerciseDemo exerciseId={currentExercise.id.replace(/-\d+$/, '')} />
 
+          {/* AMRAP window. Inline rather than a full-screen overlay like rest:
+              the whole point of the block is to keep logging while it runs, so
+              it must never cover the set rows. */}
+          {currentIsAmrap && (
+            <View style={styles.amrapCard}>
+              <View style={styles.amrapHeader}>
+                <Text style={styles.amrapLabel}>
+                  {AMRAP_REPS_LABEL} · {formatAmrapWindow(currentAmrapDuration)}
+                </Text>
+                <Text
+                  style={[
+                    styles.amrapClock,
+                    amrapRunning && styles.amrapClockRunning,
+                    amrapFinished && styles.amrapClockDone,
+                  ]}
+                >
+                  {formatClock(amrapRemaining)}
+                </Text>
+              </View>
+
+              <Text style={styles.amrapHint}>
+                {amrapFinished
+                  ? 'Time — finish the round you’re in, then move on.'
+                  : amrapRunning
+                    ? 'Log each round as you finish it. No rest timer here.'
+                    : amrapPaused
+                      ? 'Paused.'
+                      : 'As many rounds as possible in the window.'}
+              </Text>
+
+              <View style={styles.amrapControls}>
+                {amrapForThisExercise && !amrapFinished ? (
+                  <Pressable style={styles.amrapButton} onPress={handleToggleAmrapPause}>
+                    <Text style={styles.amrapButtonText}>{amrapPaused ? 'Resume' : 'Pause'}</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={[styles.amrapButton, styles.amrapButtonPrimary]}
+                    onPress={handleStartAmrap}
+                  >
+                    <Text style={[styles.amrapButtonText, styles.amrapButtonTextPrimary]}>
+                      {amrapFinished ? 'Restart' : 'Start'}
+                    </Text>
+                  </Pressable>
+                )}
+
+                {amrapForThisExercise && !amrapFinished && (
+                  <Pressable style={styles.amrapButton} onPress={handleResetAmrap}>
+                    <Text style={styles.amrapButtonText}>Reset</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* Sets */}
           <View style={styles.setsContainer}>
             {currentExercise.sets.map((set, index) => (
@@ -381,7 +511,9 @@ export default function WorkoutSessionScreen() {
                 style={styles.setRow}
               >
                 <View style={styles.setRowHeader}>
-                  <Text style={styles.setNumber}>Set {index + 1}</Text>
+                  <Text style={styles.setNumber}>
+                    {currentIsAmrap ? `Round ${index + 1}` : `Set ${index + 1}`}
+                  </Text>
                   {!set.logged && (
                     <Text style={styles.weightHint}>
                       {hasWeight
@@ -429,6 +561,21 @@ export default function WorkoutSessionScreen() {
                 )}
               </View>
             ))}
+
+            {/* Rounds are open-ended. Logging the last row opens the next one
+                automatically; this is the manual escape hatch (e.g. after
+                clearing a row, or to queue one up before you start). */}
+            {currentIsAmrap && (
+              <Pressable
+                style={styles.addRoundButton}
+                onPress={() => {
+                  haptics.tap();
+                  addSet(currentExerciseIndex);
+                }}
+              >
+                <Text style={styles.addRoundText}>Add round</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -626,6 +773,74 @@ const styles = StyleSheet.create({
     ...textStyles.body,
     color: colors.text.secondary,
     marginBottom: spacing[4],
+  },
+  amrapCard: {
+    backgroundColor: roles.surfaceRaised,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: roles.border,
+    padding: spacing[3],
+    marginBottom: spacing[4],
+    gap: spacing[2],
+  },
+  amrapHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing[2],
+  },
+  amrapLabel: {
+    ...textStyles.label,
+    color: roles.textSecondary,
+    letterSpacing: 0.5,
+  },
+  amrapClock: {
+    ...textStyles.number,
+    fontSize: 28,
+    color: roles.textPrimary,
+  },
+  amrapClockRunning: {
+    color: roles.accent,
+  },
+  amrapClockDone: {
+    color: roles.textMuted,
+  },
+  amrapHint: {
+    ...textStyles.caption,
+    color: roles.textMuted,
+  },
+  amrapControls: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  amrapButton: {
+    flex: 1,
+    backgroundColor: colors.background.tertiary,
+    borderRadius: radius.md,
+    paddingVertical: spacing[3],
+    alignItems: 'center',
+  },
+  amrapButtonPrimary: {
+    backgroundColor: roles.accent,
+  },
+  amrapButtonText: {
+    ...textStyles.button,
+    color: roles.textPrimary,
+  },
+  amrapButtonTextPrimary: {
+    color: colors.background.primary,
+  },
+  addRoundButton: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: roles.border,
+    borderRadius: radius.lg,
+    paddingVertical: spacing[3],
+    alignItems: 'center',
+  },
+  addRoundText: {
+    ...textStyles.button,
+    color: roles.accentText,
   },
   setsContainer: {
     gap: spacing[3],

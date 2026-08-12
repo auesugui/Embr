@@ -17,6 +17,8 @@ import {
   getExerciseById,
   getTemplateById,
 } from '@/data';
+import { DEFAULT_AMRAP_SECONDS, clampAmrapSeconds } from '@/lib/amrap';
+import type { ExerciseMode } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 
@@ -33,6 +35,10 @@ interface SetRepPatch {
   sets?: number;
   reps?: string;
   restSeconds?: number;
+  /** Switch the block between a fixed set scheme and a timed AMRAP window. */
+  mode?: ExerciseMode;
+  /** AMRAP window in seconds. Ignored while `mode` is `sets`. */
+  durationSeconds?: number;
 }
 
 interface TemplateActions {
@@ -324,12 +330,25 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
           if (exerciseIndex < 0 || exerciseIndex >= day.exercises.length) return day;
           const exercises = day.exercises.map((ex, i) => {
             if (i !== exerciseIndex) return ex;
-            return {
+            const mode = patch.mode ?? ex.mode ?? 'sets';
+            const next: TemplateExercise = {
               ...ex,
               sets: patch.sets ?? ex.sets,
               reps: patch.reps ?? ex.reps,
               restSeconds: patch.restSeconds ?? ex.restSeconds,
+              mode,
             };
+            // An AMRAP block always carries a window; a set-scheme block never
+            // carries a stale one. `sets`/`reps` survive the round trip either
+            // way so flipping back restores the scheme you had.
+            if (mode === 'amrap') {
+              next.durationSeconds = clampAmrapSeconds(
+                patch.durationSeconds ?? ex.durationSeconds ?? DEFAULT_AMRAP_SECONDS
+              );
+            } else {
+              next.durationSeconds = undefined;
+            }
+            return next;
           });
           return { ...day, exercises };
         });

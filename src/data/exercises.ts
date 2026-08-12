@@ -436,6 +436,21 @@ export const EXERCISE_DATABASE: ExerciseDefinition[] = [
     fpDistribution: { speed: 0.8, vigor: 0.2 },
   },
   {
+    id: 'bodyweight_squat',
+    name: 'Bodyweight Squat',
+    muscleGroups: ['quads', 'glutes', 'hamstrings', 'core'],
+    primaryMuscle: 'quads',
+    movementPattern: 'squat',
+    equipment: ['bodyweight'],
+    // High-rep by nature — no external load, so the set is volume, not intensity.
+    // Short rest keeps it usable inside an AMRAP block.
+    defaultSets: 3,
+    defaultReps: '15-25',
+    defaultRestSeconds: 60,
+    isCompound: true,
+    fpDistribution: { speed: 0.8, vigor: 0.2 },
+  },
+  {
     id: 'leg_press',
     name: 'Leg Press',
     muscleGroups: ['quads', 'glutes', 'hamstrings'],

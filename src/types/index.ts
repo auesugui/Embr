@@ -101,6 +101,22 @@ export interface LoggedSet {
   isRepPR: boolean;
 }
 
+/**
+ * How an exercise's work is bounded.
+ *
+ * - `sets`   — the classic scheme: a fixed number of sets at a rep target.
+ * - `amrap`  — as many reps/rounds as possible inside a time window. The set
+ *              count is open-ended (a new row appears as you log), and the
+ *              exercise ends when `durationSeconds` runs out, not when a
+ *              planned set count is hit.
+ *
+ * Optional on Exercise/TemplateExercise: absent means `sets`. Every workout
+ * logged before AMRAP existed omits it, and backups of those must keep
+ * restoring unchanged — so this is read defensively everywhere via
+ * `isAmrap()` (src/lib/amrap.ts) rather than compared directly.
+ */
+export type ExerciseMode = 'sets' | 'amrap';
+
 export interface Exercise {
   id: string;
   name: string;
@@ -108,6 +124,10 @@ export interface Exercise {
   sets: LoggedSet[];
   restSeconds: number;
   completed: boolean;
+  /** Absent on pre-AMRAP sessions, which were all fixed sets × reps. */
+  mode?: ExerciseMode;
+  /** AMRAP only: length of the work window in seconds. */
+  durationSeconds?: number;
 }
 
 export interface WorkoutSession {

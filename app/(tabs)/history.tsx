@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { isAmrap } from '@/lib/amrap';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
@@ -162,6 +163,8 @@ function ExerciseBreakdown({
   units: 'lb' | 'kg';
 }) {
   const loggedSets = exercise.sets.filter((s) => s.logged);
+  // AMRAP work was logged as rounds against a clock, not as planned sets.
+  const unit = isAmrap(exercise) ? 'Round' : 'Set';
 
   return (
     <View style={styles.exerciseRow}>
@@ -174,7 +177,7 @@ function ExerciseBreakdown({
         )}
       </View>
       {loggedSets.length === 0 ? (
-        <Text style={styles.exerciseDetail}>No sets logged</Text>
+        <Text style={styles.exerciseDetail}>{`No ${unit.toLowerCase()}s logged`}</Text>
       ) : (
         <View style={styles.setList}>
           {loggedSets.map((set, index) => (
@@ -182,7 +185,7 @@ function ExerciseBreakdown({
             // share identical weight/reps, so content keys would collide), and
             // this list is static — never reordered — so index keys are safe.
             // biome-ignore lint/suspicious/noArrayIndexKey: static set list, see above
-            <SetLine key={index} set={set} index={index + 1} units={units} />
+            <SetLine key={index} set={set} index={index + 1} units={units} label={unit} />
           ))}
         </View>
       )}
@@ -194,10 +197,13 @@ function SetLine({
   set,
   index,
   units,
+  label = 'Set',
 }: {
   set: LoggedSet;
   index: number;
   units: 'lb' | 'kg';
+  /** 'Set' for a normal scheme, 'Round' inside an AMRAP block. */
+  label?: string;
 }) {
   const reps = set.reps;
   const weight = set.weight;
@@ -212,7 +218,9 @@ function SetLine({
 
   return (
     <View style={styles.setLine}>
-      <Text style={styles.setIndex}>Set {index}</Text>
+      <Text style={styles.setIndex}>
+        {label} {index}
+      </Text>
       <Text style={styles.setDetail}>{detail}</Text>
       {set.isRepPR && <Text style={styles.prFlag}>rep PR</Text>}
     </View>
