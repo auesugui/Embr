@@ -1,10 +1,11 @@
 // =============================================================================
-// IronQuest Player Store Unit Tests
+// Embr Player Store Unit Tests
 // =============================================================================
-// Tests for FP balances, spending, streak logic, and achievements
+// Streak logic, workout count, profile, and achievements. The FP balance and
+// spending suites went with the engine (ADR-0015).
 
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
-import { selectCanAfford, selectStreakDays, selectTotalFP, usePlayerStore } from '../playerStore';
+import { selectStreakDays, usePlayerStore } from '../playerStore';
 
 // Mock storage
 jest.mock('@/utils/storage', () => ({
@@ -24,170 +25,6 @@ describe('Player Store', () => {
   beforeEach(() => {
     usePlayerStore.getState().reset();
     jest.clearAllMocks();
-  });
-
-  // ---------------------------------------------------------------------------
-  // FP Actions
-  // ---------------------------------------------------------------------------
-
-  describe('FP Actions', () => {
-    describe('addFP', () => {
-      it('should add FP to specific type', () => {
-        const { addFP } = usePlayerStore.getState();
-
-        addFP('power', 50);
-
-        expect(usePlayerStore.getState().fp.power).toBe(50);
-      });
-
-      it('should accumulate FP', () => {
-        const { addFP } = usePlayerStore.getState();
-
-        addFP('power', 25);
-        addFP('power', 25);
-
-        expect(usePlayerStore.getState().fp.power).toBe(50);
-      });
-
-      it('should add to generic FP', () => {
-        const { addFP } = usePlayerStore.getState();
-
-        addFP('generic', 100);
-
-        expect(usePlayerStore.getState().fp.generic).toBe(100);
-      });
-
-      it('should not go negative', () => {
-        const { addFP } = usePlayerStore.getState();
-
-        addFP('power', -50);
-
-        expect(usePlayerStore.getState().fp.power).toBe(0);
-      });
-
-      it('should persist after adding', () => {
-        const { addFP } = usePlayerStore.getState();
-
-        addFP('power', 50);
-
-        expect(appStorage.setJSON).toHaveBeenCalled();
-      });
-    });
-
-    describe('addMultipleFP', () => {
-      it('should add multiple FP types at once', () => {
-        const { addMultipleFP } = usePlayerStore.getState();
-
-        addMultipleFP({
-          power: 50,
-          guard: 30,
-          speed: 20,
-        });
-
-        const { fp } = usePlayerStore.getState();
-        expect(fp.power).toBe(50);
-        expect(fp.guard).toBe(30);
-        expect(fp.speed).toBe(20);
-      });
-
-      it('should only add specified types', () => {
-        const { addMultipleFP } = usePlayerStore.getState();
-
-        addMultipleFP({ power: 50 });
-
-        const { fp } = usePlayerStore.getState();
-        expect(fp.power).toBe(50);
-        expect(fp.guard).toBe(0);
-      });
-    });
-
-    describe('spendFP', () => {
-      beforeEach(() => {
-        usePlayerStore.setState({
-          fp: {
-            generic: 100,
-            power: 50,
-            guard: 0,
-            speed: 0,
-            vigor: 0,
-            focus: 0,
-            spirit: 20,
-          },
-        });
-      });
-
-      it('should return true and deduct FP when enough available', () => {
-        const { spendFP } = usePlayerStore.getState();
-
-        const result = spendFP('power', 25);
-
-        expect(result).toBe(true);
-        expect(usePlayerStore.getState().fp.power).toBe(25);
-      });
-
-      it('should return false when not enough FP', () => {
-        const { spendFP } = usePlayerStore.getState();
-
-        const result = spendFP('power', 100);
-
-        expect(result).toBe(false);
-        expect(usePlayerStore.getState().fp.power).toBe(50);
-      });
-
-      it('should deduct from generic FP', () => {
-        const { spendFP } = usePlayerStore.getState();
-
-        const result = spendFP('generic', 50);
-
-        expect(result).toBe(true);
-        expect(usePlayerStore.getState().fp.generic).toBe(50);
-      });
-
-      it('should deduct from spirit FP', () => {
-        const { spendFP } = usePlayerStore.getState();
-
-        const result = spendFP('spirit', 10);
-
-        expect(result).toBe(true);
-        expect(usePlayerStore.getState().fp.spirit).toBe(10);
-      });
-
-      it('should not go negative after spend', () => {
-        const { spendFP } = usePlayerStore.getState();
-
-        spendFP('power', 60);
-
-        expect(usePlayerStore.getState().fp.power).toBe(50);
-      });
-
-      it('should persist after spending', () => {
-        const { spendFP } = usePlayerStore.getState();
-
-        spendFP('power', 25);
-
-        expect(appStorage.setJSON).toHaveBeenCalled();
-      });
-    });
-
-    describe('setFP', () => {
-      it('should replace all FP values', () => {
-        const { setFP } = usePlayerStore.getState();
-
-        setFP({
-          generic: 200,
-          power: 100,
-          guard: 50,
-          speed: 25,
-          vigor: 10,
-          focus: 5,
-          spirit: 0,
-        });
-
-        const { fp } = usePlayerStore.getState();
-        expect(fp.generic).toBe(200);
-        expect(fp.power).toBe(100);
-      });
-    });
   });
 
   // ---------------------------------------------------------------------------
@@ -446,15 +283,10 @@ describe('Player Store', () => {
       it('should restore player state from storage', async () => {
         const mockPlayer = {
           profile: { name: 'Test User', avatar: null, createdAt: '2024-01-01' },
-          fp: {
-            generic: 100,
-            power: 50,
-            guard: 30,
-            speed: 20,
-            vigor: 10,
-            focus: 5,
-            spirit: 15,
-          },
+          // Legacy `fp` balances are intentionally still in this fixture: real
+          // stored player state has them (ADR-0015 removed the engine, not the
+          // bytes already on disk). Hydrate must ignore the key, not choke.
+          fp: { generic: 100, power: 50, guard: 30, speed: 20, vigor: 10, focus: 5, spirit: 15 },
           streak: { current: 5, longest: 10, lastWorkoutDate: '2024-01-15' },
           achievements: ['first-workout', 'streak-7'],
           totalWorkouts: 25,
@@ -466,8 +298,6 @@ describe('Player Store', () => {
         await hydrate();
 
         const state = usePlayerStore.getState();
-        expect(state.fp.generic).toBe(100);
-        expect(state.fp.power).toBe(50);
         expect(state.streak.current).toBe(5);
         expect(state.totalWorkouts).toBe(25);
         expect(state.achievements).toContain('first-workout');
@@ -480,7 +310,6 @@ describe('Player Store', () => {
         await hydrate();
 
         const state = usePlayerStore.getState();
-        expect(state.fp.generic).toBe(0);
         expect(state.streak.current).toBe(0);
       });
 
@@ -499,7 +328,6 @@ describe('Player Store', () => {
       it('should use defaults for missing fields', async () => {
         const mockPlayer = {
           // Only partial data
-          fp: { power: 50 },
         };
 
         (appStorage.getJSON as jest.Mock).mockResolvedValue(mockPlayer);
@@ -516,13 +344,11 @@ describe('Player Store', () => {
 
     describe('reset', () => {
       it('should clear all player state', () => {
-        const { addFP, reset } = usePlayerStore.getState();
+        const { reset } = usePlayerStore.getState();
 
-        addFP('power', 50);
         reset();
 
         const state = usePlayerStore.getState();
-        expect(state.fp.power).toBe(0);
         expect(state.streak.current).toBe(0);
         expect(state.achievements).toEqual([]);
       });
@@ -544,57 +370,11 @@ describe('Player Store', () => {
   describe('Selectors', () => {
     beforeEach(() => {
       usePlayerStore.setState({
-        fp: {
-          generic: 100,
-          power: 50,
-          guard: 30,
-          speed: 20,
-          vigor: 10,
-          focus: 5,
-          spirit: 15,
-        },
         streak: {
           current: 7,
           longest: 14,
           lastWorkoutDate: new Date().toISOString().split('T')[0],
         },
-      });
-    });
-
-    describe('selectTotalFP', () => {
-      it('should return sum of all FP types', () => {
-        const state = usePlayerStore.getState();
-
-        const total = selectTotalFP(state);
-
-        // 100 + 50 + 30 + 20 + 10 + 5 + 15 = 230
-        expect(total).toBe(230);
-      });
-    });
-
-    describe('selectCanAfford', () => {
-      it('should return true when enough FP', () => {
-        const state = usePlayerStore.getState();
-
-        const canAfford = selectCanAfford('power', 25)(state);
-
-        expect(canAfford).toBe(true);
-      });
-
-      it('should return false when not enough FP', () => {
-        const state = usePlayerStore.getState();
-
-        const canAfford = selectCanAfford('guard', 100)(state);
-
-        expect(canAfford).toBe(false);
-      });
-
-      it('should return true for exact amount', () => {
-        const state = usePlayerStore.getState();
-
-        const canAfford = selectCanAfford('power', 50)(state);
-
-        expect(canAfford).toBe(true);
       });
     });
 

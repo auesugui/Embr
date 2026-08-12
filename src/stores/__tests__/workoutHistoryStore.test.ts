@@ -1,10 +1,10 @@
 // =============================================================================
-// IronQuest Workout History Store Tests
+// Embr Workout History Store Tests
 // =============================================================================
-// Regression coverage for issue #16 (FP double-claim via URL replay / audit C1).
-// The store is the idempotency boundary: `claimRewards` must return the log on
-// the first claim and null on every replay, so the summary's award path can
-// never double-award FP.
+// Regression coverage for issue #16 (double-save via URL replay / audit C1).
+// The store is the idempotency boundary: `saveWorkout` must return the log on
+// the first call and null on every replay, so the summary's finish path can
+// never act twice on one workout.
 
 import type { Exercise, LoggedSet } from '@/types';
 import { beforeEach, describe, expect, it } from '@jest/globals';
@@ -68,8 +68,6 @@ describe('Workout History Store', () => {
       const log = useWorkoutHistoryStore.getState().getLog(id);
       expect(log).toBeDefined();
       expect(log?.claimedAt).toBeNull();
-      expect(log?.totalFP).toBeNull();
-      expect(log?.fpEarned).toBeNull();
       expect(log?.streakDays).toBe(0);
       expect(log?.sessionIntent).toBe('normal');
     });
@@ -108,24 +106,15 @@ describe('Workout History Store', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // claimRewards idempotency (acceptance criterion: no double-award)
+  // saveWorkout idempotency (acceptance criterion: no double-save)
+  //
+  // The guard was built to stop a URL replay double-*awarding* FP (issue #16 /
+  // audit C1). FP is gone (ADR-0015); the guard is not, because the same replay
+  // would otherwise stamp the same workout as saved twice.
   // ---------------------------------------------------------------------------
 
-  describe('claimRewards — idempotency', () => {
-    const claimPayload = {
-      totalFP: 103,
-      fpEarned: {
-        generic: 103,
-        power: 0,
-        guard: 0,
-        speed: 0,
-        vigor: 0,
-        focus: 0,
-        spirit: 5,
-      },
-    };
-
-    it('returns the claimed log on first claim and sets claimedAt', () => {
+  describe('saveWorkout — idempotency', () => {
+    it('returns the log on first save and stamps claimedAt', () => {
       const id = useWorkoutHistoryStore.getState().createLog({
         exercises: [makeExercise()],
         durationSeconds: 600,
@@ -133,16 +122,14 @@ describe('Workout History Store', () => {
         sessionIntent: 'normal',
       });
 
-      const claimed = useWorkoutHistoryStore.getState().claimRewards(id, claimPayload);
+      const claimed = useWorkoutHistoryStore.getState().saveWorkout(id);
 
       expect(claimed).not.toBeNull();
       expect(claimed?.id).toBe(id);
       expect(claimed?.claimedAt).not.toBeNull();
-      expect(claimed?.totalFP).toBe(103);
-      expect(claimed?.fpEarned?.spirit).toBe(5);
     });
 
-    it('returns null on a second claim for the same workout (no-op)', () => {
+    it('returns null on a second save for the same workout (no-op)', () => {
       const id = useWorkoutHistoryStore.getState().createLog({
         exercises: [makeExercise()],
         durationSeconds: 600,
@@ -150,8 +137,8 @@ describe('Workout History Store', () => {
         sessionIntent: 'normal',
       });
 
-      const first = useWorkoutHistoryStore.getState().claimRewards(id, claimPayload);
-      const second = useWorkoutHistoryStore.getState().claimRewards(id, claimPayload);
+      const first = useWorkoutHistoryStore.getState().saveWorkout(id);
+      const second = useWorkoutHistoryStore.getState().saveWorkout(id);
 
       expect(first).not.toBeNull();
       expect(second).toBeNull();
@@ -165,8 +152,8 @@ describe('Workout History Store', () => {
         sessionIntent: 'normal',
       });
 
-      const first = useWorkoutHistoryStore.getState().claimRewards(id, claimPayload);
-      useWorkoutHistoryStore.getState().claimRewards(id, claimPayload); // replay
+      const first = useWorkoutHistoryStore.getState().saveWorkout(id);
+      useWorkoutHistoryStore.getState().saveWorkout(id); // replay
       const after = useWorkoutHistoryStore.getState().getLog(id);
 
       expect(after?.claimedAt).toBe(first?.claimedAt);
@@ -174,17 +161,17 @@ describe('Workout History Store', () => {
 
     it('returns null and warns for an unknown id', () => {
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      const result = useWorkoutHistoryStore.getState().claimRewards('bogus', claimPayload);
+      const result = useWorkoutHistoryStore.getState().saveWorkout('bogus');
 
       expect(result).toBeNull();
       expect(warnSpy).toHaveBeenCalled();
       warnSpy.mockRestore();
     });
 
-    // Acceptance criterion: "claiming the same workout twice does not
-    // double-award FP". Models the summary screen's guard — only award when
-    // claimRewards returns non-null.
-    it('does not double-award FP when the claim path is invoked twice', () => {
+    // Acceptance criterion: "saving the same workout twice does not
+    // double-save". Models the summary screen's guard — only act when
+    // saveWorkout returns non-null.
+    it('acts once when the save path is invoked twice', () => {
       const id = useWorkoutHistoryStore.getState().createLog({
         exercises: [makeExercise()],
         durationSeconds: 600,
@@ -192,17 +179,15 @@ describe('Workout History Store', () => {
         sessionIntent: 'normal',
       });
 
-      // Mirror of summary.tsx handleFinish: award only when claimRewards
-      // returns a log.
-      let spiritAwarded = 0;
-      const claim = () => useWorkoutHistoryStore.getState().claimRewards(id, claimPayload);
+      // Mirror of summary.tsx handleFinish: act only when saveWorkout returns
+      // a log.
+      let sideEffects = 0;
+      const save = () => useWorkoutHistoryStore.getState().saveWorkout(id);
 
-      const c1 = claim();
-      if (c1) spiritAwarded += c1.fpEarned?.spirit ?? 0;
-      const c2 = claim();
-      if (c2) spiritAwarded += c2.fpEarned?.spirit ?? 0;
+      if (save()) sideEffects++;
+      if (save()) sideEffects++;
 
-      expect(spiritAwarded).toBe(5); // not 10
+      expect(sideEffects).toBe(1); // not 2
     });
   });
 
@@ -277,20 +262,9 @@ describe('Workout History Store', () => {
       await useWorkoutHistoryStore.getState().hydrate();
 
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      const replay = useWorkoutHistoryStore.getState().claimRewards('workout_claimed', {
-        totalFP: 103,
-        fpEarned: {
-          generic: 103,
-          power: 0,
-          guard: 0,
-          speed: 0,
-          vigor: 0,
-          focus: 0,
-          spirit: 5,
-        },
-      });
+      const replay = useWorkoutHistoryStore.getState().saveWorkout('workout_claimed');
 
-      expect(replay).toBeNull(); // no double-award after reload
+      expect(replay).toBeNull(); // no double-save after reload
       expect(warnSpy).toHaveBeenCalled();
       warnSpy.mockRestore();
     });

@@ -22,6 +22,7 @@ exists and are marked historical in `docs/INDEX.md`.
 |---|---|
 | `~/.claude/context/decisions/0013-embr-rebrand-and-visual-redesign.md` | The rebrand + the whole visual system |
 | `~/.claude/context/decisions/0014-*` | Removing the game layer |
+| `~/.claude/context/decisions/0015-*` | Removing the FP engine + the storage migration |
 | `~/.claude/context/active/Embr.md` | Live project state — start here |
 
 ---
@@ -75,7 +76,8 @@ either undoes the redesign.
 |------|--------|
 | **3-Second Rule** | Logging a set must be completable in 3 seconds |
 | **Offline-first** | Local persistence only. No cloud, no accounts, no sync |
-| **Export or it's gone** | Any change touching persisted shapes must keep `backup.ts` round-tripping old files |
+| **Export or it's gone** | Any change touching persisted shapes must keep `backup.ts` round-tripping old files. There are tests for this — keep them passing |
+| **Migrations delete namespaces, never edit live ones** | `migrateStorage` may drop wholly-dead key namespaces. It must never rewrite `workout_history` — that's the one irreplaceable slice (ADR-0015) |
 | **Self-Contained** | No integration with external workout apps |
 | **Motion is shared** | One vocabulary (`src/components/celebration/vocabulary.ts`). A button press and a celebration use the same `settle` spring |
 
@@ -85,8 +87,13 @@ either undoes the redesign.
 
 - **`WorkoutLog.claimedAt`** — named for the deleted "claim rewards" flow, but it's the
   save-once idempotency key (issue #16 / audit C1). Removing it reintroduces double-save.
-- **`WorkoutLog.totalFP` / `fpEarned`** — dead metadata, still populated, still persisted.
-  Kept deliberately so existing backups round-trip without a migration (ADR-0014).
+- **`baselineStore`** — its only reader was the FP engine, but what it holds is a rolling
+  per-exercise strength record. It keeps recording so the data is there later (ADR-0015).
+- **`ExerciseDefinition.fpDistribution`** — marked `@deprecated INERT`, read by nothing.
+  ~60 hand-tuned muscle→stat weightings; it's data, not code, and it's the expensive part
+  to reproduce. Don't "clean it up" (ADR-0015).
+- **The `app: 'ironquest'` branch in `backup.ts`** — old backup files still say that.
+  Dropping it makes every pre-rename export un-restorable.
 - **The hydration gate in `app/_layout.tsx`** — prevents React #418 on the static web
   export. The pre-hydration shell is transparent on web for the same reason.
 

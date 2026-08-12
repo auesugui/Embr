@@ -2,7 +2,7 @@
 // Embr Stores - Main Export
 // =============================================================================
 
-export { usePlayerStore, selectTotalFP, selectCanAfford, selectStreakDays } from './playerStore';
+export { usePlayerStore, selectStreakDays } from './playerStore';
 export {
   useWorkoutStore,
   selectSessionDuration,

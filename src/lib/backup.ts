@@ -21,9 +21,17 @@ import { STORAGE_KEYS } from '@/utils/storage';
 export const BACKUP_FORMAT_VERSION = 1;
 
 /**
- * Every persisted slice, game layer included. A backup is a backup: taking the
- * full set means a tracker-build export still restores cleanly into a gamified
- * build, and the file doesn't quietly depend on which flag was set that day.
+ * Every persisted slice worth carrying.
+ *
+ * The pet, player-FP, and tower keys used to be in here — a backup was a
+ * backup, game layer included. Those subsystems are gone (ADR-0014 / ADR-0015),
+ * so they're gone from this list too.
+ *
+ * That has a deliberate side effect on OLD backup files, which still contain
+ * those keys: `restoreBackup` filters incoming entries against this list, so
+ * the dead slices are dropped on the way in rather than resurrected as orphan
+ * blobs. Old files still restore — they just restore the parts that still mean
+ * something.
  */
 export const BACKUP_KEYS: readonly string[] = [
   STORAGE_KEYS.WORKOUT_HISTORY.FULL_STATE,
@@ -33,15 +41,20 @@ export const BACKUP_KEYS: readonly string[] = [
   STORAGE_KEYS.WEIGHT_HISTORY.FULL_STATE,
   STORAGE_KEYS.SETTINGS.FULL_STATE,
   STORAGE_KEYS.PLAYER.FULL_STATE,
-  STORAGE_KEYS.PLAYER_FP.FULL_STATE,
   STORAGE_KEYS.STREAK.FULL_STATE,
-  STORAGE_KEYS.PET.FULL_STATE,
-  STORAGE_KEYS.TOWER.FULL_STATE,
   STORAGE_KEYS.SCHEMA_VERSION,
 ];
 
+/**
+ * The `app` tag files are written with. Old files say 'ironquest' and MUST keep
+ * restoring — a rename that quietly invalidates every existing backup is how
+ * you lose data with a cosmetic change.
+ */
+export const BACKUP_APP_ID = 'embr';
+const ACCEPTED_APP_IDS = new Set(['embr', 'ironquest']);
+
 export interface BackupFile {
-  app: 'ironquest';
+  app: 'embr' | 'ironquest';
   formatVersion: number;
   exportedAt: string;
   /** key -> raw persisted string. Keys absent from storage are omitted. */
@@ -64,14 +77,14 @@ export async function createBackup(now: number = Date.now()): Promise<BackupFile
   }
 
   return {
-    app: 'ironquest',
+    app: BACKUP_APP_ID,
     formatVersion: BACKUP_FORMAT_VERSION,
     exportedAt: new Date(now).toISOString(),
     data,
   };
 }
 
-/** `ironlog-backup-2026-08-10.json` — sorts chronologically in a file list. */
+/** `embr-backup-2026-08-11.json` — sorts chronologically in a file list. */
 export function backupFilename(appName: string, now: number = Date.now()): string {
   const date = new Date(now).toISOString().slice(0, 10);
   return `${appName.toLowerCase()}-backup-${date}.json`;
@@ -102,7 +115,7 @@ export function parseBackup(text: string): BackupFile {
 
   const candidate = raw as Partial<BackupFile>;
 
-  if (candidate.app !== 'ironquest') {
+  if (typeof candidate.app !== 'string' || !ACCEPTED_APP_IDS.has(candidate.app)) {
     throw new BackupParseError('That backup was made by a different app.');
   }
 
@@ -127,7 +140,7 @@ export function parseBackup(text: string): BackupFile {
   }
 
   return {
-    app: 'ironquest',
+    app: candidate.app as BackupFile['app'],
     formatVersion: candidate.formatVersion,
     exportedAt: typeof candidate.exportedAt === 'string' ? candidate.exportedAt : '',
     data: data as Record<string, string>,

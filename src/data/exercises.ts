@@ -82,7 +82,20 @@ export interface ExerciseDefinition {
   defaultReps: string; // e.g., "8-12", "5x5", "10-15"
   defaultRestSeconds: number;
   isCompound: boolean;
-  fpDistribution: FPDistribution; // Weighted FP type split (primary mover ≥ 0.7)
+  /**
+   * @deprecated INERT since ADR-0015. Nothing reads this.
+   *
+   * A weighted muscle→stat split (primary mover ≥ 0.7) that fed the FP engine's
+   * typed distribution and the template radar charts. Both are deleted.
+   *
+   * Kept rather than stripped from all ~60 exercise entries because it is
+   * hand-tuned data, not code: it encodes which muscles each lift actually
+   * emphasizes, which is the expensive part to reproduce and is plausibly
+   * useful again (per-muscle volume tracking is a normal tracker feature).
+   * Deleting it would be a large mechanical edit to the exercise database —
+   * the app's most load-bearing static data — for a few kilobytes.
+   */
+  fpDistribution: FPDistribution;
 }
 
 // -----------------------------------------------------------------------------

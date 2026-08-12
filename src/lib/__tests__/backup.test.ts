@@ -51,7 +51,7 @@ describe('createBackup', () => {
 
     const backup = await createBackup(FIXED_NOW);
 
-    expect(backup.app).toBe('ironquest');
+    expect(backup.app).toBe('embr');
     expect(backup.formatVersion).toBe(BACKUP_FORMAT_VERSION);
     expect(backup.exportedAt).toBe('2026-08-10T15:00:00.000Z');
     expect(backup.data).toEqual({
@@ -96,6 +96,83 @@ describe('parseBackup', () => {
   it('rejects a file from another app', () => {
     const foreign = { ...validBackup(), app: 'someotherapp' };
     expect(() => parseBackup(JSON.stringify(foreign))).toThrow(/different app/);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Backward compatibility with pre-Embr backups (ADR-0015)
+  //
+  // This is the group that matters. The app has no backend: a backup file is
+  // the only copy of a workout history that isn't sitting in one browser's
+  // localStorage. A rename or a schema cleanup that quietly makes old files
+  // un-restorable destroys data while every test still passes.
+  // ---------------------------------------------------------------------------
+
+  it('still accepts backups written when the app was called ironquest', () => {
+    const legacy = { ...validBackup(), app: 'ironquest' };
+    const parsed = parseBackup(JSON.stringify(legacy));
+
+    expect(parsed.app).toBe('ironquest');
+    expect(parsed.data['workout_history.full_state']).toBe('{"logs":[]}');
+  });
+
+  it('accepts backups written under the new name', () => {
+    const current = { ...validBackup(), app: 'embr' };
+    expect(parseBackup(JSON.stringify(current)).app).toBe('embr');
+  });
+
+  it('restores a legacy file that carries FP and pet slices, dropping the dead ones', async () => {
+    // Shaped like a real pre-ADR-0014 export: tracker data alongside game data,
+    // and workout logs still carrying totalFP / fpEarned on each entry.
+    const legacy = validBackup({
+      app: 'ironquest',
+      data: {
+        'workout_history.full_state': JSON.stringify({
+          logs: [{ id: 'w1', claimedAt: '2026-07-01T00:00:00.000Z', totalFP: 250, fpEarned: {} }],
+        }),
+        'pr.full_state': '{"records":{}}',
+        'player.full_state': '{"totalWorkouts":12}',
+        // Dead slices — must not be written back to storage.
+        'pet.full_state': '{"id":"pet_1","evolutionStage":3}',
+        'player.fp.full_state': '{"generic":9001}',
+        'tower.full_state': '{"currentFloor":4}',
+      },
+    });
+
+    const parsed = parseBackup(JSON.stringify(legacy));
+    const written = await restoreBackup(parsed);
+
+    const keys = mockMultiSet.mock.calls[0][0].map(([k]: [string, string]) => k);
+
+    // The tracker slices survive...
+    expect(keys).toContain('workout_history.full_state');
+    expect(keys).toContain('pr.full_state');
+    expect(keys).toContain('player.full_state');
+
+    // ...and the game layer's slices are dropped rather than resurrected.
+    expect(keys).not.toContain('pet.full_state');
+    expect(keys).not.toContain('player.fp.full_state');
+    expect(keys).not.toContain('tower.full_state');
+
+    expect(written).toBe(3);
+  });
+
+  it('preserves legacy per-log FP fields verbatim inside the history blob', async () => {
+    // The migration deliberately does NOT rewrite workout history to strip
+    // totalFP / fpEarned. Restoring must pass the blob through untouched — the
+    // one slice that is genuinely irreplaceable should never be edited in
+    // flight to tidy up fields nothing reads.
+    const historyBlob = JSON.stringify({
+      logs: [{ id: 'w1', claimedAt: '2026-07-01T00:00:00.000Z', totalFP: 250 }],
+    });
+    const legacy = validBackup({
+      app: 'ironquest',
+      data: { 'workout_history.full_state': historyBlob },
+    });
+
+    await restoreBackup(parseBackup(JSON.stringify(legacy)));
+
+    const entries = mockMultiSet.mock.calls[0][0];
+    expect(entries).toContainEqual(['workout_history.full_state', historyBlob]);
   });
 
   it('rejects a newer format version rather than guessing at it', () => {

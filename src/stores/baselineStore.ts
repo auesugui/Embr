@@ -2,11 +2,10 @@
 // IronQuest Baseline Store - Per-exercise rolling baseline for relative FP scaling
 // =============================================================================
 // Tracks the last N session-max volumes (weight × reps) per exercise. Once an
-// exercise has >= FP_CONFIG.guards.baselineAdjustmentSessions recorded, the
+// exercise has >= BASELINE_MIN_SESSIONS recorded, the
 // baseline is the average of those session maxes and the FP engine uses it to
 // scale volume bonuses relatively (see docs/02-forge-points/fp-economy.md).
 
-import { FP_CONFIG } from '@/config/fp-values';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 
@@ -46,8 +45,14 @@ type BaselineStore = BaselineState & BaselineActions;
 // Constants
 // -----------------------------------------------------------------------------
 
-const WINDOW_SIZE = FP_CONFIG.guards.baselineAdjustmentSessions;
-const BASELINE_MIN_SESSIONS = FP_CONFIG.guards.baselineAdjustmentSessions;
+// Was FP_CONFIG.guards.baselineAdjustmentSessions. That config file went with
+// the FP engine (ADR-0015); the value is inlined rather than lost, because the
+// baseline itself is not FP machinery — it's a rolling per-exercise strength
+// record that the FP engine happened to be the only consumer of. Kept because
+// "what have I been lifting for this movement lately" is a tracker question,
+// and throwing away the accumulating data would make it unanswerable later.
+const WINDOW_SIZE = 3;
+const BASELINE_MIN_SESSIONS = 3;
 
 // -----------------------------------------------------------------------------
 // Initial State

@@ -4,7 +4,7 @@
 
 import { Tabs, router } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TabIcon } from '@/components/icons/TabIcon';
@@ -29,16 +29,27 @@ export default function TabLayout() {
           backgroundColor: roles.surface,
           borderTopColor: roles.border,
           borderTopWidth: 1,
-          // Dynamic height based on device safe areas
-          height: 60 + insets.bottom,
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
-          paddingTop: 8,
+          // Height has to clear icon + label stacked, not just the icon.
+          //
+          // At wide viewports react-navigation puts the label BESIDE the icon,
+          // which needs no vertical room, so this looked fine on a desktop
+          // browser. At phone widths it moves the label BELOW the icon — and
+          // the old 60px height, minus 8+8 bar padding, minus another 8 of
+          // per-item padding, left about a pixel. The label didn't wrap or
+          // truncate; it collapsed to height 0 and vanished silently.
+          //
+          // 24px icon + ~14px label + breathing room = 52 of content.
+          height: 64 + insets.bottom,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 6,
+          paddingTop: 6,
         },
         tabBarActiveTintColor: roles.accent,
         tabBarInactiveTintColor: roles.textMuted,
-        // Ensure content doesn't go under the tab bar
-        tabBarItemStyle: {
-          paddingBottom: Platform.OS === 'ios' ? 0 : 8,
+        // The label was rendering in the browser's system-ui font — the tab bar
+        // was the last surface in the app not speaking in Embr's typeface.
+        tabBarLabelStyle: {
+          fontFamily: textStyles.caption.fontFamily,
+          fontSize: 11,
         },
       }}
     >

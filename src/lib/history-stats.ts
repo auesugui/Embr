@@ -19,7 +19,7 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * Claimed logs, newest-first by workout date (`timestamp`).
  *
- * A log is "history" only once its FP has been claimed (`claimedAt != null`);
+ * A log is "history" only once it has been saved (`claimedAt != null`);
  * unclaimed/abandoned sessions are intentionally excluded. Ordering is by the
  * workout's own timestamp — NOT by claim order or store insertion order — so a
  * log claimed later still lands in its true chronological slot.

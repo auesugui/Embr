@@ -6,12 +6,7 @@
 // recalculation is asserted against the REAL engine functions — this is the
 // regression net for the "shadow calculator" guard.
 
-import {
-  WORKOUT_TEMPLATES,
-  calculateDayFPDistribution,
-  calculateTotalFPDistribution,
-  getTemplateById,
-} from '@/data';
+import { WORKOUT_TEMPLATES, getTemplateById } from '@/data';
 import { appStorage } from '@/utils/storage';
 import { useTemplateStore } from '../templateStore';
 
@@ -48,13 +43,11 @@ describe('Template Store', () => {
       expect(blank.sourceTemplateId).toBeUndefined();
     });
 
-    it('zeroes both FP distributions rather than leaving them undefined', () => {
+    it('starts with exactly one empty day', () => {
       const id = useTemplateStore.getState().createBlankTemplate();
       const blank = useTemplateStore.getState().getTemplate(id)!;
-
-      expect(blank.totalFpDistribution).toEqual(calculateTotalFPDistribution(blank.days));
-      expect(blank.days[0].fpDistribution).toEqual(calculateDayFPDistribution([]));
-      expect(Object.values(blank.totalFpDistribution).every((v) => v === 0)).toBe(true);
+      expect(blank.days).toHaveLength(1);
+      expect(blank.days[0].exercises).toEqual([]);
     });
 
     it('namespaces the day id under the template id', () => {
@@ -97,8 +90,6 @@ describe('Template Store', () => {
 
       const updated = useTemplateStore.getState().getTemplate(id)!;
       expect(updated.days[0].exercises).toHaveLength(1);
-      // Distributions must come alive once there's something to distribute.
-      expect(Object.values(updated.totalFpDistribution).some((v) => v > 0)).toBe(true);
     });
   });
 
@@ -202,7 +193,6 @@ describe('Template Store', () => {
       expect(added.reps).toBe('6-10');
       expect(added.restSeconds).toBe(180);
       // Distribution was recomputed via the real engine.
-      expect(day.fpDistribution).toEqual(calculateDayFPDistribution(day.exercises));
     });
 
     it('removeExercise drops the exercise at the index and recomputes distributions', () => {
@@ -222,7 +212,6 @@ describe('Template Store', () => {
         .days.find((d) => d.id === dayId)!;
       expect(after.exercises.length).toBe(before - 1);
       expect(after.exercises.some((e) => e.exerciseId === removedId)).toBe(false);
-      expect(after.fpDistribution).toEqual(calculateDayFPDistribution(after.exercises));
     });
 
     it('swapExercise changes the exerciseId (keeping sets/reps/rest) and recomputes', () => {
@@ -318,7 +307,6 @@ describe('Template Store', () => {
       const { id, dayId } = setupCopy();
       useTemplateStore.getState().addExercise(id, dayId, 'barbell_bench_press');
       const copy = useTemplateStore.getState().getTemplate(id)!;
-      expect(copy.totalFpDistribution).toEqual(calculateTotalFPDistribution(copy.days));
     });
 
     it('every edit bumps updatedAt', () => {

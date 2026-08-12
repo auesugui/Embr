@@ -26,8 +26,6 @@ export {
   getTemplateById,
   getTemplatesByDaysPerWeek,
   getTemplatesByDifficulty,
-  calculateDayFPDistribution,
-  calculateTotalFPDistribution,
 } from './templates';
 
 export type {

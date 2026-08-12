@@ -1,19 +1,23 @@
 // =============================================================================
-// IronQuest Workout History Store - Persisted WorkoutLog records
+// Embr Workout History Store — persisted WorkoutLog records
 // =============================================================================
 // Owns the WorkoutLog lifecycle: a log is created at session finish (BEFORE
-// navigation to the summary) and claimed exactly once. `claimRewards` is the
-// idempotency boundary — it returns the log on the first claim and null on
-// every subsequent attempt (URL reload, double-tap, etc.), so the summary's
-// FP award path can never double-award. This is the mitigation for the
-// URL-replay exploit (issue #16 / audit C1).
+// navigation to the summary) and saved exactly once. `saveWorkout` is the
+// idempotency boundary — it returns the log on the first call and null on every
+// subsequent attempt (URL reload, double-tap, etc.). This is the mitigation for
+// the URL-replay exploit (issue #16 / audit C1).
+//
+// The guard predates the game layer's removal and outlives it: it originally
+// stopped double-*awarding* FP, and now stops double-*saving*. `claimedAt` keeps
+// its name because it is a persisted field — renaming it would be a storage
+// migration for cosmetics.
 //
 // The summary screen receives only a workout ID (never the full payload), then
 // reads the log back here by ID. On a web reload the root layout rehydrates
 // this store, so the claimed log — and its `claimedAt` guard — is restored
 // before any re-claim can happen.
 
-import type { Exercise, FPBalances, SessionIntent, WorkoutLog } from '@/types';
+import type { Exercise, SessionIntent, WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 
@@ -24,16 +28,9 @@ import { create } from 'zustand';
 export interface CreateLogInput {
   exercises: Exercise[];
   durationSeconds: number;
-  /** Streak day count snapshot at finish time (sources the multiplier + Spirit FP). */
+  /** Streak day count snapshot at finish time. */
   streakDays: number;
   sessionIntent: SessionIntent;
-}
-
-export interface ClaimPayload {
-  /** Total generic workout FP (feeds pet evolution). */
-  totalFP: number;
-  /** Typed FP distribution awarded to player balances (includes Spirit FP). */
-  fpEarned: FPBalances;
 }
 
 interface WorkoutHistoryState {
@@ -48,12 +45,11 @@ interface WorkoutHistoryActions {
   /** Read a log by id (undefined if missing / not yet hydrated). */
   getLog: (id: string) => WorkoutLog | undefined;
   /**
-   * Idempotent claim. Marks the log claimed (sets `claimedAt`, captures FP)
-   * and returns the updated log on the FIRST call. Returns null on every
-   * subsequent call for the same id (or for an unknown id) — callers must
-   * treat null as "already claimed / nothing to award" and no-op.
+   * Idempotent save. Stamps `claimedAt` and returns the updated log on the
+   * FIRST call. Returns null on every subsequent call for the same id (or for
+   * an unknown id) — callers must treat null as "already saved" and no-op.
    */
-  claimRewards: (id: string, claimed: ClaimPayload) => WorkoutLog | null;
+  saveWorkout: (id: string) => WorkoutLog | null;
   /** Hydrate from AsyncStorage. */
   hydrate: () => Promise<void>;
   /** Reset to initial state (dev/test only). */
@@ -95,8 +91,6 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
       streakDays,
       sessionIntent,
       claimedAt: null,
-      totalFP: null,
-      fpEarned: null,
     };
 
     set((state) => {
@@ -110,26 +104,21 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
 
   getLog: (id) => get().logs.find((log) => log.id === id),
 
-  claimRewards: (id, claimed) => {
+  saveWorkout: (id) => {
     const existing = get().logs.find((log) => log.id === id);
     if (!existing) {
-      console.warn(`[workoutHistory] claimRewards: unknown workout id "${id}" — ignoring.`);
+      console.warn(`[workoutHistory] saveWorkout: unknown workout id "${id}" — ignoring.`);
       return null;
     }
     if (existing.claimedAt !== null) {
       console.warn(
-        `[workoutHistory] claimRewards: workout "${id}" already claimed at ${existing.claimedAt} — ignoring replay.`
+        `[workoutHistory] saveWorkout: workout "${id}" already saved at ${existing.claimedAt} — ignoring replay.`
       );
       return null;
     }
 
     const claimedAt = new Date().toISOString();
-    const claimedLog: WorkoutLog = {
-      ...existing,
-      claimedAt,
-      totalFP: claimed.totalFP,
-      fpEarned: claimed.fpEarned,
-    };
+    const claimedLog: WorkoutLog = { ...existing, claimedAt };
 
     set((state) => {
       const logs = state.logs.map((log) => (log.id === id ? claimedLog : log));

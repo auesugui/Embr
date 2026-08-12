@@ -39,8 +39,6 @@ const makeLog = (overrides: Partial<WorkoutLog>): WorkoutLog => ({
   sessionIntent: 'normal',
   // Unclaimed by default — tests opt into "claimed" explicitly.
   claimedAt: null,
-  totalFP: null,
-  fpEarned: null,
   ...overrides,
 });
 

@@ -1,5 +1,5 @@
 import { getExerciseById } from '@/data';
-import type { Exercise, FPBalances, WeightUnit, WorkoutLog } from '@/types';
+import type { Exercise, WeightUnit, WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 
 import { useBaselineStore } from '@/stores/baselineStore';
@@ -17,28 +17,6 @@ const persistPlayer = () =>
 // -----------------------------------------------------------------------------
 // Player
 // -----------------------------------------------------------------------------
-
-const uniformFP = (amount: number): FPBalances => ({
-  generic: amount,
-  power: amount,
-  guard: amount,
-  speed: amount,
-  vigor: amount,
-  focus: amount,
-  spirit: amount,
-});
-
-export const FP_PRESETS = {
-  zero: uniformFP(0),
-  '1k': uniformFP(1000),
-  '10k': uniformFP(10000),
-} as const satisfies Record<string, FPBalances>;
-
-export type FPPresetName = keyof typeof FP_PRESETS;
-
-export function devSetFP(fp: FPBalances) {
-  usePlayerStore.getState().setFP({ ...fp }); // existing action persists
-}
 
 export function devSetStreak(current: number) {
   const lastWorkoutDate = current > 0 ? new Date().toISOString().split('T')[0] : null;
@@ -92,12 +70,12 @@ function makeExercise(id: string, weight: number, reps: number, sets: number): E
 }
 
 /**
- * Seeds 5 pre-claimed logs. `createLog` can't be reused — it writes unclaimed
- * logs with null FP, and the history screen renders claimed FP totals.
+ * Seeds 5 pre-saved logs. `createLog` can't be reused — it writes *unsaved*
+ * logs (null `claimedAt`), and the history screen only lists saved ones.
  */
 export function devSeedHistory() {
   const now = Date.now();
-  const mk = (daysAgo: number, totalFP: number, fpEarned: FPBalances): WorkoutLog => ({
+  const mk = (daysAgo: number): WorkoutLog => ({
     id: `seed_${daysAgo}_${Math.random().toString(36).slice(2, 7)}`,
     timestamp: new Date(now - daysAgo * 86_400_000).toISOString(),
     exercises: [makeExercise('barbell_bench_press', 225, 5, 3)],
@@ -105,25 +83,8 @@ export function devSeedHistory() {
     streakDays: Math.max(1, 7 - daysAgo),
     sessionIntent: 'normal',
     claimedAt: new Date(now - daysAgo * 86_400_000 + 60_000).toISOString(),
-    totalFP,
-    fpEarned,
   });
-  const fp = (p: number, g: number, s: number): FPBalances => ({
-    generic: g,
-    power: p,
-    guard: 0,
-    speed: s,
-    vigor: 10,
-    focus: 10,
-    spirit: 0,
-  });
-  const logs = [
-    mk(1, 250, fp(60, 150, 0)),
-    mk(2, 230, fp(50, 140, 0)),
-    mk(4, 210, fp(40, 120, 20)),
-    mk(6, 200, fp(30, 110, 30)),
-    mk(8, 190, fp(20, 100, 40)),
-  ];
+  const logs = [mk(1), mk(2), mk(4), mk(6), mk(8)];
   useWorkoutHistoryStore.setState({ logs });
   appStorage.setJSON(STORAGE_KEYS.WORKOUT_HISTORY.FULL_STATE, { logs }).catch(console.warn);
 }

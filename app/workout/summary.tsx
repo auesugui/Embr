@@ -46,51 +46,18 @@ export default function WorkoutSummaryScreen() {
 
   const summary: WorkoutSummary | null = useMemo(() => {
     if (!log) return null;
-
-    // Collect per-exercise baselines for relative FP scaling. Null baselines
-    // are omitted; the engine falls back to absolute volume calc for those.
-    const baselineStore = useBaselineStore.getState();
-    const baselines: Record<string, number> = {};
-    for (const ex of log.exercises) {
-      const b = baselineStore.getBaseline(ex.id);
-      if (b !== null) baselines[ex.id] = b;
-    }
-
-    return calculateWorkoutSummary(
-      log.exercises,
-      log.durationSeconds,
-      log.streakDays,
-      log.sessionIntent,
-      Object.keys(baselines).length > 0 ? baselines : undefined
-    );
+    return calculateWorkoutSummary(log.exercises, log.durationSeconds);
   }, [log]);
-
-  // Normalize typed FP to the radar's 0-100 scale (top type ≈ 85 so the
-  // shape reads without touching the chart edge).
-  const radarValues = useMemo(() => {
-    if (!summary) return {};
-    const entries = Object.entries(summary.typedFP).filter(([k]) => k !== 'generic');
-    const max = Math.max(1, ...entries.map(([, v]) => v ?? 0));
-    return Object.fromEntries(entries.map(([k, v]) => [k, ((v ?? 0) / max) * 85]));
-  }, [summary]);
 
   const handleFinish = () => {
     if (!summary || !log) return;
 
-    // Idempotency boundary: first claim returns the log, every replay returns
-    // null and we no-op (no FP, no navigation). This is the URL-replay fix.
-    const claimed = useWorkoutHistoryStore.getState().claimRewards(log.id, {
-      totalFP: summary.totalFP,
-      fpEarned: summary.typedFP,
-    });
+    // Idempotency boundary: the first save returns the log, every replay
+    // returns null and we no-op. This is the URL-replay fix (issue #16).
+    const claimed = useWorkoutHistoryStore.getState().saveWorkout(log.id);
     if (!claimed) return;
 
     haptics.success();
-
-    // FP is still computed and written onto the log above — derived metadata,
-    // cheap to keep, and dropping it from the persisted shape would be a schema
-    // change for no benefit (ADR-0014). Nothing credits a player balance or a
-    // pet any more; those stores are gone.
 
     // Update streak
     usePlayerStore.getState().updateStreak(true);
@@ -98,8 +65,10 @@ export default function WorkoutSummaryScreen() {
     // Increment workout count
     usePlayerStore.getState().incrementWorkoutCount();
 
-    // Update per-exercise baselines for future relative-FP scaling.
-    // Session max = highest weight × reps across logged sets.
+    // Record per-exercise strength baselines. Nothing reads these today — the
+    // FP engine was their only consumer (ADR-0015) — but they're a rolling
+    // record of what you've actually been lifting per movement, and that only
+    // becomes answerable later if the data keeps accumulating now.
     const baselineStore = useBaselineStore.getState();
     for (const ex of summary.exercises) {
       const loggedSets = ex.sets.filter((s) => s.logged);

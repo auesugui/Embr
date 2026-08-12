@@ -170,14 +170,35 @@ export const appStorage = {
 // Storage Migration
 // =============================================================================
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+/**
+ * Keys written by the deleted game layer (ADR-0014 / ADR-0015). Nothing reads
+ * them; on an existing install they'd otherwise sit in storage forever.
+ */
+const DEAD_GAME_KEYS: readonly string[] = [
+  ...Object.values(STORAGE_KEYS.PET_STATS),
+  ...Object.values(STORAGE_KEYS.PET),
+  ...Object.values(STORAGE_KEYS.PLAYER_FP),
+  ...Object.values(STORAGE_KEYS.TOWER),
+];
 
 export const migrateStorage = async (): Promise<void> => {
   const currentVersion = (await appStorage.getNumber(STORAGE_KEYS.SCHEMA_VERSION)) ?? 0;
 
   if (currentVersion < SCHEMA_VERSION) {
-    // Future migrations go here
-    // if (currentVersion < 2) { ... }
+    if (currentVersion < 2) {
+      // v2 — drop the game layer's storage.
+      //
+      // This deletes whole dead namespaces (pet, pet stats, player FP, tower).
+      // It deliberately does NOT rewrite `workout_history`: those logs may
+      // still carry `totalFP` / `fpEarned` from before the engine was removed,
+      // and rewriting the one irreplaceable slice of user data to strip two
+      // fields nothing reads is risk without benefit. Extra keys on a stored
+      // object are inert — the type no longer declares them, the app never
+      // touches them, and they cost a few bytes.
+      await AsyncStorage.multiRemove([...DEAD_GAME_KEYS]);
+    }
 
     await appStorage.setNumber(STORAGE_KEYS.SCHEMA_VERSION, SCHEMA_VERSION);
   }

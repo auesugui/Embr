@@ -124,13 +124,13 @@ export interface WorkoutSession {
  * A persisted record of a finished workout session.
  *
  * Created at session finish (BEFORE navigation to the summary) and updated
- * once when its FP rewards are claimed. `claimedAt` is the idempotency key:
- * null until claimed, an ISO timestamp after. The FP award path must no-op
+ * once. `claimedAt` is the idempotency key: null until saved, an ISO timestamp
+ * after. The save path must no-op
  * when `claimedAt` is already set — this is what kills the URL-replay
  * double-claim exploit (issue #16 / audit C1).
  *
  * `streakDays` is snapshotted at finish time so the summary renders the same
- * multiplier/Spirit FP on reload that it did the first time.
+ * same streak on reload that it did the first time.
  */
 export interface WorkoutLog {
   id: string;
@@ -139,11 +139,15 @@ export interface WorkoutLog {
   durationSeconds: number;
   streakDays: number; // streak snapshot at finish time
   sessionIntent: SessionIntent;
-  /** Idempotency key: null until FP is claimed, ISO timestamp once claimed. */
+  /**
+   * Idempotency key: null until the workout is saved, ISO timestamp once saved.
+   *
+   * Named for the deleted "claim rewards" flow (ADR-0014). It is NOT game-layer
+   * state — it's what stops a URL replay from saving the same workout twice
+   * (issue #16 / audit C1). The name persists because the field does: renaming
+   * it means migrating stored history for no functional gain.
+   */
   claimedAt: string | null;
-  /** Captured at claim time for the future history screen. null until claimed. */
-  totalFP: number | null;
-  fpEarned: FPBalances | null;
 }
 
 export interface PRRecord {
@@ -205,7 +209,6 @@ export interface WorkoutTemplate {
   name: string;
   description: string;
   exercises: ExerciseTemplate[];
-  fpDistribution: Partial<Record<StatType, number>>;
 }
 
 // -----------------------------------------------------------------------------

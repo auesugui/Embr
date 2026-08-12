@@ -14,8 +14,6 @@
 import {
   type TemplateExercise,
   type WorkoutTemplateDefinition,
-  calculateDayFPDistribution,
-  calculateTotalFPDistribution,
   getExerciseById,
   getTemplateById,
 } from '@/data';
@@ -91,13 +89,12 @@ const persistState = async (state: TemplateState) => {
 /** Plain-data deep clone. Template definitions are JSON-serializable. */
 const cloneDeep = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-/** Recompute per-day + total FP distributions in place using the real engine. */
+/** Rebuild derived day fields in place. */
 const recalcDistributions = (t: WorkoutTemplateDefinition): WorkoutTemplateDefinition => {
   const days = t.days.map((d) => ({
     ...d,
-    fpDistribution: calculateDayFPDistribution(d.exercises),
   }));
-  return { ...t, days, totalFpDistribution: calculateTotalFPDistribution(days) };
+  return { ...t, days };
 };
 
 /** Marks ids for templates built from scratch rather than copied. */
@@ -162,10 +159,8 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
           name: 'Day 1',
           shortName: 'Day 1',
           exercises: [],
-          fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
         },
       ],
-      totalFpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
       isCustom: true,
       createdAt: now,
       updatedAt: now,

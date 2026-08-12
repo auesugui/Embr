@@ -8,14 +8,7 @@
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePRStore } from '@/stores/prStore';
 import { useWorkoutHistoryStore } from '@/stores/workoutHistoryStore';
-import {
-  FP_PRESETS,
-  devResetAll,
-  devSeedHistory,
-  devSeedPRs,
-  devSetFP,
-  devSetStreak,
-} from '../devActions';
+import { devResetAll, devSeedHistory, devSeedPRs, devSetStreak } from '../devActions';
 
 // Mock storage (same pattern as the store tests)
 jest.mock('@/utils/storage', () => ({
@@ -42,15 +35,13 @@ describe('devActions', () => {
     jest.clearAllMocks();
   });
 
-  it('seeds history logs that are fully claimed (no null FP)', () => {
+  it('seeds history logs that are already saved (history only lists saved ones)', () => {
     devSeedHistory();
     const { logs } = useWorkoutHistoryStore.getState();
 
     expect(logs).toHaveLength(5);
     for (const log of logs) {
       expect(log.claimedAt).not.toBeNull();
-      expect(log.totalFP).not.toBeNull();
-      expect(log.fpEarned).not.toBeNull();
       expect(log.exercises.length).toBeGreaterThan(0);
       for (const exercise of log.exercises) {
         for (const set of exercise.sets) {
@@ -62,7 +53,6 @@ describe('devActions', () => {
 
   it('returns every store to initial state after devResetAll', () => {
     // Seed across every store first.
-    devSetFP(FP_PRESETS['10k']);
     devSetStreak(7);
     devSeedPRs('lb');
     devSeedHistory();
@@ -70,8 +60,8 @@ describe('devActions', () => {
     devResetAll();
 
     const player = usePlayerStore.getState();
-    expect(Object.values(player.fp).every((v) => v === 0)).toBe(true);
     expect(player.streak.current).toBe(0);
+    expect(player.totalWorkouts).toBe(0);
 
     expect(useWorkoutHistoryStore.getState().logs).toEqual([]);
     expect(usePRStore.getState().totalPRCount).toBe(0);

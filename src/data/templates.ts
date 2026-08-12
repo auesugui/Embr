@@ -1,11 +1,3 @@
-// =============================================================================
-// IronQuest Workout Templates
-// =============================================================================
-// 4 core templates for Phase 1: PPL, Upper/Lower, Full Body, Minimalist
-// Each template includes FP distribution preview for strategic selection.
-
-import type { StatType } from '@/types';
-
 // -----------------------------------------------------------------------------
 // Template Types
 // -----------------------------------------------------------------------------
@@ -23,7 +15,6 @@ export interface TemplateDay {
   name: string;
   shortName: string;
   exercises: TemplateExercise[];
-  fpDistribution: Record<StatType, number>; // FP percentage per stat
 }
 
 export interface WorkoutTemplateDefinition {
@@ -35,7 +26,6 @@ export interface WorkoutTemplateDefinition {
   difficulty: 'beginner' | 'intermediate' | 'advanced';
   estimatedDuration: number; // minutes per session
   days: TemplateDay[];
-  totalFpDistribution: Record<StatType, number>; // Aggregated FP distribution
   /**
    * Personal-copy metadata. Built-in templates leave these unset, which keeps
    * them read-only (see issue #5). Personal copies set `isCustom: true`.
@@ -46,12 +36,6 @@ export interface WorkoutTemplateDefinition {
   updatedAt?: number; // ms epoch — personal copies only
 }
 
-// -----------------------------------------------------------------------------
-// Helper to calculate FP distribution from exercises
-// -----------------------------------------------------------------------------
-
-import { EXERCISE_DATABASE } from './exercises';
-
 // Exported so stores/UI can recompute distributions after editing a personal
 // copy (issue #5). Keeping a single implementation prevents shadow calculators
 // — see the engineer prompt's "Shadow calculator guard".
@@ -60,78 +44,6 @@ import { EXERCISE_DATABASE } from './exercises';
 // C5). The primary mover emits dominantly (≥ 0.7) so a pet reflects its
 // owner's training split instead of every template converging on a Focus-heavy
 // shape. Sets act as the volume multiplier.
-const ZERO_DISTRIBUTION: Record<StatType, number> = {
-  power: 0,
-  guard: 0,
-  speed: 0,
-  vigor: 0,
-  focus: 0,
-  spirit: 0, // Always 0 for workouts — Spirit is streak-only (Core Design Rule)
-};
-
-export function calculateDayFPDistribution(
-  exercises: TemplateExercise[]
-): Record<StatType, number> {
-  const fpCounts: Record<StatType, number> = { ...ZERO_DISTRIBUTION };
-
-  for (const templateEx of exercises) {
-    const exercise = EXERCISE_DATABASE.find((e) => e.id === templateEx.exerciseId);
-    if (!exercise) continue;
-
-    // Weight each exercise's FP split by its set count (volume proxy).
-    const setWeight = templateEx.sets;
-    for (const [stat, fraction] of Object.entries(exercise.fpDistribution)) {
-      // Spirit can never appear here — exercises don't emit it — but guard
-      // anyway so a bad data entry can't silently leak streak-only FP.
-      if (stat === 'spirit') continue;
-      fpCounts[stat as StatType] += (fraction ?? 0) * setWeight;
-    }
-  }
-
-  // Normalize to percentages
-  const total = Object.values(fpCounts).reduce((sum, val) => sum + val, 0);
-  if (total === 0) return fpCounts;
-
-  return {
-    power: Math.round((fpCounts.power / total) * 100),
-    guard: Math.round((fpCounts.guard / total) * 100),
-    speed: Math.round((fpCounts.speed / total) * 100),
-    vigor: Math.round((fpCounts.vigor / total) * 100),
-    focus: Math.round((fpCounts.focus / total) * 100),
-    spirit: 0,
-  };
-}
-
-export function calculateTotalFPDistribution(days: TemplateDay[]): Record<StatType, number> {
-  const totals: Record<StatType, number> = {
-    power: 0,
-    guard: 0,
-    speed: 0,
-    vigor: 0,
-    focus: 0,
-    spirit: 0,
-  };
-
-  for (const day of days) {
-    for (const [stat, value] of Object.entries(day.fpDistribution)) {
-      totals[stat as StatType] += value;
-    }
-  }
-
-  // Normalize
-  const total = Object.values(totals).reduce((sum, val) => sum + val, 0);
-  if (total === 0) return totals;
-
-  return {
-    power: Math.round((totals.power / total) * 100),
-    guard: Math.round((totals.guard / total) * 100),
-    speed: Math.round((totals.speed / total) * 100),
-    vigor: Math.round((totals.vigor / total) * 100),
-    focus: Math.round((totals.focus / total) * 100),
-    spirit: 0,
-  };
-}
-
 // -----------------------------------------------------------------------------
 // Template 1: Push/Pull/Legs (6-day)
 // Classic bodybuilding split, balanced FP distribution
@@ -158,7 +70,6 @@ const PPL_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'lateral_raises', sets: 3, reps: '12-15', restSeconds: 60 },
         { exerciseId: 'tricep_pushdowns', sets: 3, reps: '10-15', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'ppl_pull_a',
@@ -171,7 +82,6 @@ const PPL_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'face_pulls', sets: 3, reps: '12-15', restSeconds: 60 },
         { exerciseId: 'barbell_curl', sets: 3, reps: '8-12', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'ppl_legs_a',
@@ -184,7 +94,6 @@ const PPL_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'leg_extension', sets: 3, reps: '10-15', restSeconds: 60 },
         { exerciseId: 'calf_raises', sets: 4, reps: '12-20', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'ppl_push_b',
@@ -197,7 +106,6 @@ const PPL_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'rear_delt_flyes', sets: 3, reps: '12-15', restSeconds: 60 },
         { exerciseId: 'skull_crushers', sets: 3, reps: '8-12', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'ppl_pull_b',
@@ -210,7 +118,6 @@ const PPL_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'shrugs', sets: 3, reps: '10-15', restSeconds: 60 },
         { exerciseId: 'hammer_curl', sets: 3, reps: '8-12', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'ppl_legs_b',
@@ -223,17 +130,12 @@ const PPL_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'leg_curl', sets: 3, reps: '10-15', restSeconds: 60 },
         { exerciseId: 'calf_raises', sets: 4, reps: '12-20', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
   ],
-  totalFpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
 };
 
 // Calculate FP distributions for PPL
-PPL_TEMPLATE.days.forEach((day) => {
-  day.fpDistribution = calculateDayFPDistribution(day.exercises);
-});
-PPL_TEMPLATE.totalFpDistribution = calculateTotalFPDistribution(PPL_TEMPLATE.days);
+PPL_TEMPLATE.days.forEach((day) => {});
 
 // -----------------------------------------------------------------------------
 // Template 2: Upper/Lower (4-day)
@@ -261,7 +163,6 @@ const UPPER_LOWER_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'barbell_curl', sets: 3, reps: '8-12', restSeconds: 60 },
         { exerciseId: 'tricep_pushdowns', sets: 3, reps: '10-15', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'ul_lower_a',
@@ -274,7 +175,6 @@ const UPPER_LOWER_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'leg_curl', sets: 3, reps: '10-15', restSeconds: 60 },
         { exerciseId: 'calf_raises', sets: 4, reps: '12-20', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'ul_upper_b',
@@ -288,7 +188,6 @@ const UPPER_LOWER_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'lateral_raises', sets: 3, reps: '12-15', restSeconds: 60 },
         { exerciseId: 'hammer_curl', sets: 3, reps: '8-12', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'ul_lower_b',
@@ -301,17 +200,12 @@ const UPPER_LOWER_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'leg_extension', sets: 3, reps: '10-15', restSeconds: 60 },
         { exerciseId: 'calf_raises', sets: 4, reps: '12-20', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
   ],
-  totalFpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
 };
 
 // Calculate FP distributions
-UPPER_LOWER_TEMPLATE.days.forEach((day) => {
-  day.fpDistribution = calculateDayFPDistribution(day.exercises);
-});
-UPPER_LOWER_TEMPLATE.totalFpDistribution = calculateTotalFPDistribution(UPPER_LOWER_TEMPLATE.days);
+UPPER_LOWER_TEMPLATE.days.forEach((day) => {});
 
 // -----------------------------------------------------------------------------
 // Template 3: Full Body (3-day)
@@ -340,7 +234,6 @@ const FULL_BODY_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'dumbbell_curl', sets: 2, reps: '8-12', restSeconds: 60 },
         { exerciseId: 'tricep_pushdowns', sets: 2, reps: '10-15', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'fb_day_b',
@@ -354,7 +247,6 @@ const FULL_BODY_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'walking_lunges', sets: 2, reps: '10-15', restSeconds: 90 },
         { exerciseId: 'plank', sets: 3, reps: '30-60s', restSeconds: 45 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'fb_day_c',
@@ -368,17 +260,12 @@ const FULL_BODY_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'romanian_deadlift', sets: 2, reps: '8-12', restSeconds: 120 },
         { exerciseId: 'calf_raises', sets: 3, reps: '12-20', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
   ],
-  totalFpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
 };
 
 // Calculate FP distributions
-FULL_BODY_TEMPLATE.days.forEach((day) => {
-  day.fpDistribution = calculateDayFPDistribution(day.exercises);
-});
-FULL_BODY_TEMPLATE.totalFpDistribution = calculateTotalFPDistribution(FULL_BODY_TEMPLATE.days);
+FULL_BODY_TEMPLATE.days.forEach((day) => {});
 
 // -----------------------------------------------------------------------------
 // Template 4: Minimalist (2-day)
@@ -406,7 +293,6 @@ const MINIMALIST_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'overhead_press', sets: 3, reps: '8-10', restSeconds: 120 },
         { exerciseId: 'plank', sets: 3, reps: '30-60s', restSeconds: 45 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'min_day_b',
@@ -419,17 +305,12 @@ const MINIMALIST_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'incline_dumbbell_press', sets: 3, reps: '8-12', restSeconds: 120 },
         { exerciseId: 'calf_raises', sets: 3, reps: '12-20', restSeconds: 60 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
   ],
-  totalFpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
 };
 
 // Calculate FP distributions
-MINIMALIST_TEMPLATE.days.forEach((day) => {
-  day.fpDistribution = calculateDayFPDistribution(day.exercises);
-});
-MINIMALIST_TEMPLATE.totalFpDistribution = calculateTotalFPDistribution(MINIMALIST_TEMPLATE.days);
+MINIMALIST_TEMPLATE.days.forEach((day) => {});
 
 // -----------------------------------------------------------------------------
 // Template 5: Powerbuilding Home Edition (6-day)
@@ -478,7 +359,6 @@ const POWERBUILDING_HOME_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'overhead_db_tricep_ext', sets: 5, reps: '50 total', restSeconds: 30 },
         { exerciseId: 'lateral_raises', sets: 5, reps: '50 total', restSeconds: 15 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'pb_pull_a',
@@ -499,7 +379,6 @@ const POWERBUILDING_HOME_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'standing_db_curl', sets: 5, reps: '50 total', restSeconds: 30 },
         { exerciseId: 'bent_over_db_reverse_fly', sets: 5, reps: '50 total', restSeconds: 15 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'pb_legs_a',
@@ -526,7 +405,6 @@ const POWERBUILDING_HOME_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'nordstick_hamstring_curl', sets: 5, reps: '50 total', restSeconds: 30 },
         { exerciseId: 'db_standing_calf_raise', sets: 5, reps: '50 total', restSeconds: 15 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'pb_push_b',
@@ -553,7 +431,6 @@ const POWERBUILDING_HOME_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'db_kickbacks', sets: 5, reps: '50 total', restSeconds: 30 },
         { exerciseId: 'lateral_raises', sets: 5, reps: '50 total', restSeconds: 15 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'pb_pull_b',
@@ -586,7 +463,6 @@ const POWERBUILDING_HOME_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'incline_db_curl', sets: 5, reps: '50 total', restSeconds: 30 },
         { exerciseId: 'prone_incline_reverse_fly', sets: 5, reps: '50 total', restSeconds: 15 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
     {
       id: 'pb_legs_b',
@@ -619,19 +495,12 @@ const POWERBUILDING_HOME_TEMPLATE: WorkoutTemplateDefinition = {
         { exerciseId: 'db_sissy_squat', sets: 5, reps: '50 total', restSeconds: 30 },
         { exerciseId: 'lying_leg_raise', sets: 5, reps: '50 total', restSeconds: 15 },
       ],
-      fpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
     },
   ],
-  totalFpDistribution: { power: 0, guard: 0, speed: 0, vigor: 0, focus: 0, spirit: 0 },
 };
 
 // Calculate FP distributions
-POWERBUILDING_HOME_TEMPLATE.days.forEach((day) => {
-  day.fpDistribution = calculateDayFPDistribution(day.exercises);
-});
-POWERBUILDING_HOME_TEMPLATE.totalFpDistribution = calculateTotalFPDistribution(
-  POWERBUILDING_HOME_TEMPLATE.days
-);
+POWERBUILDING_HOME_TEMPLATE.days.forEach((day) => {});
 
 // -----------------------------------------------------------------------------
 // Export All Templates

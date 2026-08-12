@@ -1,8 +1,8 @@
 // =============================================================================
-// IronQuest Player Store - Profile, FP, Streak
+// Embr Player Store — profile, streak, workout count
 // =============================================================================
 
-import type { FPBalances, PlayerProfile, StreakData } from '@/types';
+import type { PlayerProfile, StreakData } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 
@@ -12,19 +12,12 @@ import { create } from 'zustand';
 
 interface PlayerState {
   profile: PlayerProfile;
-  fp: FPBalances;
   streak: StreakData;
   achievements: string[];
   totalWorkouts: number;
 }
 
 interface PlayerActions {
-  // FP Actions
-  addFP: (type: keyof FPBalances, amount: number) => void;
-  addMultipleFP: (amounts: Partial<FPBalances>) => void;
-  spendFP: (type: keyof FPBalances, amount: number) => boolean;
-  setFP: (fp: FPBalances) => void;
-
   // Streak Actions
   updateStreak: (workedOutToday: boolean) => void;
   resetStreak: () => void;
@@ -56,15 +49,6 @@ const initialState: PlayerState = {
     avatar: null,
     createdAt: new Date().toISOString(),
   },
-  fp: {
-    generic: 0,
-    power: 0,
-    guard: 0,
-    speed: 0,
-    vigor: 0,
-    focus: 0,
-    spirit: 0,
-  },
   streak: {
     current: 0,
     longest: 0,
@@ -85,53 +69,6 @@ const persistState = async (state: PlayerState) => {
 
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
   ...initialState,
-
-  // FP Actions
-  addFP: (type, amount) => {
-    set((state) => {
-      const newFP = { ...state.fp };
-      newFP[type] = Math.max(0, newFP[type] + amount);
-      const newState = { ...state, fp: newFP };
-      persistState(newState).catch(console.warn);
-      return { fp: newFP };
-    });
-  },
-
-  addMultipleFP: (amounts) => {
-    set((state) => {
-      const newFP = { ...state.fp };
-      for (const [type, amount] of Object.entries(amounts)) {
-        if (amount && type in newFP) {
-          newFP[type as keyof FPBalances] = Math.max(0, newFP[type as keyof FPBalances] + amount);
-        }
-      }
-      const newState = { ...state, fp: newFP };
-      persistState(newState).catch(console.warn);
-      return { fp: newFP };
-    });
-  },
-
-  spendFP: (type, amount) => {
-    const state = get();
-    if (state.fp[type] < amount) {
-      return false;
-    }
-
-    set((state) => {
-      const newFP = { ...state.fp };
-      newFP[type] = Math.max(0, newFP[type] - amount);
-      const newState = { ...state, fp: newFP };
-      persistState(newState).catch(console.warn);
-      return { fp: newFP };
-    });
-
-    return true;
-  },
-
-  setFP: (fp) => {
-    set({ fp });
-    persistState({ ...get(), fp }).catch(console.warn);
-  },
 
   // Streak Actions
   updateStreak: (workedOutToday) => {
@@ -231,7 +168,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       if (stored) {
         set({
           profile: stored.profile ?? initialState.profile,
-          fp: stored.fp ?? initialState.fp,
           streak: stored.streak ?? initialState.streak,
           achievements: stored.achievements ?? initialState.achievements,
           totalWorkouts: stored.totalWorkouts ?? initialState.totalWorkouts,
@@ -251,11 +187,5 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 // -----------------------------------------------------------------------------
 // Selectors
 // -----------------------------------------------------------------------------
-
-export const selectTotalFP = (state: PlayerStore) =>
-  Object.values(state.fp).reduce((sum, val) => sum + val, 0);
-
-export const selectCanAfford = (type: keyof FPBalances, amount: number) => (state: PlayerStore) =>
-  state.fp[type] >= amount;
 
 export const selectStreakDays = (state: PlayerStore) => state.streak.current;

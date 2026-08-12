@@ -11,20 +11,11 @@ import { usePRStore } from '@/stores/prStore';
 import { useWorkoutHistoryStore } from '@/stores/workoutHistoryStore';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import { showAlert } from '@/utils/alert';
-import {
-  type FPPresetName,
-  FP_PRESETS,
-  devResetAll,
-  devSeedHistory,
-  devSeedPRs,
-  devSetFP,
-  devSetStreak,
-} from './devActions';
+import { devResetAll, devSeedHistory, devSeedPRs, devSetStreak } from './devActions';
 
 const STREAK_LEVELS = [0, 3, 7, 14, 30];
 
 export function DevPanel() {
-  const genericFP = usePlayerStore((s) => s.fp.generic);
   const streak = usePlayerStore((s) => s.streak.current);
   const prCount = usePRStore((s) => s.totalPRCount);
   const logCount = useWorkoutHistoryStore((s) => s.logs.length);
@@ -50,15 +41,7 @@ export function DevPanel() {
 
       {/* Player */}
       <Section title="Player">
-        <Text style={styles.stateLine}>
-          Current: {genericFP} generic FP · streak {streak}
-        </Text>
-        <Text style={styles.rowLabel}>FP (all 7 types)</Text>
-        <View style={styles.pillRow}>
-          {(Object.keys(FP_PRESETS) as FPPresetName[]).map((name) => (
-            <Pill key={name} label={`FP ${name}`} onPress={() => devSetFP(FP_PRESETS[name])} />
-          ))}
-        </View>
+        <Text style={styles.stateLine}>Current streak: {streak}</Text>
         <Text style={styles.rowLabel}>Streak</Text>
         <View style={styles.pillRow}>
           {STREAK_LEVELS.map((days) => (
