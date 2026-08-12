@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { ChevronRight, Flame, Plus } from 'lucide-react-native';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { CountUpText, RevealRow } from '@/components/celebration';
 import { PressableScale } from '@/components/ui';
 import { TemplateCard } from '@/components/workout/TemplateCard';
 import { WORKOUT_TEMPLATES } from '@/data';
@@ -44,20 +45,20 @@ export default function HomeScreen() {
           RESERVED (ADR-0013): if the care-companion ever gets built, it lives
           here — that's why this card is tall and centered rather than a compact
           stat row. Don't fill the space with layout. */}
-      <View style={styles.hero}>
+      <RevealRow index={0} style={styles.hero}>
         <View style={styles.heroMark}>
           <Flame size={28} color={streak > 0 ? roles.accent : roles.textMuted} strokeWidth={1.75} />
         </View>
-        <Text style={styles.heroValue}>{streak}</Text>
+        <CountUpText value={streak} style={styles.heroValue} />
         <Text style={styles.heroLabel}>day streak</Text>
         <Text style={styles.heroCaption}>
           {streak > 0 ? 'Keep it going.' : 'Log a workout to start one.'}
         </Text>
-      </View>
+      </RevealRow>
 
       {/* Quick Stats — one card, divided. Three separate cards read as three
           unrelated things; the numbers belong to the same story. */}
-      <View style={styles.section}>
+      <RevealRow index={1} style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Stats</Text>
         <View style={styles.statsRow}>
           <StatCell label="Workouts" value={totalWorkouts.toString()} />
@@ -66,11 +67,11 @@ export default function HomeScreen() {
           <View style={styles.statDivider} />
           <StatCell label="PRs" value={prCount.toString()} />
         </View>
-      </View>
+      </RevealRow>
 
       {/* Build from scratch. Sits above History so the two "start something"
           actions aren't separated by the read-only one. */}
-      <View style={styles.section}>
+      <RevealRow index={2} style={styles.section}>
         <PressableScale
           style={styles.primaryButton}
           onPress={handleNewWorkout}
@@ -80,10 +81,10 @@ export default function HomeScreen() {
           <Plus size={18} color={roles.onAccent} strokeWidth={2.5} />
           <Text style={styles.primaryButtonText}>New Workout</Text>
         </PressableScale>
-      </View>
+      </RevealRow>
 
       {/* Workout History — reachable from home (issue #18). */}
-      <View style={styles.section}>
+      <RevealRow index={3} style={styles.section}>
         <PressableScale
           style={styles.rowButton}
           activeScale={0.985}
@@ -92,7 +93,7 @@ export default function HomeScreen() {
           <Text style={styles.rowButtonText}>Workout History</Text>
           <ChevronRight size={20} color={roles.textMuted} />
         </PressableScale>
-      </View>
+      </RevealRow>
 
       {/* Templates Section */}
       {personalTemplates.length > 0 && (
@@ -102,12 +103,10 @@ export default function HomeScreen() {
             Your personal copies. Tap to view, edit, or start a session.
           </Text>
 
-          {personalTemplates.map((template) => (
-            <TemplateCard
-              key={template.id}
-              template={template}
-              onPress={() => handleTemplatePress(template.id)}
-            />
+          {personalTemplates.map((template, i) => (
+            <RevealRow key={template.id} index={Math.min(i, 5)}>
+              <TemplateCard template={template} onPress={() => handleTemplatePress(template.id)} />
+            </RevealRow>
           ))}
         </View>
       )}
@@ -118,12 +117,10 @@ export default function HomeScreen() {
           Choose a program that fits your schedule. Each shows the muscle groups it targets.
         </Text>
 
-        {WORKOUT_TEMPLATES.map((template) => (
-          <TemplateCard
-            key={template.id}
-            template={template}
-            onPress={() => handleTemplatePress(template.id)}
-          />
+        {WORKOUT_TEMPLATES.map((template, i) => (
+          <RevealRow key={template.id} index={Math.min(i, 5)}>
+            <TemplateCard template={template} onPress={() => handleTemplatePress(template.id)} />
+          </RevealRow>
         ))}
       </View>
     </ScrollView>

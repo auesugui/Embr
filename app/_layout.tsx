@@ -146,7 +146,11 @@ export default function RootLayout() {
           contentStyle: {
             backgroundColor: roles.surface,
           },
+          // Push transitions: keep the platform slide (it's what a native app
+          // does and what thumbs expect), but shorten it. The default reads
+          // sluggish on web, where there's no gesture driving it.
           animation: 'slide_from_right',
+          animationDuration: 260,
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -164,6 +168,10 @@ export default function RootLayout() {
             headerShown: true,
             title: ROUTE_TITLES['workout/session'],
             presentation: 'fullScreenModal',
+            // Starting a workout is a mode change, not a drill-down. Rising
+            // from the bottom says "you're in a session now" the way sliding
+            // sideways doesn't.
+            animation: 'slide_from_bottom',
           }}
         />
         <Stack.Screen name="workout/loadout" options={{ title: ROUTE_TITLES['workout/loadout'] }} />

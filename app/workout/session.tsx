@@ -7,8 +7,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PRFlash } from '@/components/celebration';
+import { ChevronLeft } from 'lucide-react-native';
+
+import { PRFlash, Settle } from '@/components/celebration';
 import { ExerciseDemo } from '@/components/workout/ExerciseDemo';
+import { RestTimerRing } from '@/components/workout/RestTimerRing';
 import { SetInputModal } from '@/components/workout/SetInputModal';
 import {
   usePlayerStore,
@@ -17,7 +20,7 @@ import {
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
-import { colors, radius, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { showAlert } from '@/utils/alert';
 import { haptics } from '@/utils/haptics';
 import { confirmEndSession } from '@/workout/endSessionGuard';
@@ -290,9 +293,16 @@ export default function WorkoutSessionScreen() {
           <ExerciseDemo exerciseId={currentExercise.id.replace(/-\d+$/, '')} variant="overlay" />
 
           <Text style={styles.restLabel}>{restTimer.paused ? 'Paused' : 'Rest'}</Text>
-          <Text style={[styles.restTimer, restTimer.remaining === 0 && styles.restTimerReady]}>
-            {formatTime(restTimer.remaining)}
-          </Text>
+          <RestTimerRing
+            remaining={restTimer.remaining}
+            total={restTimer.duration}
+            paused={restTimer.paused}
+            size={200}
+          >
+            <Text style={[styles.restTimer, restTimer.remaining === 0 && styles.restTimerReady]}>
+              {formatTime(restTimer.remaining)}
+            </Text>
+          </RestTimerRing>
 
           {restTimer.remaining === 0 ? (
             <Text style={styles.readyText}>Tap to continue</Text>
@@ -329,12 +339,15 @@ export default function WorkoutSessionScreen() {
           onPress={handlePreviousExercise}
           disabled={currentExerciseIndex === 0}
           style={styles.navArrow}
+          accessibilityRole="button"
+          accessibilityLabel="Previous exercise"
         >
-          <Text
-            style={[styles.navArrowText, currentExerciseIndex === 0 && styles.navArrowDisabled]}
-          >
-            {'<'}
-          </Text>
+          {/* Was a literal '<' in a Text node — missed in the glyph sweep
+              because it's written as a JSX expression, not a bare character. */}
+          <ChevronLeft
+            size={22}
+            color={currentExerciseIndex === 0 ? roles.textMuted : roles.textSecondary}
+          />
         </Pressable>
 
         <View style={styles.headerCenter}>
@@ -381,18 +394,20 @@ export default function WorkoutSessionScreen() {
                 </View>
 
                 {set.logged ? (
-                  <PRFlash active={set.isPR} style={styles.prFlashWrapper}>
-                    <Pressable style={styles.loggedSet} onPress={() => handleEditSet(index)}>
-                      <Text style={styles.loggedReps}>{set.reps} reps</Text>
-                      {set.weight && (
-                        <Text style={styles.loggedWeight}>
-                          @ {set.weight} {units}
-                        </Text>
-                      )}
-                      {set.isPR && <Text style={styles.prBadge}>PR!</Text>}
-                      <Text style={styles.editHint}>tap to edit</Text>
-                    </Pressable>
-                  </PRFlash>
+                  <Settle from={0.96}>
+                    <PRFlash active={set.isPR} style={styles.prFlashWrapper}>
+                      <Pressable style={styles.loggedSet} onPress={() => handleEditSet(index)}>
+                        <Text style={styles.loggedReps}>{set.reps} reps</Text>
+                        {set.weight && (
+                          <Text style={styles.loggedWeight}>
+                            @ {set.weight} {units}
+                          </Text>
+                        )}
+                        {set.isPR && <Text style={styles.prBadge}>PR!</Text>}
+                        <Text style={styles.editHint}>tap to edit</Text>
+                      </Pressable>
+                    </PRFlash>
+                  </Settle>
                 ) : (
                   <View style={styles.logButtons}>
                     {[5, 8, 10, 12].map((reps) => (
@@ -523,15 +538,21 @@ const styles = StyleSheet.create({
   },
   restLabel: {
     ...textStyles.label,
-    color: colors.text.secondary,
-    marginBottom: spacing[2],
+    color: roles.textSecondary,
+    letterSpacing: 0.5,
+    // Clears the ring's top edge — at spacing[2] the label sat on the arc.
+    marginBottom: spacing[4],
   },
   restTimer: {
+    // Was colors.timer.resting — a cool blue from the old palette, and the
+    // only blue left anywhere in the app. The ring carries the state now, so
+    // the number just has to be readable.
     ...textStyles.hero,
-    color: colors.timer.resting,
+    fontSize: 48,
+    color: roles.textPrimary,
   },
   restTimerReady: {
-    color: colors.timer.ready,
+    color: roles.accent,
   },
   readyText: {
     ...textStyles.body,
@@ -570,14 +591,7 @@ const styles = StyleSheet.create({
   navArrow: {
     padding: spacing[2],
   },
-  navArrowText: {
-    ...textStyles.h3,
-    color: colors.text.secondary,
-  },
-  navArrowDisabled: {
-    color: colors.text.muted,
-    opacity: 0.5,
-  },
+
   headerCenter: {
     alignItems: 'center',
   },
@@ -646,8 +660,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   loggedReps: {
+    // Was colors.semantic.success — the only green in the app, on the surface
+    // you look at most. A logged set is the normal case, not a success state;
+    // the Settle animation already marks that it landed.
     ...textStyles.numberSmall,
-    color: colors.semantic.success,
+    color: roles.textPrimary,
   },
   loggedWeight: {
     ...textStyles.body,

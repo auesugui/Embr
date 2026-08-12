@@ -19,6 +19,8 @@ import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, LoggedSet, WorkoutLog } from '@/types';
 import { ChevronDown, ChevronUp, ClipboardList } from 'lucide-react-native';
 
+import { RevealRow } from '@/components/celebration';
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const formatDate = (iso: string): string => {
@@ -82,14 +84,15 @@ export default function HistoryScreen() {
         {claimed.length} workout{claimed.length === 1 ? '' : 's'} logged
       </Text>
 
-      {claimed.map((log) => (
-        <WorkoutRow
-          key={log.id}
-          log={log}
-          units={units}
-          expanded={expandedId === log.id}
-          onToggle={() => handleToggle(log.id)}
-        />
+      {claimed.map((log, i) => (
+        <RevealRow key={log.id} index={Math.min(i, 6)}>
+          <WorkoutRow
+            log={log}
+            units={units}
+            expanded={expandedId === log.id}
+            onToggle={() => handleToggle(log.id)}
+          />
+        </RevealRow>
       ))}
     </ScrollView>
   );
