@@ -20,6 +20,27 @@ interface RestTimerState {
   paused: boolean;
 }
 
+/**
+ * The clock behind an AMRAP block.
+ *
+ * Unlike the rest timer this one carries `endsAt` (wall clock) and derives
+ * `remaining` from it on every tick. A 20-minute window outlives a backgrounded
+ * tab or a reload, and a tick-counted timer would silently pause for exactly as
+ * long as the app wasn't running — which is the one thing an AMRAP must not do.
+ * `remaining` is still stored so the UI has something to render before the
+ * first tick lands.
+ */
+interface AmrapTimerState {
+  /** Which exercise the window belongs to; null when no AMRAP is running. */
+  exerciseIndex: number | null;
+  duration: number;
+  remaining: number;
+  running: boolean;
+  paused: boolean;
+  /** ms epoch the window ends at. Null while paused or stopped. */
+  endsAt: number | null;
+}
+
 interface WorkoutState {
   // Session state
   active: boolean;
@@ -32,6 +53,9 @@ interface WorkoutState {
 
   // Rest timer
   restTimer: RestTimerState;
+
+  // AMRAP window (one at a time — you can only be inside one block)
+  amrapTimer: AmrapTimerState;
 }
 
 interface WorkoutActions {
@@ -42,6 +66,8 @@ interface WorkoutActions {
 
   // Exercise flow
   logSet: (exerciseIndex: number, setIndex: number, reps: number, weight?: number) => void;
+  /** Append an empty set row. AMRAP rounds are open-ended, so the UI grows the list as you log. */
+  addSet: (exerciseIndex: number) => void;
   editSet: (exerciseIndex: number, setIndex: number, reps: number, weight?: number) => void;
   clearSet: (exerciseIndex: number, setIndex: number) => void;
   completeExercise: (exerciseIndex: number) => void;
@@ -55,6 +81,13 @@ interface WorkoutActions {
   resumeRestTimer: () => void;
   resetRestTimer: () => void;
   tickRestTimer: () => void;
+
+  // AMRAP window
+  startAmrapTimer: (exerciseIndex: number, duration: number) => void;
+  pauseAmrapTimer: () => void;
+  resumeAmrapTimer: () => void;
+  resetAmrapTimer: () => void;
+  tickAmrapTimer: () => void;
 
   // Modifiers
   toggleGymRush: () => void;
@@ -83,6 +116,15 @@ const initialRestTimer: RestTimerState = {
   paused: false,
 };
 
+const initialAmrapTimer: AmrapTimerState = {
+  exerciseIndex: null,
+  duration: 0,
+  remaining: 0,
+  running: false,
+  paused: false,
+  endsAt: null,
+};
+
 const initialState: WorkoutState = {
   active: false,
   templateId: null,
@@ -92,11 +134,40 @@ const initialState: WorkoutState = {
   intent: 'normal',
   gymRushActive: false,
   restTimer: initialRestTimer,
+  amrapTimer: initialAmrapTimer,
 };
+
+const emptySet = () => ({
+  reps: null,
+  weight: null,
+  logged: false,
+  isPR: false,
+  isRepPR: false,
+});
 
 // Helper to persist session state
 const persistSession = async (state: Partial<WorkoutState>) => {
   await appStorage.setJSON(STORAGE_KEYS.SESSION.FULL_STATE, state);
+};
+
+/**
+ * Rebuild an AMRAP clock from persisted state.
+ *
+ * Sessions saved before AMRAP existed have no `amrapTimer` at all — those load
+ * as "no window running". A window that expired while the app was closed comes
+ * back finished rather than resuming with time that no longer exists.
+ */
+const restoreAmrapTimer = (stored: AmrapTimerState | undefined): AmrapTimerState => {
+  if (!stored || stored.exerciseIndex === null) return initialAmrapTimer;
+
+  if (stored.running && stored.endsAt) {
+    const remaining = Math.max(0, Math.ceil((stored.endsAt - Date.now()) / 1000));
+    return remaining === 0
+      ? { ...stored, remaining: 0, running: false, paused: false, endsAt: null }
+      : { ...stored, remaining };
+  }
+
+  return { ...stored, running: false, endsAt: null };
 };
 
 // -----------------------------------------------------------------------------
@@ -239,6 +310,20 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
     });
   },
 
+  addSet: (exerciseIndex) => {
+    set((state) => {
+      const exercise = state.exercises[exerciseIndex];
+      if (!exercise) return state;
+
+      const exercises = [...state.exercises];
+      exercises[exerciseIndex] = { ...exercise, sets: [...exercise.sets, emptySet()] };
+
+      const newState = { ...state, exercises };
+      persistSession(newState).catch(console.warn);
+      return { exercises };
+    });
+  },
+
   completeExercise: (exerciseIndex) => {
     set((state) => {
       const exercises = [...state.exercises];
@@ -327,6 +412,93 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
     });
   },
 
+  // AMRAP window
+  //
+  // Persisted with the session (unlike the rest timer) because a 20-minute
+  // block routinely outlives a reload, and coming back to a stopped clock
+  // mid-block would lose the only thing bounding the exercise.
+  startAmrapTimer: (exerciseIndex, duration) => {
+    const safeDuration = Math.max(0, Math.round(duration));
+    set((state) => {
+      const amrapTimer: AmrapTimerState = {
+        exerciseIndex,
+        duration: safeDuration,
+        remaining: safeDuration,
+        running: safeDuration > 0,
+        paused: false,
+        endsAt: safeDuration > 0 ? Date.now() + safeDuration * 1000 : null,
+      };
+      persistSession({ ...state, amrapTimer }).catch(console.warn);
+      return { amrapTimer };
+    });
+  },
+
+  pauseAmrapTimer: () => {
+    set((state) => {
+      if (!state.amrapTimer.running) return state;
+      // Freeze the true remaining time, then drop endsAt — resume re-anchors it.
+      const remaining = state.amrapTimer.endsAt
+        ? Math.max(0, Math.ceil((state.amrapTimer.endsAt - Date.now()) / 1000))
+        : state.amrapTimer.remaining;
+      const amrapTimer: AmrapTimerState = {
+        ...state.amrapTimer,
+        remaining,
+        running: false,
+        paused: true,
+        endsAt: null,
+      };
+      persistSession({ ...state, amrapTimer }).catch(console.warn);
+      return { amrapTimer };
+    });
+  },
+
+  resumeAmrapTimer: () => {
+    set((state) => {
+      if (!state.amrapTimer.paused || state.amrapTimer.remaining <= 0) return state;
+      const amrapTimer: AmrapTimerState = {
+        ...state.amrapTimer,
+        running: true,
+        paused: false,
+        endsAt: Date.now() + state.amrapTimer.remaining * 1000,
+      };
+      persistSession({ ...state, amrapTimer }).catch(console.warn);
+      return { amrapTimer };
+    });
+  },
+
+  resetAmrapTimer: () => {
+    set((state) => {
+      persistSession({ ...state, amrapTimer: initialAmrapTimer }).catch(console.warn);
+      return { amrapTimer: initialAmrapTimer };
+    });
+  },
+
+  tickAmrapTimer: () => {
+    set((state) => {
+      const timer = state.amrapTimer;
+      if (!timer.running || timer.paused || timer.endsAt === null) return state;
+
+      const remaining = Math.max(0, Math.ceil((timer.endsAt - Date.now()) / 1000));
+
+      if (remaining === 0) {
+        // The window closed. Keep exerciseIndex so the UI can say which block
+        // finished; stop the clock so nothing keeps ticking at zero.
+        const amrapTimer: AmrapTimerState = {
+          ...timer,
+          remaining: 0,
+          running: false,
+          paused: false,
+          endsAt: null,
+        };
+        persistSession({ ...state, amrapTimer }).catch(console.warn);
+        return { amrapTimer };
+      }
+
+      if (remaining === timer.remaining) return state;
+      return { amrapTimer: { ...timer, remaining } };
+    });
+  },
+
   // Modifiers
   toggleGymRush: () => {
     set((state) => ({ gymRushActive: !state.gymRushActive }));
@@ -372,6 +544,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
           exercises: stored.exercises ?? [],
           intent: stored.intent ?? 'normal',
           gymRushActive: stored.gymRushActive ?? false,
+          amrapTimer: restoreAmrapTimer(stored.amrapTimer),
         });
       }
     } catch (error) {

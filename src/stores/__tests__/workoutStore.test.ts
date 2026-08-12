@@ -711,4 +711,151 @@ describe('Workout Store', () => {
       });
     });
   });
+  // ---------------------------------------------------------------------------
+  // AMRAP
+  // ---------------------------------------------------------------------------
+
+  describe('AMRAP', () => {
+    const makeAmrapExercises = (): Exercise[] => [
+      {
+        id: 'bodyweight_squat-0',
+        name: 'Bodyweight Squat',
+        muscleGroups: ['quads'],
+        sets: [{ reps: null, weight: null, logged: false, isPR: false, isRepPR: false }],
+        restSeconds: 0,
+        completed: false,
+        mode: 'amrap',
+        durationSeconds: 1200,
+      },
+    ];
+
+    describe('addSet', () => {
+      it('appends an empty round so AMRAP logging never runs out of rows', () => {
+        const { startSession, addSet } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+
+        addSet(0);
+
+        const sets = useWorkoutStore.getState().exercises[0].sets;
+        expect(sets).toHaveLength(2);
+        expect(sets[1]).toEqual({
+          reps: null,
+          weight: null,
+          logged: false,
+          isPR: false,
+          isRepPR: false,
+        });
+      });
+
+      it('leaves already-logged rounds untouched', () => {
+        const { startSession, logSet, addSet } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+
+        logSet(0, 0, 15);
+        addSet(0);
+
+        const sets = useWorkoutStore.getState().exercises[0].sets;
+        expect(sets[0].reps).toBe(15);
+        expect(sets[0].logged).toBe(true);
+        expect(sets[1].logged).toBe(false);
+      });
+
+      it('ignores an out-of-range exercise', () => {
+        const { startSession, addSet } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+
+        addSet(9);
+
+        expect(useWorkoutStore.getState().exercises[0].sets).toHaveLength(1);
+      });
+    });
+
+    describe('the window clock', () => {
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('starts against the wall clock, not a tick count', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startSession, startAmrapTimer } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+
+        startAmrapTimer(0, 1200);
+
+        const timer = useWorkoutStore.getState().amrapTimer;
+        expect(timer).toMatchObject({
+          exerciseIndex: 0,
+          duration: 1200,
+          remaining: 1200,
+          running: true,
+          paused: false,
+          endsAt: 1_000_000 + 1200 * 1000,
+        });
+      });
+
+      it('does not lose time while the app is not ticking', () => {
+        // The whole point of a wall-clock anchor: five minutes pass with no
+        // tick delivered (backgrounded tab), and the window is five minutes
+        // shorter when we come back.
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startSession, startAmrapTimer, tickAmrapTimer } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+        startAmrapTimer(0, 1200);
+
+        jest.setSystemTime(1_000_000 + 300 * 1000);
+        tickAmrapTimer();
+
+        expect(useWorkoutStore.getState().amrapTimer.remaining).toBe(900);
+      });
+
+      it('stops the clock when the window closes', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startSession, startAmrapTimer, tickAmrapTimer } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+        startAmrapTimer(0, 60);
+
+        jest.setSystemTime(1_000_000 + 61 * 1000);
+        tickAmrapTimer();
+
+        const timer = useWorkoutStore.getState().amrapTimer;
+        expect(timer.remaining).toBe(0);
+        expect(timer.running).toBe(false);
+        // Kept so the session can still say which block the window belonged to.
+        expect(timer.exerciseIndex).toBe(0);
+      });
+
+      it('freezes remaining time on pause and re-anchors on resume', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startSession, startAmrapTimer, pauseAmrapTimer, resumeAmrapTimer } =
+          useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+        startAmrapTimer(0, 600);
+
+        jest.setSystemTime(1_000_000 + 100 * 1000);
+        pauseAmrapTimer();
+
+        let timer = useWorkoutStore.getState().amrapTimer;
+        expect(timer).toMatchObject({ remaining: 500, running: false, paused: true, endsAt: null });
+
+        // Two minutes of paused time must NOT come out of the window.
+        jest.setSystemTime(1_000_000 + 220 * 1000);
+        resumeAmrapTimer();
+
+        timer = useWorkoutStore.getState().amrapTimer;
+        expect(timer.remaining).toBe(500);
+        expect(timer.running).toBe(true);
+        expect(timer.endsAt).toBe(1_000_000 + 220 * 1000 + 500 * 1000);
+      });
+
+      it('clears with the session', () => {
+        const { startSession, startAmrapTimer, endSession } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+        startAmrapTimer(0, 600);
+
+        endSession();
+
+        expect(useWorkoutStore.getState().amrapTimer.exerciseIndex).toBeNull();
+      });
+    });
+  });
 });

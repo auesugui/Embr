@@ -13,6 +13,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RevealRow } from '@/components/celebration';
+import { amrapDuration, formatAmrapWindow, isAmrap } from '@/lib/amrap';
 import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
 import {
   useBaselineStore,
@@ -183,7 +184,11 @@ export default function WorkoutSummaryScreen() {
                 <View style={styles.exerciseInfo}>
                   <Text style={styles.exerciseName}>{exercise.name}</Text>
                   <Text style={styles.exerciseSets}>
-                    {loggedSets.length} sets · {exerciseReps} reps
+                    {isAmrap(exercise)
+                      ? `${loggedSets.length} rounds · ${exerciseReps} reps · ${formatAmrapWindow(
+                          amrapDuration(exercise)
+                        )}`
+                      : `${loggedSets.length} sets · ${exerciseReps} reps`}
                   </Text>
                 </View>
                 {exercise.sets.some((s) => s.isPR) && (

@@ -1,3 +1,5 @@
+import type { ExerciseMode } from '@/types';
+
 // -----------------------------------------------------------------------------
 // Template Types
 // -----------------------------------------------------------------------------
@@ -8,6 +10,17 @@ export interface TemplateExercise {
   reps: string;
   restSeconds: number;
   notes?: string;
+  /**
+   * How this block is bounded. Absent means `sets` — every template written
+   * before AMRAP existed omits it, including the built-ins below and every
+   * personal copy already in storage.
+   */
+  mode?: ExerciseMode;
+  /**
+   * AMRAP only: the work window in seconds. `sets`/`reps` are still carried so
+   * switching back to a set scheme restores what the exercise had before.
+   */
+  durationSeconds?: number;
 }
 
 export interface TemplateDay {

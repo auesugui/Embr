@@ -303,6 +303,81 @@ describe('Template Store', () => {
       expect(ex.restSeconds).toBe(original.restSeconds);
     });
 
+    it('switching to AMRAP stores a window and keeps the old set scheme', () => {
+      const { id, dayId } = setupCopy();
+      const original = useTemplateStore
+        .getState()
+        .getTemplate(id)!
+        .days.find((d) => d.id === dayId)!.exercises[0];
+
+      useTemplateStore
+        .getState()
+        .updateSetRepScheme(id, dayId, 0, { mode: 'amrap', durationSeconds: 20 * 60 });
+
+      const ex = useTemplateStore
+        .getState()
+        .getTemplate(id)!
+        .days.find((d) => d.id === dayId)!.exercises[0];
+      expect(ex.mode).toBe('amrap');
+      expect(ex.durationSeconds).toBe(20 * 60);
+      // sets/reps ride along untouched so flipping back restores the scheme.
+      expect(ex.sets).toBe(original.sets);
+      expect(ex.reps).toBe(original.reps);
+    });
+
+    it('defaults the window when AMRAP is set without a duration', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().updateSetRepScheme(id, dayId, 0, { mode: 'amrap' });
+      const ex = useTemplateStore
+        .getState()
+        .getTemplate(id)!
+        .days.find((d) => d.id === dayId)!.exercises[0];
+      expect(ex.durationSeconds).toBe(20 * 60);
+    });
+
+    it('clamps an out-of-range window', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore
+        .getState()
+        .updateSetRepScheme(id, dayId, 0, { mode: 'amrap', durationSeconds: 5 });
+      const ex = useTemplateStore
+        .getState()
+        .getTemplate(id)!
+        .days.find((d) => d.id === dayId)!.exercises[0];
+      expect(ex.durationSeconds).toBe(60);
+    });
+
+    it('switching back to sets drops the stale window', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore
+        .getState()
+        .updateSetRepScheme(id, dayId, 0, { mode: 'amrap', durationSeconds: 900 });
+      useTemplateStore.getState().updateSetRepScheme(id, dayId, 0, { mode: 'sets', sets: 4 });
+
+      const ex = useTemplateStore
+        .getState()
+        .getTemplate(id)!
+        .days.find((d) => d.id === dayId)!.exercises[0];
+      expect(ex.mode).toBe('sets');
+      expect(ex.durationSeconds).toBeUndefined();
+      expect(ex.sets).toBe(4);
+    });
+
+    it('a patch that omits mode leaves an AMRAP block AMRAP', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore
+        .getState()
+        .updateSetRepScheme(id, dayId, 0, { mode: 'amrap', durationSeconds: 900 });
+      useTemplateStore.getState().updateSetRepScheme(id, dayId, 0, { restSeconds: 30 });
+
+      const ex = useTemplateStore
+        .getState()
+        .getTemplate(id)!
+        .days.find((d) => d.id === dayId)!.exercises[0];
+      expect(ex.mode).toBe('amrap');
+      expect(ex.durationSeconds).toBe(900);
+    });
+
     it('every edit recomputes the overall totalFpDistribution via the real engine', () => {
       const { id, dayId } = setupCopy();
       useTemplateStore.getState().addExercise(id, dayId, 'barbell_bench_press');

@@ -22,8 +22,17 @@ import {
 
 import { ExercisePickerModal } from '@/components/workout/ExercisePickerModal';
 import { getExerciseById } from '@/data';
+import {
+  AMRAP_REPS_LABEL,
+  DEFAULT_AMRAP_SECONDS,
+  clampAmrapSeconds,
+  describeScheme,
+  formatAmrapWindow,
+  isAmrap,
+} from '@/lib/amrap';
 import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
+import type { ExerciseMode } from '@/types';
 import { haptics } from '@/utils/haptics';
 import {
   ArrowDown,
@@ -208,8 +217,11 @@ export default function TemplateEditScreen() {
                         {exercise?.name ?? 'Unknown Exercise'}
                       </Text>
                       <Text style={styles.exerciseDetails}>
-                        {templateEx.sets} sets × {templateEx.reps} ·{' '}
-                        {Math.round(templateEx.restSeconds / 60)}m rest
+                        {isAmrap(templateEx)
+                          ? describeScheme(templateEx)
+                          : `${describeScheme(templateEx)} · ${Math.round(
+                              templateEx.restSeconds / 60
+                            )}m rest`}
                       </Text>
                     </View>
                     <View style={styles.editHint}>
@@ -308,7 +320,13 @@ interface EditExerciseSheetProps {
     templateId: string,
     dayId: string,
     exerciseIndex: number,
-    patch: { sets?: number; reps?: string; restSeconds?: number }
+    patch: {
+      sets?: number;
+      reps?: string;
+      restSeconds?: number;
+      mode?: ExerciseMode;
+      durationSeconds?: number;
+    }
   ) => void;
 }
 
@@ -335,6 +353,8 @@ function EditExerciseSheet({
   const [setsDraft, setSetsDraft] = useState(3);
   const [repsDraft, setRepsDraft] = useState('');
   const [restDraft, setRestDraft] = useState(90);
+  const [modeDraft, setModeDraft] = useState<ExerciseMode>('sets');
+  const [durationDraft, setDurationDraft] = useState(DEFAULT_AMRAP_SECONDS);
 
   // Initialize the drafts from the targeted exercise. Pulling primitive deps
   // means stepper/typing edits (which stay local) never re-trigger this, while
@@ -343,26 +363,36 @@ function EditExerciseSheet({
   const editedSets = exercise?.sets;
   const editedReps = exercise?.reps;
   const editedRest = exercise?.restSeconds;
+  const editedMode = exercise?.mode;
+  const editedDuration = exercise?.durationSeconds;
   useEffect(() => {
     if (editedExerciseId !== undefined) {
       setSetsDraft(editedSets ?? 3);
       setRepsDraft(editedReps ?? '');
       setRestDraft(editedRest ?? 90);
+      setModeDraft(editedMode === 'amrap' ? 'amrap' : 'sets');
+      setDurationDraft(editedDuration ?? DEFAULT_AMRAP_SECONDS);
     }
-  }, [editedExerciseId, editedSets, editedReps, editedRest]);
+  }, [editedExerciseId, editedSets, editedReps, editedRest, editedMode, editedDuration]);
 
   if (!target || !day || !exercise) return null;
 
   const exerciseName = getExerciseById(exercise.exerciseId)?.name ?? 'Unknown Exercise';
 
+  const isAmrapDraft = modeDraft === 'amrap';
+
   const commit = () => {
     const safeSets = Math.max(1, Math.min(20, Number.parseInt(String(setsDraft), 10) || 1));
-    const safeReps = repsDraft.trim() || exercise.reps;
+    // AMRAP has no rep target by definition — the label is the value, so the
+    // scheme still reads correctly anywhere reps are rendered as text.
+    const safeReps = isAmrapDraft ? AMRAP_REPS_LABEL : repsDraft.trim() || exercise.reps;
     const safeRest = Math.max(0, Math.min(600, Number.parseInt(String(restDraft), 10) || 0));
     updateSetRepScheme(templateId, target.dayId, target.index, {
       sets: safeSets,
       reps: safeReps,
       restSeconds: safeRest,
+      mode: modeDraft,
+      ...(isAmrapDraft ? { durationSeconds: clampAmrapSeconds(durationDraft) } : {}),
     });
     haptics.success();
     onClose();
@@ -393,44 +423,108 @@ function EditExerciseSheet({
               <Text style={sheetStyles.swapButtonText}>Swap Exercise</Text>
             </Pressable>
 
-            {/* Sets stepper */}
+            {/* How the block is bounded: a set count, or a clock. */}
             <View style={sheetStyles.field}>
-              <Text style={sheetStyles.fieldLabel}>Sets</Text>
-              <View style={sheetStyles.stepperRow}>
-                <StepperButton label="-" onPress={() => setSetsDraft((s) => Math.max(1, s - 1))} />
-                <Text style={sheetStyles.fieldValue}>{setsDraft}</Text>
-                <StepperButton label="+" onPress={() => setSetsDraft((s) => Math.min(20, s + 1))} />
-              </View>
-            </View>
-
-            {/* Reps text */}
-            <View style={sheetStyles.field}>
-              <Text style={sheetStyles.fieldLabel}>Reps</Text>
-              <TextInput
-                style={sheetStyles.repsInput}
-                value={repsDraft}
-                onChangeText={setRepsDraft}
-                placeholder="8-12"
-                placeholderTextColor={colors.text.muted}
-                returnKeyType="done"
-              />
-            </View>
-
-            {/* Rest stepper */}
-            <View style={sheetStyles.field}>
-              <Text style={sheetStyles.fieldLabel}>Rest (seconds)</Text>
-              <View style={sheetStyles.stepperRow}>
-                <StepperButton
-                  label="-15"
-                  onPress={() => setRestDraft((r) => Math.max(0, r - 15))}
+              <Text style={sheetStyles.fieldLabel}>Scheme</Text>
+              <View style={sheetStyles.modeRow}>
+                <ModeOption
+                  label="Sets × Reps"
+                  selected={!isAmrapDraft}
+                  onPress={() => {
+                    haptics.selection();
+                    setModeDraft('sets');
+                    // Coming back from AMRAP the reps field still literally says
+                    // "AMRAP", which is not a rep target. Restore a usable one.
+                    setRepsDraft((r) => (r.trim().toUpperCase() === AMRAP_REPS_LABEL ? '8-12' : r));
+                  }}
                 />
-                <Text style={sheetStyles.fieldValue}>{restDraft}s</Text>
-                <StepperButton
-                  label="+15"
-                  onPress={() => setRestDraft((r) => Math.min(600, r + 15))}
+                <ModeOption
+                  label={AMRAP_REPS_LABEL}
+                  selected={isAmrapDraft}
+                  onPress={() => {
+                    haptics.selection();
+                    setModeDraft('amrap');
+                    // AMRAP runs continuously — a rest default carried over from
+                    // a set scheme would fight the clock.
+                    setRestDraft(0);
+                  }}
                 />
               </View>
+              <Text style={sheetStyles.fieldHint}>
+                {isAmrapDraft
+                  ? 'As many rounds as possible inside the window. Rounds are logged as you go — no fixed set count.'
+                  : 'A fixed number of sets at a rep target.'}
+              </Text>
             </View>
+
+            {isAmrapDraft ? (
+              /* Duration stepper — the AMRAP window */
+              <View style={sheetStyles.field}>
+                <Text style={sheetStyles.fieldLabel}>Time cap</Text>
+                <View style={sheetStyles.stepperRow}>
+                  <StepperButton
+                    label="-1m"
+                    onPress={() => setDurationDraft((d) => clampAmrapSeconds(d - 60))}
+                  />
+                  <Text style={sheetStyles.fieldValue}>{formatAmrapWindow(durationDraft)}</Text>
+                  <StepperButton
+                    label="+1m"
+                    onPress={() => setDurationDraft((d) => clampAmrapSeconds(d + 60))}
+                  />
+                </View>
+              </View>
+            ) : (
+              <>
+                {/* Sets stepper */}
+                <View style={sheetStyles.field}>
+                  <Text style={sheetStyles.fieldLabel}>Sets</Text>
+                  <View style={sheetStyles.stepperRow}>
+                    <StepperButton
+                      label="-"
+                      onPress={() => setSetsDraft((s) => Math.max(1, s - 1))}
+                    />
+                    <Text style={sheetStyles.fieldValue}>{setsDraft}</Text>
+                    <StepperButton
+                      label="+"
+                      onPress={() => setSetsDraft((s) => Math.min(20, s + 1))}
+                    />
+                  </View>
+                </View>
+
+                {/* Reps text */}
+                <View style={sheetStyles.field}>
+                  <Text style={sheetStyles.fieldLabel}>Reps</Text>
+                  <TextInput
+                    style={sheetStyles.repsInput}
+                    value={repsDraft}
+                    onChangeText={setRepsDraft}
+                    placeholder="8-12"
+                    placeholderTextColor={colors.text.muted}
+                    returnKeyType="done"
+                  />
+                </View>
+              </>
+            )}
+
+            {/* Rest stepper. Hidden for AMRAP: the session deliberately never
+                starts a rest timer inside a window, so offering a rest value
+                here would promise something the session won't do. */}
+            {!isAmrapDraft && (
+              <View style={sheetStyles.field}>
+                <Text style={sheetStyles.fieldLabel}>Rest (seconds)</Text>
+                <View style={sheetStyles.stepperRow}>
+                  <StepperButton
+                    label="-15"
+                    onPress={() => setRestDraft((r) => Math.max(0, r - 15))}
+                  />
+                  <Text style={sheetStyles.fieldValue}>{restDraft}s</Text>
+                  <StepperButton
+                    label="+15"
+                    onPress={() => setRestDraft((r) => Math.min(600, r + 15))}
+                  />
+                </View>
+              </View>
+            )}
 
             <View style={sheetStyles.actions}>
               <Pressable
@@ -494,6 +588,29 @@ function ControlButton({
       accessibilityLabel={label}
     >
       <Icon size={16} color={color} />
+    </Pressable>
+  );
+}
+
+function ModeOption({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[sheetStyles.modeOption, selected && sheetStyles.modeOptionActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+    >
+      <Text style={[sheetStyles.modeOptionText, selected && sheetStyles.modeOptionTextActive]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -789,6 +906,36 @@ const sheetStyles = StyleSheet.create({
     ...textStyles.label,
     color: colors.text.muted,
     marginBottom: spacing[2],
+  },
+  fieldHint: {
+    ...textStyles.caption,
+    color: colors.text.muted,
+    marginTop: spacing[2],
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  modeOption: {
+    flex: 1,
+    backgroundColor: colors.background.tertiary,
+    borderRadius: radius.md,
+    paddingVertical: spacing[3],
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  modeOptionActive: {
+    backgroundColor: roles.accentSubtle,
+    borderColor: roles.accent,
+  },
+  modeOptionText: {
+    ...textStyles.button,
+    color: colors.text.secondary,
+  },
+  modeOptionTextActive: {
+    color: roles.accentText,
+    fontWeight: '600',
   },
   stepperRow: {
     flexDirection: 'row',

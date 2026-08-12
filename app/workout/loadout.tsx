@@ -10,6 +10,7 @@ import {
   getExerciseById,
   getTemplateById,
 } from '@/data';
+import { amrapDuration, describeScheme, isAmrap } from '@/lib/amrap';
 import { useTemplateStore, useWorkoutStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, SessionIntent } from '@/types';
@@ -73,11 +74,15 @@ const INTENT_OPTIONS: IntentOption[] = [
 function buildExercises(day: TemplateDay): Exercise[] {
   return day.exercises.map((templateEx, index) => {
     const def = getExerciseById(templateEx.exerciseId);
+    const amrap = isAmrap(templateEx);
+    // An AMRAP block has no planned set count — the clock ends it. Seed one
+    // open row; the session appends the next as each round is logged.
+    const setCount = amrap ? 1 : templateEx.sets;
     return {
       id: `${templateEx.exerciseId}-${index}`,
       name: def?.name ?? 'Unknown Exercise',
       muscleGroups: def?.muscleGroups ?? [],
-      sets: Array.from({ length: templateEx.sets }, () => ({
+      sets: Array.from({ length: setCount }, () => ({
         reps: null,
         weight: null,
         logged: false,
@@ -86,6 +91,8 @@ function buildExercises(day: TemplateDay): Exercise[] {
       })),
       restSeconds: templateEx.restSeconds,
       completed: false,
+      mode: amrap ? ('amrap' as const) : ('sets' as const),
+      ...(amrap ? { durationSeconds: amrapDuration(templateEx) } : {}),
     };
   });
 }
@@ -174,11 +181,13 @@ export default function WorkoutLoadoutScreen() {
                 </View>
                 <View style={styles.exerciseInfo}>
                   <Text style={styles.exerciseName}>{def?.name ?? 'Unknown'}</Text>
-                  <Text style={styles.exerciseDetails}>
-                    {templateEx.sets} sets × {templateEx.reps} reps
-                  </Text>
+                  <Text style={styles.exerciseDetails}>{describeScheme(templateEx)}</Text>
                 </View>
-                <Text style={styles.restTime}>{Math.floor(templateEx.restSeconds / 60)}m</Text>
+                {/* Right column is planned rest. An AMRAP block has none by
+                    definition — the window is already in the detail line. */}
+                <Text style={styles.restTime}>
+                  {isAmrap(templateEx) ? 'no rest' : `${Math.floor(templateEx.restSeconds / 60)}m`}
+                </Text>
               </View>
             );
           })}

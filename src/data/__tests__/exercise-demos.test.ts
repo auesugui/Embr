@@ -12,8 +12,17 @@ import { EXERCISE_DATABASE } from '../exercises';
 
 const EXERCISE_IDS = new Set(EXERCISE_DATABASE.map((e) => e.id));
 
-/** Refused by the image model's content filter across three prompt rewrites. */
-const KNOWN_MISSING = ['cable_crunch'];
+/**
+ * Exercises that intentionally ship without a diagram.
+ *
+ * - `cable_crunch` — refused by the image model's content filter across three
+ *   prompt rewrites.
+ * - `bodyweight_squat` — added with AMRAP support; no rendered diagram yet.
+ *   Reusing `back_squat.jpg` would show a loaded barbell for an unloaded
+ *   movement, which is worse than no picture. `ExerciseDemo` renders nothing
+ *   when a demo is absent, so this degrades cleanly.
+ */
+const KNOWN_MISSING = ['cable_crunch', 'bodyweight_squat'];
 
 describe('exercise demos', () => {
   it('has a file on disk for every exercise it claims to cover', () => {
@@ -36,7 +45,7 @@ describe('exercise demos', () => {
     expect(orphans).toEqual([]);
   });
 
-  it('covers every exercise except the known-missing one', () => {
+  it('covers every exercise except the known-missing ones', () => {
     const missing = EXERCISE_DATABASE.filter((e) => !hasExerciseDemo(e.id)).map((e) => e.id);
     expect(missing.sort()).toEqual([...KNOWN_MISSING].sort());
   });

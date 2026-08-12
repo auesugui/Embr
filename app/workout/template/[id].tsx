@@ -7,6 +7,7 @@ import { useLayoutEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { type WorkoutTemplateDefinition, getExerciseById, getTemplateById } from '@/data';
+import { describeScheme, isAmrap } from '@/lib/amrap';
 import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
@@ -167,11 +168,13 @@ export default function TemplateDetailScreen() {
                   </View>
                   <View style={styles.exerciseInfo}>
                     <Text style={styles.exerciseName}>{exercise?.name ?? 'Unknown'}</Text>
-                    <Text style={styles.exerciseDetails}>
-                      {templateEx.sets} sets × {templateEx.reps} reps
-                    </Text>
+                    <Text style={styles.exerciseDetails}>{describeScheme(templateEx)}</Text>
                   </View>
-                  <Text style={styles.restTime}>{Math.floor(templateEx.restSeconds / 60)}m</Text>
+                  <Text style={styles.restTime}>
+                    {isAmrap(templateEx)
+                      ? 'no rest'
+                      : `${Math.floor(templateEx.restSeconds / 60)}m`}
+                  </Text>
                 </View>
               );
             })}
