@@ -9,6 +9,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Copy, Pencil } from '@/components/icons';
 import { type WorkoutTemplateDefinition, getExerciseById, getTemplateById } from '@/data';
 import { describeScheme, isTimed, resolveBlock } from '@/lib/blocks';
+import { estimateDayMinutes, estimateTemplateMinutes } from '@/lib/duration';
 import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
@@ -106,7 +107,7 @@ export default function TemplateDetailScreen() {
 
         <View style={styles.templateMeta}>
           <MetaChip label={`${template.daysPerWeek} days/week`} />
-          <MetaChip label={`${template.estimatedDuration} min`} />
+          <MetaChip label={`${estimateTemplateMinutes(template)} min`} />
           <MetaChip label={template.difficulty} />
         </View>
 
@@ -196,7 +197,7 @@ export default function TemplateDetailScreen() {
         <Text style={styles.startHint}>
           {isEmptyDay
             ? 'Add an exercise before starting this workout.'
-            : `${selectedDay?.exercises.length ?? 0} exercises • ~${template.estimatedDuration} min`}
+            : `${selectedDay?.exercises.length ?? 0} exercises • ~${selectedDay ? estimateDayMinutes(selectedDay) : 0} min`}
         </Text>
       </View>
     </ScrollView>
