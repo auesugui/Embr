@@ -4,8 +4,9 @@
 
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { AvatarTooLargeError, pickAvatarFile, processAvatar } from '@/lib/avatar';
 import {
   BackupParseError,
   backupFilename,
@@ -23,6 +24,7 @@ import { ChevronRight, Download, Upload, User } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const profile = usePlayerStore((state) => state.profile);
+  const updateProfile = usePlayerStore((state) => state.updateProfile);
   const achievements = usePlayerStore((state) => state.achievements);
   const haptics = useSettingsStore((state) => state.haptics);
   const units = useSettingsStore((state) => state.units);
@@ -32,6 +34,48 @@ export default function ProfileScreen() {
   // Single in-flight flag for both actions — they're mutually exclusive and a
   // double-tap mid-restore would race two writes into the same storage keys.
   const [busy, setBusy] = useState(false);
+
+  // Photo picking is DOM work. Embr ships as a PWA (CLAUDE.md), so the web path
+  // is the one that runs; on native this says so rather than failing silently or
+  // pulling in a picker dependency for a target that does not ship.
+  const handlePickAvatar = async () => {
+    if (Platform.OS !== 'web') {
+      showAlert({
+        title: 'Not available here',
+        message: 'Setting a photo works in the Embr web app.',
+        buttons: [{ text: 'OK' }],
+      });
+      return;
+    }
+
+    try {
+      const file = await pickAvatarFile();
+      if (!file) return;
+
+      const avatar = await processAvatar(file);
+      updateProfile({ avatar });
+    } catch (error) {
+      showAlert({
+        title: 'Could not use that photo',
+        message:
+          error instanceof AvatarTooLargeError
+            ? error.message
+            : 'That file could not be read as an image.',
+        buttons: [{ text: 'OK' }],
+      });
+    }
+  };
+
+  const handleRemoveAvatar = () => {
+    showAlert({
+      title: 'Remove photo?',
+      message: 'Your profile goes back to the default mark.',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => updateProfile({ avatar: null }) },
+      ],
+    });
+  };
 
   // Persist first, then restart. The write is fire-and-forget inside the store,
   // so the reload is deferred a tick — reloading synchronously can beat the
@@ -102,14 +146,27 @@ export default function ProfileScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Profile Header */}
       <View style={styles.profileHeader}>
-        {/* RESERVED (ADR-0013): this circle is where the care-companion goes if
-            it ever gets built. It's deliberately still a placeholder — a Lucide
-            glyph rather than drawn art — so nothing has to be undone later. The
-            80px emoji weightlifter that used to live here was the single
-            loudest "childlike" signal in the app. */}
-        <View style={styles.avatarPlaceholder}>
-          <User size={34} color={roles.textMuted} strokeWidth={1.5} />
-        </View>
+        {/* This circle was RESERVED for the care-companion (ADR-0013). It now
+            holds your photo instead, which supersedes that reservation for the
+            profile only — the home hero zone is still held. Empty, it keeps the
+            same Lucide mark it had, so nothing regressed for anyone who never
+            sets one. */}
+        <Pressable
+          onPress={handlePickAvatar}
+          onLongPress={profile.avatar ? handleRemoveAvatar : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={profile.avatar ? 'Change profile photo' : 'Add a profile photo'}
+          style={styles.avatarPlaceholder}
+        >
+          {profile.avatar ? (
+            <Image source={{ uri: profile.avatar }} style={styles.avatarImage} />
+          ) : (
+            <User size={34} color={roles.textMuted} strokeWidth={1.5} />
+          )}
+        </Pressable>
+        <Text style={styles.avatarHint}>
+          {profile.avatar ? 'Tap to change · hold to remove' : 'Tap to add a photo'}
+        </Text>
         <Text style={styles.profileName}>{profile.name}</Text>
         <Text style={styles.joinDate}>
           Training since {new Date(profile.createdAt).toLocaleDateString()}
@@ -293,7 +350,19 @@ const styles = StyleSheet.create({
     borderColor: roles.border,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing[3],
+    marginBottom: spacing[2],
+    // Clips the photo to the circle rather than letting it square off the card.
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: radius.full,
+  },
+  avatarHint: {
+    ...textStyles.caption,
+    color: roles.textMuted,
+    marginBottom: spacing[2],
   },
   profileName: {
     ...textStyles.h3,
