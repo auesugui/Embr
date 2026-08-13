@@ -7,7 +7,7 @@
 // templates are never editable here — the editor only loads `isCustom` copies.
 
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { type ComponentType, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 
+import { ArrowDown, ArrowUp, ChevronRight, type IconProps, RefreshCw, X } from '@/components/icons';
 import { ExercisePickerModal } from '@/components/workout/ExercisePickerModal';
 import { getExerciseById } from '@/data';
 import {
@@ -44,14 +45,6 @@ import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { BlockMode } from '@/types';
 import { haptics } from '@/utils/haptics';
-import {
-  ArrowDown,
-  ArrowUp,
-  ChevronRight,
-  type LucideIcon,
-  RefreshCw,
-  X,
-} from 'lucide-react-native';
 
 interface EditTarget {
   dayId: string;
@@ -712,7 +705,7 @@ function ControlButton({
   disabled,
   tone = 'default',
 }: {
-  icon: LucideIcon;
+  icon: ComponentType<IconProps>;
   /** Screen-reader label. The button itself is icon-only. */
   label: string;
   onPress: () => void;

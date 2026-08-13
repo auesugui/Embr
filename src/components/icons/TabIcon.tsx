@@ -1,29 +1,21 @@
 // =============================================================================
 // Embr Tab Bar Icons
 // =============================================================================
-// Thin wrapper over Lucide (ADR-0013).
+// Thin wrapper over the app's own icon set (src/components/icons).
 //
-// This file used to hand-draw four 24x24 Feather-convention paths in
-// react-native-svg. That was the right call when four icons were all the app
-// needed — but everywhere *outside* the tab bar the app was using Unicode glyphs
-// (✎ ↻ ⧉ ✕ ▴ ▾ › ●) as icons, and that inconsistency read "amateur" faster than
-// anything else in the UI. Forty hand-drawn icons is a month of work for a
-// personal app; Lucide is Feather's successor and matches the four that were
-// already here.
+// History worth keeping: this file originally hand-drew four Feather-convention
+// paths, then moved to Lucide (ADR-0013) because everywhere *outside* the tab
+// bar was still using Unicode glyphs as icons and consistency mattered more
+// than ownership. That was the right interim call. The set is now drawn and
+// owned, so the wrapper points at it instead.
 //
-// lucide-react-native renders through react-native-svg, which was already a
-// dependency (pet avatar, radar chart) and behaves identically on web, iOS, and
-// Android. The web-invisibility problem that ruled out expo-symbols does not
-// apply.
-//
-// A custom, owned icon set is still the eventual goal — see ADR-0013's queued
-// passes. This is the interim that makes the app consistent today.
+// The `den` and `tower` entries are gone with the game layer (ADR-0014). They
+// survived here as dead map keys long after the routes were deleted.
 
-import { Castle, ClipboardList, Heart, User } from 'lucide-react-native';
-
+import { ClipboardList, User } from '@/components/icons';
 import { roles } from '@/theme';
 
-export type TabIconName = 'quest' | 'den' | 'tower' | 'profile';
+export type TabIconName = 'quest' | 'profile';
 
 interface TabIconProps {
   name: TabIconName;
@@ -40,12 +32,8 @@ interface TabIconProps {
   size?: number;
 }
 
-const STROKE_WIDTH = 2;
-
 const ICONS = {
   quest: ClipboardList,
-  den: Heart,
-  tower: Castle,
   profile: User,
 } as const;
 
@@ -57,7 +45,5 @@ export function TabIcon({ name, focused, size = 24 }: TabIconProps) {
   const Icon = ICONS[name];
   if (!Icon) return null;
 
-  return (
-    <Icon size={size} color={focused ? roles.accent : roles.textMuted} strokeWidth={STROKE_WIDTH} />
-  );
+  return <Icon size={size} color={focused ? roles.accent : roles.textMuted} />;
 }

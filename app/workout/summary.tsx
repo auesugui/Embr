@@ -13,6 +13,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RevealRow } from '@/components/celebration';
+import { Flame } from '@/components/icons';
 import {
   blockReps,
   completedRounds,
@@ -30,7 +31,6 @@ import {
 } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
-import { Flame } from 'lucide-react-native';
 
 // Streak milestones celebrated by the docs' streak system (fp-earning.md).
 const STREAK_MILESTONES = [3, 7, 14, 30];
