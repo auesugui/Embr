@@ -222,12 +222,18 @@ export default function WorkoutSessionScreen() {
   // hint AND mirrors what the next quick-tap will log. Subscribing (rather
   // than calling getLastWeight in render) means a modal save instantly
   // re-renders the chips with the new weight.
+  //
+  // `currentExercise` is undefined for one render whenever the store empties
+  // underneath a mounted screen — which is exactly what ending a session does.
+  // Optional-chaining here is load-bearing: hooks can't sit below the
+  // `!active || !currentExercise` guard, so an unguarded `.id` throws inside
+  // the selector and takes the whole tree down before the guard can render.
   const currentWeight = useWeightHistoryStore(
-    (state) => state.history[currentExercise.id]?.lastWeight ?? null
+    (state) => (currentExercise ? (state.history[currentExercise.id]?.lastWeight ?? null) : null)
   );
   // Pre-#42 history has no unit recorded — it was all logged in lb.
   const currentWeightUnit = useWeightHistoryStore(
-    (state) => state.history[currentExercise.id]?.lastUnit ?? 'lb'
+    (state) => (currentExercise ? (state.history[currentExercise.id]?.lastUnit ?? 'lb') : 'lb')
   );
   const units = useSettingsStore((state) => state.units);
   const hasWeight = currentWeight !== null && currentWeight > 0;

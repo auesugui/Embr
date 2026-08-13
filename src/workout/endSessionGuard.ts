@@ -62,11 +62,15 @@ export const shouldConfirmEndSession = (completedSets: number): boolean => {
  * not concatenation, per biome's useTemplate rule.
  */
 export const buildEndSessionMessage = (completedSets: number): string => {
-  const noun = completedSets === 1 ? 'set' : 'sets';
+  const single = completedSets === 1;
+  const noun = single ? 'set' : 'sets';
+  // The verb and the object agree with the noun too. The singular case used to
+  // read "1 logged set that haven't been saved ... discard them".
+  const verb = single ? "hasn't" : "haven't";
+  const object = single ? 'it' : 'them';
   // "Claimed" is game-layer vocabulary; the tracker build says "saved" for the
   // same act (finishing the workout and writing it to history).
-  const verb = 'been saved';
-  return `You have ${completedSets} logged ${noun} that haven't ${verb}. Ending now will discard them.`;
+  return `You have ${completedSets} logged ${noun} that ${verb} been saved. Ending now will discard ${object}.`;
 };
 
 /**
