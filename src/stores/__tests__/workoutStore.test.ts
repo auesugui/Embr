@@ -7,6 +7,9 @@ import type { Exercise } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { useWeightHistoryStore } from '../weightHistoryStore';
 import {
+  blockElapsed,
+  blockInterval,
+  blockRemaining,
   selectExerciseProgress,
   selectIsRestTimerComplete,
   selectSessionDuration,
@@ -770,27 +773,29 @@ describe('Workout Store', () => {
       });
     });
 
-    describe('the window clock', () => {
+    describe('the block clock', () => {
       afterEach(() => {
         jest.useRealTimers();
       });
 
+      const timer = () => useWorkoutStore.getState().blockTimer;
+
       it('starts against the wall clock, not a tick count', () => {
         jest.useFakeTimers().setSystemTime(1_000_000);
-        const { startSession, startAmrapTimer } = useWorkoutStore.getState();
+        const { startSession, startBlockTimer } = useWorkoutStore.getState();
         startSession('t', makeAmrapExercises());
 
-        startAmrapTimer(0, 1200);
+        startBlockTimer('b1', { mode: 'amrap_rounds', duration: 1200 });
 
-        const timer = useWorkoutStore.getState().amrapTimer;
-        expect(timer).toMatchObject({
-          exerciseIndex: 0,
+        expect(timer()).toMatchObject({
+          blockKey: 'b1',
+          mode: 'amrap_rounds',
           duration: 1200,
-          remaining: 1200,
           running: true,
           paused: false,
-          endsAt: 1_000_000 + 1200 * 1000,
+          runStartedAt: 1_000_000,
         });
+        expect(blockRemaining(timer())).toBe(1200);
       });
 
       it('does not lose time while the app is not ticking', () => {
@@ -798,63 +803,344 @@ describe('Workout Store', () => {
         // tick delivered (backgrounded tab), and the window is five minutes
         // shorter when we come back.
         jest.useFakeTimers().setSystemTime(1_000_000);
-        const { startSession, startAmrapTimer, tickAmrapTimer } = useWorkoutStore.getState();
+        const { startSession, startBlockTimer, tickBlockTimer } = useWorkoutStore.getState();
         startSession('t', makeAmrapExercises());
-        startAmrapTimer(0, 1200);
+        startBlockTimer('b1', { mode: 'amrap_rounds', duration: 1200 });
 
         jest.setSystemTime(1_000_000 + 300 * 1000);
-        tickAmrapTimer();
+        tickBlockTimer();
 
-        expect(useWorkoutStore.getState().amrapTimer.remaining).toBe(900);
+        expect(blockRemaining(timer())).toBe(900);
       });
 
       it('stops the clock when the window closes', () => {
         jest.useFakeTimers().setSystemTime(1_000_000);
-        const { startSession, startAmrapTimer, tickAmrapTimer } = useWorkoutStore.getState();
+        const { startSession, startBlockTimer, tickBlockTimer } = useWorkoutStore.getState();
         startSession('t', makeAmrapExercises());
-        startAmrapTimer(0, 60);
+        startBlockTimer('b1', { mode: 'amrap_reps', duration: 60 });
 
         jest.setSystemTime(1_000_000 + 61 * 1000);
-        tickAmrapTimer();
+        tickBlockTimer();
 
-        const timer = useWorkoutStore.getState().amrapTimer;
-        expect(timer.remaining).toBe(0);
-        expect(timer.running).toBe(false);
+        expect(blockRemaining(timer())).toBe(0);
+        expect(timer().running).toBe(false);
         // Kept so the session can still say which block the window belonged to.
-        expect(timer.exerciseIndex).toBe(0);
+        expect(timer().blockKey).toBe('b1');
       });
 
-      it('freezes remaining time on pause and re-anchors on resume', () => {
+      it('freezes elapsed time on pause and re-anchors on resume', () => {
         jest.useFakeTimers().setSystemTime(1_000_000);
-        const { startSession, startAmrapTimer, pauseAmrapTimer, resumeAmrapTimer } =
+        const { startSession, startBlockTimer, pauseBlockTimer, resumeBlockTimer } =
           useWorkoutStore.getState();
         startSession('t', makeAmrapExercises());
-        startAmrapTimer(0, 600);
+        startBlockTimer('b1', { mode: 'amrap_rounds', duration: 600 });
 
         jest.setSystemTime(1_000_000 + 100 * 1000);
-        pauseAmrapTimer();
+        pauseBlockTimer();
 
-        let timer = useWorkoutStore.getState().amrapTimer;
-        expect(timer).toMatchObject({ remaining: 500, running: false, paused: true, endsAt: null });
+        expect(timer()).toMatchObject({ running: false, paused: true, runStartedAt: null });
+        expect(blockRemaining(timer())).toBe(500);
 
         // Two minutes of paused time must NOT come out of the window.
         jest.setSystemTime(1_000_000 + 220 * 1000);
-        resumeAmrapTimer();
+        resumeBlockTimer();
 
-        timer = useWorkoutStore.getState().amrapTimer;
-        expect(timer.remaining).toBe(500);
-        expect(timer.running).toBe(true);
-        expect(timer.endsAt).toBe(1_000_000 + 220 * 1000 + 500 * 1000);
+        expect(blockRemaining(timer())).toBe(500);
+        expect(timer().running).toBe(true);
+      });
+
+      it('counts up for a for-time block and never runs out', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startSession, startBlockTimer, tickBlockTimer } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+        // Uncapped: duration 0 must still start the clock for a count-up block.
+        startBlockTimer('b1', { mode: 'for_time', duration: 0 });
+
+        expect(timer().running).toBe(true);
+
+        jest.setSystemTime(1_000_000 + 400 * 1000);
+        tickBlockTimer();
+
+        expect(Math.round(blockElapsed(timer()))).toBe(400);
+        expect(timer().running).toBe(true);
+      });
+
+      it('records the finishing time of a for-time block and freezes it', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startSession, startBlockTimer, finishBlockTimer } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+        startBlockTimer('b1', { mode: 'for_time', duration: 0 });
+
+        jest.setSystemTime(1_000_000 + 372 * 1000);
+        finishBlockTimer();
+
+        expect(useWorkoutStore.getState().blockTimes.b1).toBe(372);
+
+        // The recorded time must not keep climbing while you look at it.
+        jest.setSystemTime(1_000_000 + 900 * 1000);
+        expect(blockElapsed(timer())).toBe(372);
+      });
+
+      it('derives the EMOM interval from elapsed time rather than counting it', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startSession, startBlockTimer } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+        startBlockTimer('b1', { mode: 'emom', duration: 12 * 60, intervalSeconds: 60 });
+
+        // Three and a half minutes in with no ticks delivered: interval 3, half left.
+        jest.setSystemTime(1_000_000 + 210 * 1000);
+
+        const interval = blockInterval(timer());
+        expect(interval.index).toBe(3);
+        expect(interval.remaining).toBe(30);
       });
 
       it('clears with the session', () => {
-        const { startSession, startAmrapTimer, endSession } = useWorkoutStore.getState();
+        const { startSession, startBlockTimer, endSession } = useWorkoutStore.getState();
         startSession('t', makeAmrapExercises());
-        startAmrapTimer(0, 600);
+        startBlockTimer('b1', { mode: 'amrap_rounds', duration: 600 });
 
         endSession();
 
-        expect(useWorkoutStore.getState().amrapTimer.exerciseIndex).toBeNull();
+        expect(timer().blockKey).toBeNull();
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // Rounds across a multi-movement block
+    // -------------------------------------------------------------------------
+
+    describe('openRound', () => {
+      const makeCircuit = (): Exercise[] =>
+        ['pull_up', 'push_up', 'bodyweight_squat'].map((id) => ({
+          id: `${id}-0`,
+          name: id,
+          muscleGroups: [],
+          sets: [{ reps: null, weight: null, logged: false, isPR: false, isRepPR: false }],
+          restSeconds: 0,
+          completed: false,
+          blockId: 'b1',
+        }));
+
+      it('grows every member together so a round stays aligned', () => {
+        // Round index is what pairs the movements. If one member could run
+        // ahead, round 3 of the squats would sit beside round 2 of the pull-ups.
+        const { startSession, logSet, openRound } = useWorkoutStore.getState();
+        startSession('t', makeCircuit(), 'normal', [
+          { id: 'b1', mode: 'amrap_rounds', durationSeconds: 1200 },
+        ]);
+
+        logSet(0, 0, 5);
+        logSet(1, 0, 10);
+        logSet(2, 0, 15);
+        openRound([0, 1, 2]);
+
+        const { exercises } = useWorkoutStore.getState();
+        expect(exercises.map((e) => e.sets.length)).toEqual([2, 2, 2]);
+        expect(exercises.every((e) => e.sets[1].logged === false)).toBe(true);
+      });
+
+      it('is a no-op for a member that still has an open row', () => {
+        // Otherwise every log would stack another blank row on the movements
+        // that had not been logged yet.
+        const { startSession, logSet, openRound } = useWorkoutStore.getState();
+        startSession('t', makeCircuit(), 'normal', [
+          { id: 'b1', mode: 'amrap_rounds', durationSeconds: 1200 },
+        ]);
+
+        logSet(0, 0, 5);
+        openRound([0, 1, 2]);
+
+        expect(useWorkoutStore.getState().exercises.map((e) => e.sets.length)).toEqual([2, 1, 1]);
+      });
+
+      it('ignores out-of-range indexes', () => {
+        const { startSession, openRound } = useWorkoutStore.getState();
+        startSession('t', makeCircuit());
+
+        openRound([0, 99]);
+
+        expect(useWorkoutStore.getState().exercises).toHaveLength(3);
+      });
+
+      it('converges back to an aligned circuit when called mid-round', () => {
+        // Called early it grows only the members that are full, which leaves the
+        // circuit ragged for a moment. It must not stay that way: a later call,
+        // once the round has closed, brings the others level rather than pushing
+        // the leader further ahead.
+        const { startSession, logSet, openRound } = useWorkoutStore.getState();
+        startSession('t', makeCircuit(), 'normal', [
+          { id: 'b1', mode: 'amrap_rounds', durationSeconds: 1200 },
+        ]);
+
+        logSet(0, 0, 5);
+        openRound([0, 1, 2]);
+        logSet(1, 0, 10);
+        logSet(2, 0, 15);
+        openRound([0, 1, 2]);
+
+        // Pull-ups must not end up a round ahead of the other two.
+        expect(useWorkoutStore.getState().exercises.map((e) => e.sets.length)).toEqual([2, 2, 2]);
+      });
+    });
+
+    describe('logRound', () => {
+      const makeCircuit = (): Exercise[] =>
+        ['pull_up', 'push_up', 'bodyweight_squat'].map((id) => ({
+          id: `${id}-0`,
+          name: id,
+          muscleGroups: [],
+          sets: [{ reps: null, weight: null, logged: false, isPR: false, isRepPR: false }],
+          restSeconds: 0,
+          completed: false,
+          blockId: 'b1',
+        }));
+
+      const start = () => {
+        const { startSession } = useWorkoutStore.getState();
+        startSession('t', makeCircuit(), 'normal', [
+          { id: 'b1', mode: 'amrap_rounds', durationSeconds: 1200 },
+        ]);
+      };
+
+      it('banks every movement and opens the next round in one go', () => {
+        // The whole point: a circuit is worked as a unit, so it logs as one.
+        start();
+        useWorkoutStore.getState().logRound([
+          { exerciseIndex: 0, setIndex: 0, reps: 5 },
+          { exerciseIndex: 1, setIndex: 0, reps: 10 },
+          { exerciseIndex: 2, setIndex: 0, reps: 15 },
+        ]);
+
+        const { exercises } = useWorkoutStore.getState();
+        expect(exercises.map((e) => e.sets[0].reps)).toEqual([5, 10, 15]);
+        expect(exercises.map((e) => e.sets.length)).toEqual([2, 2, 2]);
+        expect(exercises.every((e) => e.sets[1].logged === false)).toBe(true);
+      });
+
+      it('counts as a completed round', () => {
+        start();
+        useWorkoutStore.getState().logRound([
+          { exerciseIndex: 0, setIndex: 0, reps: 5 },
+          { exerciseIndex: 1, setIndex: 0, reps: 10 },
+          { exerciseIndex: 2, setIndex: 0, reps: 15 },
+        ]);
+
+        expect(useWorkoutStore.getState().getTotalReps()).toBe(30);
+      });
+
+      it('does not open a round for a movement left unlogged', () => {
+        // A partial round stays partial — the clock cut it short and that is
+        // the fact being recorded.
+        start();
+        useWorkoutStore.getState().logRound([{ exerciseIndex: 0, setIndex: 0, reps: 5 }]);
+
+        expect(useWorkoutStore.getState().exercises.map((e) => e.sets.length)).toEqual([2, 1, 1]);
+      });
+
+      it('opens the next round for a member banked earlier in a partial round', () => {
+        // Regression: finishing a partial round grew only the movements in
+        // `rows`, so the one logged first stayed a round behind and vanished
+        // from the next round entirely.
+        start();
+        useWorkoutStore
+          .getState()
+          .logRound([{ exerciseIndex: 0, setIndex: 0, reps: 5 }], [0, 1, 2]);
+        useWorkoutStore.getState().logRound(
+          [
+            { exerciseIndex: 1, setIndex: 0, reps: 10 },
+            { exerciseIndex: 2, setIndex: 0, reps: 15 },
+          ],
+          [0, 1, 2]
+        );
+
+        expect(useWorkoutStore.getState().exercises.map((e) => e.sets.length)).toEqual([2, 2, 2]);
+      });
+
+      it('does not clobber a movement already logged in this round', () => {
+        start();
+        useWorkoutStore
+          .getState()
+          .logRound([{ exerciseIndex: 0, setIndex: 0, reps: 3 }], [0, 1, 2]);
+        useWorkoutStore.getState().logRound(
+          [
+            { exerciseIndex: 1, setIndex: 0, reps: 10 },
+            { exerciseIndex: 2, setIndex: 0, reps: 15 },
+          ],
+          [0, 1, 2]
+        );
+
+        // The scaled 3 the user actually logged must survive.
+        expect(useWorkoutStore.getState().exercises[0].sets[0].reps).toBe(3);
+      });
+
+      it('stops at the planned round count when the mode has one', () => {
+        // Regression: a 2-round for-time offered a Round 3, because the round
+        // always grew regardless of mode. `for_time` and `emom` are bounded by
+        // their plan, not by a clock running out.
+        start();
+        useWorkoutStore.getState().logRound(
+          [
+            { exerciseIndex: 0, setIndex: 0, reps: 5 },
+            { exerciseIndex: 1, setIndex: 0, reps: 10 },
+            { exerciseIndex: 2, setIndex: 0, reps: 15 },
+          ],
+          [0, 1, 2],
+          false
+        );
+
+        expect(useWorkoutStore.getState().exercises.map((e) => e.sets.length)).toEqual([1, 1, 1]);
+      });
+
+      it('ignores out-of-range rows rather than throwing', () => {
+        start();
+        useWorkoutStore.getState().logRound([{ exerciseIndex: 99, setIndex: 0, reps: 5 }]);
+
+        expect(useWorkoutStore.getState().getTotalReps()).toBe(0);
+      });
+
+      it('is a no-op for an empty round', () => {
+        start();
+        useWorkoutStore.getState().logRound([]);
+
+        expect(useWorkoutStore.getState().exercises.map((e) => e.sets.length)).toEqual([1, 1, 1]);
+      });
+
+      it('records weight to history so the next round auto-fills', () => {
+        start();
+        useWorkoutStore
+          .getState()
+          .logRound([{ exerciseIndex: 0, setIndex: 0, reps: 5, weight: 45 }]);
+
+        expect(useWeightHistoryStore.getState().saveWeight).toHaveBeenCalledWith(
+          'pull_up-0',
+          45,
+          'lb'
+        );
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // Blocks on the session
+    // -------------------------------------------------------------------------
+
+    describe('session blocks', () => {
+      it('carries the block list onto the session', () => {
+        const { startSession } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises(), 'normal', [
+          { id: 'b1', mode: 'emom', rounds: 12, intervalSeconds: 60 },
+        ]);
+
+        expect(useWorkoutStore.getState().blocks).toEqual([
+          { id: 'b1', mode: 'emom', rounds: 12, intervalSeconds: 60 },
+        ]);
+      });
+
+      it('defaults to no blocks, which is every pre-block session', () => {
+        const { startSession } = useWorkoutStore.getState();
+        startSession('t', makeAmrapExercises());
+
+        expect(useWorkoutStore.getState().blocks).toEqual([]);
       });
     });
   });

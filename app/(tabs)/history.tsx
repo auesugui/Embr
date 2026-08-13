@@ -13,11 +13,11 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { isAmrap } from '@/lib/amrap';
+import { describeBlock, isTimed, resolveBlock } from '@/lib/blocks';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
-import type { Exercise, LoggedSet, WorkoutLog } from '@/types';
+import type { Exercise, LoggedSet, WorkoutBlock, WorkoutLog } from '@/types';
 import { ChevronDown, ChevronUp, ClipboardList } from 'lucide-react-native';
 
 import { RevealRow } from '@/components/celebration';
@@ -146,9 +146,22 @@ function WorkoutRow({
       {expanded && (
         <View style={styles.breakdown}>
           <Text style={styles.breakdownTitle}>Exercises</Text>
-          {log.exercises.map((exercise) => (
-            <ExerciseBreakdown key={exercise.id} exercise={exercise} units={units} />
-          ))}
+          {log.exercises.map((exercise, index) => {
+            // The clock is stated once, above the first member, matching the
+            // loadout and the editor. Repeating it on each movement would say
+            // the same thing three times for one block of work.
+            const block = resolveBlock(exercise, log.blocks);
+            const startsBlock =
+              exercise.blockId !== undefined &&
+              log.exercises.findIndex((e) => e.blockId === exercise.blockId) === index;
+
+            return (
+              <View key={exercise.id}>
+                {startsBlock && <Text style={styles.blockHeading}>{describeBlock(block)}</Text>}
+                <ExerciseBreakdown exercise={exercise} blocks={log.blocks} units={units} />
+              </View>
+            );
+          })}
         </View>
       )}
     </View>
@@ -157,14 +170,17 @@ function WorkoutRow({
 
 function ExerciseBreakdown({
   exercise,
+  blocks,
   units,
 }: {
   exercise: Exercise;
+  /** Absent on every log written before blocks existed — those were all sets. */
+  blocks: WorkoutBlock[] | undefined;
   units: 'lb' | 'kg';
 }) {
   const loggedSets = exercise.sets.filter((s) => s.logged);
-  // AMRAP work was logged as rounds against a clock, not as planned sets.
-  const unit = isAmrap(exercise) ? 'Round' : 'Set';
+  // Timed work was logged as rounds against a clock, not as planned sets.
+  const unit = isTimed(resolveBlock(exercise, blocks).mode) ? 'Round' : 'Set';
 
   return (
     <View style={styles.exerciseRow}>
@@ -358,6 +374,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
     borderTopWidth: 1,
     borderTopColor: colors.ui.border,
+  },
+  // A block heading states the clock once, above its members.
+  blockHeading: {
+    ...textStyles.label,
+    color: roles.accentText,
+    letterSpacing: 0.5,
+    marginTop: spacing[2],
+    marginBottom: spacing[1],
   },
   breakdownTitle: {
     ...textStyles.label,

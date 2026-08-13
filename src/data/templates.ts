@@ -1,4 +1,4 @@
-import type { ExerciseMode } from '@/types';
+import type { ExerciseMode, WorkoutBlock } from '@/types';
 
 // -----------------------------------------------------------------------------
 // Template Types
@@ -11,16 +11,23 @@ export interface TemplateExercise {
   restSeconds: number;
   notes?: string;
   /**
-   * How this block is bounded. Absent means `sets` — every template written
-   * before AMRAP existed omits it, including the built-ins below and every
-   * personal copy already in storage.
+   * @deprecated The pre-block spelling of AMRAP, held on the exercise itself.
+   * Personal templates saved by the first AMRAP pass still carry it and must
+   * keep loading. `resolveBlock` (src/lib/blocks.ts) reads it as a one-member
+   * `amrap_reps` block. New edits write `blockId` instead.
    */
   mode?: ExerciseMode;
-  /**
-   * AMRAP only: the work window in seconds. `sets`/`reps` are still carried so
-   * switching back to a set scheme restores what the exercise had before.
-   */
+  /** Legacy companion to `mode`. See the note above. */
   durationSeconds?: number;
+  /**
+   * Which block on the day this exercise belongs to. Absent means a plain set
+   * scheme, which is every built-in below and every template written before
+   * blocks existed.
+   *
+   * `sets`/`reps` stay populated even inside a timed block so switching the
+   * block back to a set scheme restores what the exercise had before.
+   */
+  blockId?: string;
 }
 
 export interface TemplateDay {
@@ -28,6 +35,11 @@ export interface TemplateDay {
   name: string;
   shortName: string;
   exercises: TemplateExercise[];
+  /**
+   * Clocks referenced by `exercises[].blockId`. Optional: a day with no timed
+   * work has no blocks, which is every built-in template.
+   */
+  blocks?: WorkoutBlock[];
 }
 
 export interface WorkoutTemplateDefinition {

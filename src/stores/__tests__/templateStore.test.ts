@@ -461,4 +461,135 @@ describe('Template Store', () => {
       expect(useTemplateStore.getState().templates).toHaveLength(0);
     });
   });
+  // ---------------------------------------------------------------------------
+  // Blocks
+  // ---------------------------------------------------------------------------
+
+  describe('blocks', () => {
+    const setupCopy = () => {
+      const id = useTemplateStore.getState().duplicateTemplate(BUILT_IN_ID)!;
+      const dayId = useTemplateStore.getState().getTemplate(id)!.days[0].id;
+      return { id, dayId };
+    };
+
+    const day = (id: string, dayId: string) =>
+      useTemplateStore
+        .getState()
+        .getTemplate(id)!
+        .days.find((d) => d.id === dayId)!;
+
+    it('setExerciseMode creates a block and points the exercise at it', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_rounds');
+
+      const d = day(id, dayId);
+      expect(d.blocks).toHaveLength(1);
+      expect(d.blocks![0].mode).toBe('amrap_rounds');
+      expect(d.exercises[0].blockId).toBe(d.blocks![0].id);
+    });
+
+    it('keeps the set scheme so switching back restores it', () => {
+      const { id, dayId } = setupCopy();
+      const before = day(id, dayId).exercises[0];
+
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_rounds');
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'sets');
+
+      const after = day(id, dayId).exercises[0];
+      expect(after.sets).toBe(before.sets);
+      expect(after.reps).toBe(before.reps);
+      expect(after.restSeconds).toBe(before.restSeconds);
+    });
+
+    it('deletes the block when its last member leaves', () => {
+      // A clock with nothing under it has no row to live on and would never
+      // be started.
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_rounds');
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'sets');
+
+      expect(day(id, dayId).blocks).toEqual([]);
+      expect(day(id, dayId).exercises[0].blockId).toBeUndefined();
+    });
+
+    it('clears the legacy per-exercise mode when a block takes over', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().updateSetRepScheme(id, dayId, 0, { mode: 'amrap' });
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_rounds');
+
+      const ex = day(id, dayId).exercises[0];
+      expect(ex.mode).toBeUndefined();
+      expect(ex.durationSeconds).toBeUndefined();
+      expect(ex.blockId).toBeDefined();
+    });
+
+    it('joinBlock groups a second movement and moves it next to the first', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_rounds');
+      const blockId = day(id, dayId).blocks![0].id;
+
+      const lastIndex = day(id, dayId).exercises.length - 1;
+      const movedName = day(id, dayId).exercises[lastIndex].exerciseId;
+      useTemplateStore.getState().joinBlock(id, dayId, lastIndex, blockId);
+
+      const exercises = day(id, dayId).exercises;
+      // A circuit is read top to bottom, so its members have to be adjacent.
+      expect(exercises[1].exerciseId).toBe(movedName);
+      expect(exercises[1].blockId).toBe(blockId);
+    });
+
+    it('joinBlock refuses a mode that holds only one movement', () => {
+      // "As many reps as possible" has no meaning across three exercises.
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_reps');
+      const blockId = day(id, dayId).blocks![0].id;
+
+      useTemplateStore.getState().joinBlock(id, dayId, 1, blockId);
+
+      expect(day(id, dayId).exercises[1].blockId).toBeUndefined();
+    });
+
+    it('releases extra members rather than dropping them when narrowing the mode', () => {
+      // Nothing may vanish from the day just because the clock changed shape.
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_rounds');
+      const blockId = day(id, dayId).blocks![0].id;
+      useTemplateStore.getState().joinBlock(id, dayId, 2, blockId);
+
+      const before = day(id, dayId).exercises.length;
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_reps');
+
+      const after = day(id, dayId);
+      expect(after.exercises).toHaveLength(before);
+      expect(after.exercises.filter((e) => e.blockId === blockId)).toHaveLength(1);
+    });
+
+    it('updateBlock clamps the window, interval and round count', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'emom');
+      const blockId = day(id, dayId).blocks![0].id;
+
+      useTemplateStore
+        .getState()
+        .updateBlock(id, dayId, blockId, { intervalSeconds: 5, rounds: 1000 });
+
+      const block = day(id, dayId).blocks![0];
+      expect(block.intervalSeconds).toBe(30);
+      expect(block.rounds).toBe(99);
+    });
+
+    it('removing the last member of a block removes the block', () => {
+      const { id, dayId } = setupCopy();
+      useTemplateStore.getState().setExerciseMode(id, dayId, 0, 'amrap_rounds');
+
+      useTemplateStore.getState().removeExercise(id, dayId, 0);
+
+      expect(day(id, dayId).blocks).toEqual([]);
+    });
+
+    it('leaves built-in templates alone', () => {
+      useTemplateStore.getState().setExerciseMode(BUILT_IN_ID, 'min_day_a', 0, 'amrap_rounds');
+      expect(getTemplateById(BUILT_IN_ID)!.days[0].blocks).toBeUndefined();
+    });
+  });
 });

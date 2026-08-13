@@ -2,7 +2,8 @@
 // IronQuest Workout Store - Active Session, Exercises, Rest Timer
 // =============================================================================
 
-import type { Exercise, SessionIntent } from '@/types';
+import { clampIntervalSeconds } from '@/lib/blocks';
+import type { BlockMode, Exercise, SessionIntent, WorkoutBlock } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 import { usePRStore } from './prStore';
@@ -21,24 +22,41 @@ interface RestTimerState {
 }
 
 /**
- * The clock behind an AMRAP block.
+ * The clock behind a timed block — AMRAP, for-time, or EMOM.
  *
- * Unlike the rest timer this one carries `endsAt` (wall clock) and derives
- * `remaining` from it on every tick. A 20-minute window outlives a backgrounded
- * tab or a reload, and a tick-counted timer would silently pause for exactly as
- * long as the app wasn't running — which is the one thing an AMRAP must not do.
- * `remaining` is still stored so the UI has something to render before the
- * first tick lands.
+ * ONE ANCHOR, EVERYTHING ELSE DERIVED. The only stored facts are when the
+ * current run segment started (`runStartedAt`, wall clock) and how much time
+ * had accumulated before it (`elapsedBeforePause`). Remaining time, the EMOM
+ * interval you are in, and the count-up total are all computed from those two
+ * on read.
+ *
+ * That is deliberate. A tick-counted clock silently pauses for exactly as long
+ * as the app is not running, which is the one thing a 20-minute window must
+ * never do — a backgrounded tab or a reload would hand back time that has
+ * already gone. Anchoring to the wall clock means a window that expired while
+ * the app was closed comes back finished.
+ *
+ * `elapsed` is still stored so the UI has something to render before the first
+ * tick lands, but it is never the source of truth.
  */
-interface AmrapTimerState {
-  /** Which exercise the window belongs to; null when no AMRAP is running. */
-  exerciseIndex: number | null;
+interface BlockTimerState {
+  /** Which block the clock belongs to (see `blockKey`); null when none runs. */
+  blockKey: string | null;
+  mode: BlockMode;
+  /** Planned length in seconds. Zero means uncapped, which only `for_time` is. */
   duration: number;
-  remaining: number;
+  /** EMOM cadence. Populated for every mode, meaningful only for EMOM. */
+  intervalSeconds: number;
+  /** Seconds banked before the current run segment. */
+  elapsedBeforePause: number;
+  /** ms epoch the current run segment started. Null while paused or stopped. */
+  runStartedAt: number | null;
+  /** Last derived elapsed, for first paint only. Never read as truth. */
+  elapsed: number;
   running: boolean;
   paused: boolean;
-  /** ms epoch the window ends at. Null while paused or stopped. */
-  endsAt: number | null;
+  /** Set once when a count-up block is finished, so the time stops moving. */
+  finishedElapsed: number | null;
 }
 
 interface WorkoutState {
@@ -50,17 +68,26 @@ interface WorkoutState {
   exercises: Exercise[];
   intent: SessionIntent;
   gymRushActive: boolean;
+  /** Clocks referenced by `exercises[].blockId`. Empty on a plain session. */
+  blocks: WorkoutBlock[];
+  /** Finish times for completed `for_time` blocks, keyed by block key. */
+  blockTimes: Record<string, number>;
 
   // Rest timer
   restTimer: RestTimerState;
 
-  // AMRAP window (one at a time — you can only be inside one block)
-  amrapTimer: AmrapTimerState;
+  // Timed block (one at a time — you can only be inside one block)
+  blockTimer: BlockTimerState;
 }
 
 interface WorkoutActions {
   // Session lifecycle
-  startSession: (templateId: string, exercises: Exercise[], intent?: SessionIntent) => void;
+  startSession: (
+    templateId: string,
+    exercises: Exercise[],
+    intent?: SessionIntent,
+    blocks?: WorkoutBlock[]
+  ) => void;
   endSession: () => void;
   cancelSession: () => void;
 
@@ -68,6 +95,35 @@ interface WorkoutActions {
   logSet: (exerciseIndex: number, setIndex: number, reps: number, weight?: number) => void;
   /** Append an empty set row. AMRAP rounds are open-ended, so the UI grows the list as you log. */
   addSet: (exerciseIndex: number) => void;
+  /** Append an empty row to every member of a block, opening the next round. */
+  openRound: (exerciseIndexes: number[]) => void;
+  /**
+   * Log a whole round at once and open the next.
+   *
+   * A circuit is worked as a unit — you do the pull-ups, push-ups and squats,
+   * then you have finished a round. Logging it movement by movement means three
+   * taps for something you did as one thing, so this is the primary path and
+   * per-movement logging is the exception for a partial round.
+   */
+  logRound: (
+    rows: Array<{ exerciseIndex: number; setIndex: number; reps: number; weight?: number }>,
+    /**
+     * Every member of the block, not just the ones being logged.
+     *
+     * The next round has to open for all of them. A movement logged earlier in
+     * a partial round is not in `rows`, and growing only what `rows` touched
+     * would leave it a round behind the rest of the circuit.
+     */
+    memberIndexes?: number[],
+    /**
+     * Whether finishing this round should open another.
+     *
+     * True for the AMRAP modes, where the clock decides when to stop. False for
+     * `for_time` and `emom`, which have a planned round count — offering a
+     * round beyond it invites logging work the programme never asked for.
+     */
+    openNext?: boolean
+  ) => void;
   editSet: (exerciseIndex: number, setIndex: number, reps: number, weight?: number) => void;
   clearSet: (exerciseIndex: number, setIndex: number) => void;
   completeExercise: (exerciseIndex: number) => void;
@@ -82,12 +138,17 @@ interface WorkoutActions {
   resetRestTimer: () => void;
   tickRestTimer: () => void;
 
-  // AMRAP window
-  startAmrapTimer: (exerciseIndex: number, duration: number) => void;
-  pauseAmrapTimer: () => void;
-  resumeAmrapTimer: () => void;
-  resetAmrapTimer: () => void;
-  tickAmrapTimer: () => void;
+  // Timed block
+  startBlockTimer: (
+    blockKey: string,
+    options: { mode: BlockMode; duration: number; intervalSeconds?: number }
+  ) => void;
+  pauseBlockTimer: () => void;
+  resumeBlockTimer: () => void;
+  resetBlockTimer: () => void;
+  tickBlockTimer: () => void;
+  /** Stop a count-up block and record its finishing time. */
+  finishBlockTimer: () => void;
 
   // Modifiers
   toggleGymRush: () => void;
@@ -116,13 +177,17 @@ const initialRestTimer: RestTimerState = {
   paused: false,
 };
 
-const initialAmrapTimer: AmrapTimerState = {
-  exerciseIndex: null,
+const initialBlockTimer: BlockTimerState = {
+  blockKey: null,
+  mode: 'sets',
   duration: 0,
-  remaining: 0,
+  intervalSeconds: 60,
+  elapsedBeforePause: 0,
+  runStartedAt: null,
+  elapsed: 0,
   running: false,
   paused: false,
-  endsAt: null,
+  finishedElapsed: null,
 };
 
 const initialState: WorkoutState = {
@@ -133,8 +198,47 @@ const initialState: WorkoutState = {
   exercises: [],
   intent: 'normal',
   gymRushActive: false,
+  blocks: [],
+  blockTimes: {},
   restTimer: initialRestTimer,
-  amrapTimer: initialAmrapTimer,
+  blockTimer: initialBlockTimer,
+};
+
+/**
+ * Seconds of work the clock has seen, from the wall clock rather than ticks.
+ *
+ * Frozen once a count-up block is finished — otherwise the recorded time would
+ * keep climbing while you look at it.
+ */
+export const blockElapsed = (timer: BlockTimerState, now = Date.now()): number => {
+  if (timer.finishedElapsed !== null) return timer.finishedElapsed;
+  if (!timer.running || timer.runStartedAt === null) return timer.elapsedBeforePause;
+  return timer.elapsedBeforePause + Math.max(0, (now - timer.runStartedAt) / 1000);
+};
+
+/** Seconds left on a countdown block. Zero for an uncapped block. */
+export const blockRemaining = (timer: BlockTimerState, now = Date.now()): number => {
+  if (timer.duration <= 0) return 0;
+  return Math.max(0, Math.ceil(timer.duration - blockElapsed(timer, now)));
+};
+
+/**
+ * Which EMOM interval the clock is in, and how much of it is left.
+ *
+ * Intervals are derived from total elapsed rather than counted, for the same
+ * reason the rest of the clock is: a backgrounded tab must not fall behind the
+ * minute it is actually on.
+ */
+export const blockInterval = (
+  timer: BlockTimerState,
+  now = Date.now()
+): { index: number; remaining: number } => {
+  const size = Math.max(1, timer.intervalSeconds);
+  const elapsed = blockElapsed(timer, now);
+  return {
+    index: Math.floor(elapsed / size),
+    remaining: Math.max(0, Math.ceil(size - (elapsed % size))),
+  };
 };
 
 const emptySet = () => ({
@@ -150,24 +254,71 @@ const persistSession = async (state: Partial<WorkoutState>) => {
   await appStorage.setJSON(STORAGE_KEYS.SESSION.FULL_STATE, state);
 };
 
-/**
- * Rebuild an AMRAP clock from persisted state.
- *
- * Sessions saved before AMRAP existed have no `amrapTimer` at all — those load
- * as "no window running". A window that expired while the app was closed comes
- * back finished rather than resuming with time that no longer exists.
- */
-const restoreAmrapTimer = (stored: AmrapTimerState | undefined): AmrapTimerState => {
-  if (!stored || stored.exerciseIndex === null) return initialAmrapTimer;
+/** The pre-block clock shape, still sitting in any session saved by that pass. */
+interface LegacyAmrapTimerState {
+  exerciseIndex: number | null;
+  duration: number;
+  remaining: number;
+  running: boolean;
+  paused: boolean;
+  endsAt: number | null;
+}
 
-  if (stored.running && stored.endsAt) {
-    const remaining = Math.max(0, Math.ceil((stored.endsAt - Date.now()) / 1000));
-    return remaining === 0
-      ? { ...stored, remaining: 0, running: false, paused: false, endsAt: null }
-      : { ...stored, remaining };
+/**
+ * Rebuild a block clock from persisted state.
+ *
+ * Three cases, in order:
+ *
+ * 1. Sessions saved before any timed work existed have neither field — those
+ *    load as "no clock running".
+ * 2. Sessions saved by the first AMRAP pass have `amrapTimer`, keyed by
+ *    exercise index. Those are carried across rather than dropped: someone
+ *    mid-window when the app updates should not lose the window.
+ * 3. Everything else has `blockTimer`.
+ *
+ * Because elapsed time is anchored to the wall clock, a window that ran out
+ * while the app was closed comes back finished rather than resuming with time
+ * that no longer exists.
+ */
+const restoreBlockTimer = (
+  stored: BlockTimerState | undefined,
+  legacy: LegacyAmrapTimerState | undefined
+): BlockTimerState => {
+  if (!stored?.blockKey) {
+    if (!legacy || legacy.exerciseIndex === null) return initialBlockTimer;
+
+    // The old clock stored `endsAt`; the new one stores where the run began.
+    // Recover the anchor by subtracting the time that was left from the total.
+    const consumed = Math.max(0, legacy.duration - legacy.remaining);
+    return {
+      ...initialBlockTimer,
+      blockKey: `exercise:${legacy.exerciseIndex}`,
+      mode: 'amrap_reps',
+      duration: legacy.duration,
+      elapsedBeforePause: consumed,
+      runStartedAt: legacy.running && legacy.endsAt ? legacy.endsAt - legacy.duration * 1000 : null,
+      elapsed: consumed,
+      running: legacy.running,
+      paused: legacy.paused,
+    };
   }
 
-  return { ...stored, running: false, endsAt: null };
+  const elapsed = blockElapsed(stored);
+
+  // A countdown that ran out while the app was closed comes back stopped, not
+  // running with time it no longer has.
+  if (stored.duration > 0 && stored.mode !== 'for_time' && elapsed >= stored.duration) {
+    return {
+      ...stored,
+      elapsedBeforePause: stored.duration,
+      runStartedAt: null,
+      elapsed: stored.duration,
+      running: false,
+      paused: false,
+    };
+  }
+
+  return { ...stored, elapsed };
 };
 
 // -----------------------------------------------------------------------------
@@ -178,7 +329,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
   ...initialState,
 
   // Session lifecycle
-  startSession: (templateId, exercises, intent = 'normal') => {
+  startSession: (templateId, exercises, intent = 'normal', blocks = []) => {
     const startedAt = Date.now();
 
     const newState: WorkoutState = {
@@ -190,6 +341,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
       exercises,
       intent,
       gymRushActive: false,
+      blocks,
     };
 
     set(newState);
@@ -324,6 +476,90 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
     });
   },
 
+  /**
+   * Open the next round of a block.
+   *
+   * A round spans every member, so the rows have to grow together — appending
+   * to one movement at a time would let round 3 of the squats exist while the
+   * pull-ups are still on round 2, and the round index is what pairs them.
+   */
+  openRound: (exerciseIndexes) => {
+    set((state) => {
+      const exercises = [...state.exercises];
+      let changed = false;
+
+      for (const index of exerciseIndexes) {
+        const exercise = exercises[index];
+        if (!exercise) continue;
+        // Only grow a member that has no room left, so re-opening a round that
+        // is already open is a no-op rather than a stack of blank rows.
+        if (exercise.sets.some((s) => !s.logged)) continue;
+        exercises[index] = { ...exercise, sets: [...exercise.sets, emptySet()] };
+        changed = true;
+      }
+
+      if (!changed) return state;
+
+      const newState = { ...state, exercises };
+      persistSession(newState).catch(console.warn);
+      return { exercises };
+    });
+  },
+
+  logRound: (rows, memberIndexes, openNext = true) => {
+    if (rows.length === 0) return;
+
+    set((state) => {
+      const exercises = [...state.exercises];
+      const unit = useSettingsStore.getState().units;
+      const weightsToSave: Array<{ id: string; weight: number }> = [];
+      const touched: number[] = [];
+
+      for (const { exerciseIndex, setIndex, reps, weight } of rows) {
+        const source = exercises[exerciseIndex];
+        if (!source?.sets[setIndex]) continue;
+
+        let isPR = false;
+        let isRepPR = false;
+
+        if (weight !== undefined && weight !== null && weight > 0 && source.id) {
+          // PRs compare within the unit the set was logged in (issue #42).
+          const result = usePRStore.getState().recordPR(source.id, weight, reps, unit);
+          isPR = result.isWeightPR;
+          isRepPR = result.isRepPR;
+          weightsToSave.push({ id: source.id, weight });
+        }
+
+        const sets = [...source.sets];
+        sets[setIndex] = { reps, weight: weight ?? null, logged: true, isPR, isRepPR };
+        exercises[exerciseIndex] = { ...source, sets };
+        touched.push(exerciseIndex);
+      }
+
+      // Open the next round in the same transaction. Doing it as a follow-up
+      // call would persist the session twice and let a reload land between the
+      // logged round and the row that follows it.
+      //
+      // Every member grows, not just the ones logged here: in a partial round
+      // some movements were already banked, and they are not in `rows`.
+      const toGrow = openNext ? (memberIndexes ?? touched) : [];
+      for (const index of toGrow) {
+        const exercise = exercises[index];
+        if (!exercise || exercise.sets.some((s) => !s.logged)) continue;
+        exercises[index] = { ...exercise, sets: [...exercise.sets, emptySet()] };
+      }
+
+      const newState = { ...state, exercises };
+      persistSession(newState).catch(console.warn);
+
+      for (const { id, weight } of weightsToSave) {
+        useWeightHistoryStore.getState().saveWeight(id, weight, unit);
+      }
+
+      return { exercises };
+    });
+  },
+
   completeExercise: (exerciseIndex) => {
     set((state) => {
       const exercises = [...state.exercises];
@@ -412,90 +648,128 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
     });
   },
 
-  // AMRAP window
+  // Timed block
   //
   // Persisted with the session (unlike the rest timer) because a 20-minute
   // block routinely outlives a reload, and coming back to a stopped clock
-  // mid-block would lose the only thing bounding the exercise.
-  startAmrapTimer: (exerciseIndex, duration) => {
+  // mid-block would lose the only thing bounding the work.
+  startBlockTimer: (blockKey, { mode, duration, intervalSeconds }) => {
     const safeDuration = Math.max(0, Math.round(duration));
     set((state) => {
-      const amrapTimer: AmrapTimerState = {
-        exerciseIndex,
+      const blockTimer: BlockTimerState = {
+        ...initialBlockTimer,
+        blockKey,
+        mode,
         duration: safeDuration,
-        remaining: safeDuration,
-        running: safeDuration > 0,
-        paused: false,
-        endsAt: safeDuration > 0 ? Date.now() + safeDuration * 1000 : null,
+        intervalSeconds: clampIntervalSeconds(intervalSeconds ?? 60),
+        // A count-up block has no duration to run out, so it starts regardless.
+        running: safeDuration > 0 || mode === 'for_time',
+        runStartedAt: Date.now(),
       };
-      persistSession({ ...state, amrapTimer }).catch(console.warn);
-      return { amrapTimer };
+      persistSession({ ...state, blockTimer }).catch(console.warn);
+      return { blockTimer };
     });
   },
 
-  pauseAmrapTimer: () => {
+  pauseBlockTimer: () => {
     set((state) => {
-      if (!state.amrapTimer.running) return state;
-      // Freeze the true remaining time, then drop endsAt — resume re-anchors it.
-      const remaining = state.amrapTimer.endsAt
-        ? Math.max(0, Math.ceil((state.amrapTimer.endsAt - Date.now()) / 1000))
-        : state.amrapTimer.remaining;
-      const amrapTimer: AmrapTimerState = {
-        ...state.amrapTimer,
-        remaining,
+      const timer = state.blockTimer;
+      if (!timer.running) return state;
+      // Bank the elapsed time, then drop the anchor — resume re-anchors it.
+      const blockTimer: BlockTimerState = {
+        ...timer,
+        elapsedBeforePause: blockElapsed(timer),
+        elapsed: blockElapsed(timer),
+        runStartedAt: null,
         running: false,
         paused: true,
-        endsAt: null,
       };
-      persistSession({ ...state, amrapTimer }).catch(console.warn);
-      return { amrapTimer };
+      persistSession({ ...state, blockTimer }).catch(console.warn);
+      return { blockTimer };
     });
   },
 
-  resumeAmrapTimer: () => {
+  resumeBlockTimer: () => {
     set((state) => {
-      if (!state.amrapTimer.paused || state.amrapTimer.remaining <= 0) return state;
-      const amrapTimer: AmrapTimerState = {
-        ...state.amrapTimer,
+      const timer = state.blockTimer;
+      if (!timer.paused || timer.finishedElapsed !== null) return state;
+      if (
+        timer.duration > 0 &&
+        timer.mode !== 'for_time' &&
+        timer.elapsedBeforePause >= timer.duration
+      ) {
+        return state;
+      }
+      const blockTimer: BlockTimerState = {
+        ...timer,
         running: true,
         paused: false,
-        endsAt: Date.now() + state.amrapTimer.remaining * 1000,
+        runStartedAt: Date.now(),
       };
-      persistSession({ ...state, amrapTimer }).catch(console.warn);
-      return { amrapTimer };
+      persistSession({ ...state, blockTimer }).catch(console.warn);
+      return { blockTimer };
     });
   },
 
-  resetAmrapTimer: () => {
+  resetBlockTimer: () => {
     set((state) => {
-      persistSession({ ...state, amrapTimer: initialAmrapTimer }).catch(console.warn);
-      return { amrapTimer: initialAmrapTimer };
+      persistSession({ ...state, blockTimer: initialBlockTimer }).catch(console.warn);
+      return { blockTimer: initialBlockTimer };
     });
   },
 
-  tickAmrapTimer: () => {
+  finishBlockTimer: () => {
     set((state) => {
-      const timer = state.amrapTimer;
-      if (!timer.running || timer.paused || timer.endsAt === null) return state;
+      const timer = state.blockTimer;
+      if (!timer.blockKey || timer.finishedElapsed !== null) return state;
 
-      const remaining = Math.max(0, Math.ceil((timer.endsAt - Date.now()) / 1000));
+      const finished = Math.round(blockElapsed(timer));
+      const blockTimer: BlockTimerState = {
+        ...timer,
+        finishedElapsed: finished,
+        elapsed: finished,
+        elapsedBeforePause: finished,
+        runStartedAt: null,
+        running: false,
+        paused: false,
+      };
+      // The finishing time is the whole point of a count-up block and cannot be
+      // recomputed from the set rows, so it is recorded on the session now.
+      const blockTimes = { ...state.blockTimes, [timer.blockKey]: finished };
+      persistSession({ ...state, blockTimer, blockTimes }).catch(console.warn);
+      return { blockTimer, blockTimes };
+    });
+  },
 
-      if (remaining === 0) {
-        // The window closed. Keep exerciseIndex so the UI can say which block
-        // finished; stop the clock so nothing keeps ticking at zero.
-        const amrapTimer: AmrapTimerState = {
+  tickBlockTimer: () => {
+    set((state) => {
+      const timer = state.blockTimer;
+      if (!timer.running || timer.paused || timer.runStartedAt === null) return state;
+
+      const elapsed = blockElapsed(timer);
+
+      // A count-up block has nothing to run out; it ends when the work does.
+      const uncapped = timer.duration <= 0 || timer.mode === 'for_time';
+
+      if (!uncapped && elapsed >= timer.duration) {
+        // The window closed. Keep blockKey so the UI can say which block
+        // finished; stop the clock so nothing keeps ticking past zero.
+        const blockTimer: BlockTimerState = {
           ...timer,
-          remaining: 0,
+          elapsedBeforePause: timer.duration,
+          elapsed: timer.duration,
+          runStartedAt: null,
           running: false,
           paused: false,
-          endsAt: null,
         };
-        persistSession({ ...state, amrapTimer }).catch(console.warn);
-        return { amrapTimer };
+        persistSession({ ...state, blockTimer }).catch(console.warn);
+        return { blockTimer };
       }
 
-      if (remaining === timer.remaining) return state;
-      return { amrapTimer: { ...timer, remaining } };
+      // Re-render only on a whole-second change; the clock is read to the
+      // second and this ticks more often than that.
+      if (Math.floor(elapsed) === Math.floor(timer.elapsed)) return state;
+      return { blockTimer: { ...timer, elapsed } };
     });
   },
 
@@ -532,9 +806,9 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
   // Hydration
   hydrate: async () => {
     try {
-      const stored = await appStorage.getJSON<Partial<WorkoutState>>(
-        STORAGE_KEYS.SESSION.FULL_STATE
-      );
+      const stored = await appStorage.getJSON<
+        Partial<WorkoutState> & { amrapTimer?: LegacyAmrapTimerState }
+      >(STORAGE_KEYS.SESSION.FULL_STATE);
       if (stored?.active) {
         set({
           active: stored.active,
@@ -544,7 +818,9 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
           exercises: stored.exercises ?? [],
           intent: stored.intent ?? 'normal',
           gymRushActive: stored.gymRushActive ?? false,
-          amrapTimer: restoreAmrapTimer(stored.amrapTimer),
+          blocks: stored.blocks ?? [],
+          blockTimes: stored.blockTimes ?? {},
+          blockTimer: restoreBlockTimer(stored.blockTimer, stored.amrapTimer),
         });
       }
     } catch (error) {
