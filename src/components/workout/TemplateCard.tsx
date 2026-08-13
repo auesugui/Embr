@@ -1,5 +1,6 @@
 import { PressableScale } from '@/components/ui';
 import type { WorkoutTemplateDefinition } from '@/data';
+import { estimateTemplateMinutes } from '@/lib/duration';
 import { radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
 import { StyleSheet, Text, View } from 'react-native';
@@ -46,7 +47,7 @@ export function TemplateCard({ template, onPress }: TemplateCardProps) {
           </View>
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>Est. Duration</Text>
-            <Text style={styles.statValue}>{template.estimatedDuration} min</Text>
+            <Text style={styles.statValue}>{estimateTemplateMinutes(template)} min</Text>
           </View>
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>Sessions</Text>

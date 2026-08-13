@@ -19,6 +19,7 @@ import {
   resolveBlock,
   usesRestTimer,
 } from '@/lib/blocks';
+import { estimateDayMinutes } from '@/lib/duration';
 import { useTemplateStore, useWorkoutStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, SessionIntent, WorkoutBlock } from '@/types';
@@ -217,7 +218,7 @@ export default function WorkoutLoadoutScreen() {
         <Text style={styles.templateName}>{template.name}</Text>
         <Text style={styles.dayName}>{day.name}</Text>
         <Text style={styles.templateMeta}>
-          {day.exercises.length} exercises · ~{template.estimatedDuration} min
+          {day.exercises.length} exercises · ~{estimateDayMinutes(day)} min
         </Text>
       </View>
 

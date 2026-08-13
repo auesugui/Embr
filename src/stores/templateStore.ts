@@ -209,6 +209,10 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       category: 'full_body',
       daysPerWeek: 1,
       difficulty: 'beginner',
+      // Inert. Every screen computes the length from the day's actual contents
+      // now (src/lib/duration.ts) — this hardcoded 45 never updated as you
+      // added exercises, which is why a 20-minute AMRAP advertised 45 minutes.
+      // Kept because the field is required by the type and persisted in backups.
       estimatedDuration: 45,
       days: [
         {
