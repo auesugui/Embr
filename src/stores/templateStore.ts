@@ -17,8 +17,17 @@ import {
   getExerciseById,
   getTemplateById,
 } from '@/data';
-import { DEFAULT_AMRAP_SECONDS, clampAmrapSeconds } from '@/lib/amrap';
-import type { ExerciseMode } from '@/types';
+import {
+  DEFAULT_AMRAP_SECONDS,
+  DEFAULT_INTERVAL_SECONDS,
+  DEFAULT_ROUNDS,
+  allowsMultipleMembers,
+  clampAmrapSeconds,
+  clampIntervalSeconds,
+  clampRounds,
+  isTimed,
+} from '@/lib/blocks';
+import type { BlockMode, ExerciseMode, WorkoutBlock } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 
@@ -35,10 +44,20 @@ interface SetRepPatch {
   sets?: number;
   reps?: string;
   restSeconds?: number;
-  /** Switch the block between a fixed set scheme and a timed AMRAP window. */
+  /**
+   * @deprecated The pre-block way to switch an exercise to AMRAP. Kept so the
+   * existing call sites and their tests keep working; `setExerciseMode` is the
+   * one that understands circuits.
+   */
   mode?: ExerciseMode;
   /** AMRAP window in seconds. Ignored while `mode` is `sets`. */
   durationSeconds?: number;
+}
+
+interface BlockPatch {
+  durationSeconds?: number;
+  intervalSeconds?: number;
+  rounds?: number;
 }
 
 interface TemplateActions {
@@ -68,6 +87,26 @@ interface TemplateActions {
     exerciseIndex: number,
     patch: SetRepPatch
   ) => void;
+  /**
+   * Put an exercise into a block of the given mode, or take it out.
+   *
+   * `sets` removes it from whatever block it was in; anything else creates a
+   * block (or re-modes the one it already belongs to). A block left with no
+   * members is deleted — an orphan clock is not a thing the editor can show.
+   */
+  setExerciseMode: (
+    templateId: string,
+    dayId: string,
+    exerciseIndex: number,
+    mode: BlockMode
+  ) => void;
+  /** Adjust a block's clock or round plan. */
+  updateBlock: (templateId: string, dayId: string, blockId: string, patch: BlockPatch) => void;
+  /**
+   * Add an exercise to an existing block, moving it to sit with the other
+   * members. Refused for a mode that holds only one movement.
+   */
+  joinBlock: (templateId: string, dayId: string, exerciseIndex: number, blockId: string) => void;
   /** Permanently delete a personal copy. No-op on built-ins. */
   deleteTemplate: (id: string) => void;
   /** Resolve a template by id across built-ins first, then personal copies. */
@@ -86,6 +125,18 @@ type TemplateStore = TemplateState & TemplateActions;
 
 const initialState: TemplateState = {
   templates: [],
+};
+
+/**
+ * Drop blocks nothing points at any more.
+ *
+ * A block with no members is a clock attached to nothing: the editor has no row
+ * to draw it on and the session would never start it. Removing the last member
+ * of a block removes the block.
+ */
+const pruneBlocks = (blocks: WorkoutBlock[], exercises: TemplateExercise[]): WorkoutBlock[] => {
+  const used = new Set(exercises.map((ex) => ex.blockId).filter(Boolean));
+  return blocks.filter((b) => used.has(b.id));
 };
 
 const persistState = async (state: TemplateState) => {
@@ -257,7 +308,9 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
           if (day.id !== dayId) return day;
           if (exerciseIndex < 0 || exerciseIndex >= day.exercises.length) return day;
           const exercises = day.exercises.filter((_, i) => i !== exerciseIndex);
-          return { ...day, exercises };
+          // Removing the last member of a block removes the block: a clock with
+          // nothing under it has no row to live on and would never be started.
+          return { ...day, exercises, blocks: pruneBlocks(day.blocks ?? [], exercises) };
         });
         return recalcDistributions({ ...t, days, updatedAt: now });
       });
@@ -354,6 +407,151 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         });
         return recalcDistributions({ ...t, days, updatedAt: now });
       });
+      const nextState = { templates };
+      persistState(nextState).catch(console.warn);
+      return nextState;
+    });
+  },
+
+  // ---------------------------------------------------------------------------
+  // Blocks
+  // ---------------------------------------------------------------------------
+
+  setExerciseMode: (templateId, dayId, exerciseIndex, mode) => {
+    set((state) => {
+      if (!state.templates.some((t) => t.id === templateId)) return state;
+      const now = Date.now();
+
+      const templates = state.templates.map((t) => {
+        if (t.id !== templateId) return t;
+
+        const days = t.days.map((day) => {
+          if (day.id !== dayId) return day;
+          if (exerciseIndex < 0 || exerciseIndex >= day.exercises.length) return day;
+
+          const target = day.exercises[exerciseIndex];
+          const blocks = [...(day.blocks ?? [])];
+          let exercises = [...day.exercises];
+
+          if (!isTimed(mode)) {
+            // Back to a plain set scheme: drop the membership and the legacy
+            // fields together, so nothing is left pointing at a clock.
+            const { blockId, mode: _legacy, durationSeconds: _window, ...rest } = target;
+            exercises[exerciseIndex] = rest;
+            return {
+              ...day,
+              exercises,
+              blocks: pruneBlocks(blocks, exercises),
+            };
+          }
+
+          const existing = target.blockId && blocks.find((b) => b.id === target.blockId);
+
+          if (existing) {
+            const nextBlocks = blocks.map((b) => (b.id === existing.id ? { ...b, mode } : b));
+            // A mode that holds only one movement cannot keep the others. Rather
+            // than silently dropping them, the extra members are released back
+            // to set schemes so nothing disappears from the day.
+            if (!allowsMultipleMembers(mode)) {
+              exercises = exercises.map((ex, i) =>
+                ex.blockId === existing.id && i !== exerciseIndex
+                  ? { ...ex, blockId: undefined }
+                  : ex
+              );
+            }
+            return { ...day, exercises, blocks: pruneBlocks(nextBlocks, exercises) };
+          }
+
+          const block: WorkoutBlock = {
+            id: `block-${now}-${exerciseIndex}`,
+            mode,
+            durationSeconds: DEFAULT_AMRAP_SECONDS,
+            intervalSeconds: DEFAULT_INTERVAL_SECONDS,
+            rounds: DEFAULT_ROUNDS,
+          };
+          const { mode: _legacy, durationSeconds: _window, ...rest } = target;
+          exercises[exerciseIndex] = { ...rest, blockId: block.id };
+
+          return { ...day, exercises, blocks: pruneBlocks([...blocks, block], exercises) };
+        });
+
+        return recalcDistributions({ ...t, days, updatedAt: now });
+      });
+
+      const nextState = { templates };
+      persistState(nextState).catch(console.warn);
+      return nextState;
+    });
+  },
+
+  updateBlock: (templateId, dayId, blockId, patch) => {
+    set((state) => {
+      if (!state.templates.some((t) => t.id === templateId)) return state;
+      const now = Date.now();
+
+      const templates = state.templates.map((t) => {
+        if (t.id !== templateId) return t;
+        const days = t.days.map((day) => {
+          if (day.id !== dayId) return day;
+          const blocks = (day.blocks ?? []).map((b) => {
+            if (b.id !== blockId) return b;
+            return {
+              ...b,
+              ...(patch.durationSeconds !== undefined
+                ? { durationSeconds: clampAmrapSeconds(patch.durationSeconds) }
+                : {}),
+              ...(patch.intervalSeconds !== undefined
+                ? { intervalSeconds: clampIntervalSeconds(patch.intervalSeconds) }
+                : {}),
+              ...(patch.rounds !== undefined ? { rounds: clampRounds(patch.rounds) } : {}),
+            };
+          });
+          return { ...day, blocks };
+        });
+        return recalcDistributions({ ...t, days, updatedAt: now });
+      });
+
+      const nextState = { templates };
+      persistState(nextState).catch(console.warn);
+      return nextState;
+    });
+  },
+
+  joinBlock: (templateId, dayId, exerciseIndex, blockId) => {
+    set((state) => {
+      if (!state.templates.some((t) => t.id === templateId)) return state;
+      const now = Date.now();
+
+      const templates = state.templates.map((t) => {
+        if (t.id !== templateId) return t;
+
+        const days = t.days.map((day) => {
+          if (day.id !== dayId) return day;
+          if (exerciseIndex < 0 || exerciseIndex >= day.exercises.length) return day;
+
+          const block = (day.blocks ?? []).find((b) => b.id === blockId);
+          if (!block || !allowsMultipleMembers(block.mode)) return day;
+
+          const { mode: _legacy, durationSeconds: _window, ...rest } = day.exercises[exerciseIndex];
+          const joined = { ...rest, blockId };
+
+          // Move it to sit directly after the block's last current member.
+          // Members do not have to be adjacent for the app to work, but a
+          // circuit you read top-to-bottom has to be adjacent to make sense.
+          const without = day.exercises.filter((_, i) => i !== exerciseIndex);
+          const lastMember = without.reduce(
+            (last, ex, i) => (ex.blockId === blockId ? i : last),
+            -1
+          );
+          const exercises = [...without];
+          exercises.splice(lastMember + 1, 0, joined);
+
+          return { ...day, exercises };
+        });
+
+        return recalcDistributions({ ...t, days, updatedAt: now });
+      });
+
       const nextState = { templates };
       persistState(nextState).catch(console.warn);
       return nextState;

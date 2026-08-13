@@ -31,6 +31,11 @@ interface SetInputModalProps {
   suggestedWeight?: number | null; // Weight from history to auto-fill
   setNumber: number;
   exerciseName: string;
+  /**
+   * What one row is called. A timed block logs rounds, not sets, and the sheet
+   * must not contradict the screen behind it.
+   */
+  unitLabel?: string;
   isEditing?: boolean;
 }
 
@@ -108,6 +113,7 @@ export function SetInputModal({
   suggestedWeight = null,
   setNumber,
   exerciseName,
+  unitLabel = 'Set',
   isEditing = false,
 }: SetInputModalProps) {
   const units = useSettingsStore((state) => state.units);
@@ -208,7 +214,7 @@ export function SetInputModal({
             {/* Header */}
             <View style={styles.header}>
               <Text style={styles.title}>
-                {isEditing ? 'Edit' : 'Log'} Set {setNumber}
+                {isEditing ? 'Edit' : 'Log'} {unitLabel} {setNumber}
               </Text>
               <Text style={styles.exerciseName} numberOfLines={1}>
                 {exerciseName}

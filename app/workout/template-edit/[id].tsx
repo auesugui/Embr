@@ -24,15 +24,25 @@ import { ExercisePickerModal } from '@/components/workout/ExercisePickerModal';
 import { getExerciseById } from '@/data';
 import {
   AMRAP_REPS_LABEL,
+  BLOCK_MODES,
   DEFAULT_AMRAP_SECONDS,
+  allowsMultipleMembers,
+  blockModeHint,
+  blockModeLabel,
   clampAmrapSeconds,
+  clampIntervalSeconds,
+  clampRounds,
+  describeBlock,
   describeScheme,
   formatAmrapWindow,
-  isAmrap,
-} from '@/lib/amrap';
+  formatClock,
+  hasRepTargets,
+  isTimed,
+  resolveBlock,
+} from '@/lib/blocks';
 import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
-import type { ExerciseMode } from '@/types';
+import type { BlockMode } from '@/types';
 import { haptics } from '@/utils/haptics';
 import {
   ArrowDown,
@@ -200,64 +210,82 @@ export default function TemplateEditScreen() {
           <View style={styles.exerciseList}>
             {selectedDay.exercises.map((templateEx, index) => {
               const exercise = getExerciseById(templateEx.exerciseId);
-              return (
-                <View key={`${templateEx.exerciseId}-${index}`} style={styles.exerciseRow}>
-                  <Pressable
-                    style={styles.exerciseMain}
-                    onPress={() => {
-                      haptics.tap();
-                      setEditTarget({ dayId: selectedDay.id, index });
-                    }}
-                  >
-                    <View style={styles.exerciseNumber}>
-                      <Text style={styles.exerciseNumberText}>{index + 1}</Text>
-                    </View>
-                    <View style={styles.exerciseInfo}>
-                      <Text style={styles.exerciseName}>
-                        {exercise?.name ?? 'Unknown Exercise'}
-                      </Text>
-                      <Text style={styles.exerciseDetails}>
-                        {isAmrap(templateEx)
-                          ? describeScheme(templateEx)
-                          : `${describeScheme(templateEx)} · ${Math.round(
-                              templateEx.restSeconds / 60
-                            )}m rest`}
-                      </Text>
-                    </View>
-                    <View style={styles.editHint}>
-                      <Text style={styles.editHintText}>Edit</Text>
-                      <ChevronRight size={14} color={roles.textMuted} />
-                    </View>
-                  </Pressable>
+              const rowBlock = resolveBlock(templateEx, selectedDay.blocks);
+              // The clock is stated once, on the first member, so a three-
+              // movement circuit reads as one thing rather than three
+              // exercises that happen to share a duration.
+              const startsBlock =
+                templateEx.blockId !== undefined &&
+                selectedDay.exercises.findIndex((e) => e.blockId === templateEx.blockId) === index;
 
-                  <View style={styles.rowControls}>
-                    <ControlButton
-                      icon={ArrowUp}
-                      label="Move up"
-                      disabled={index === 0}
+              return (
+                <View key={`${templateEx.exerciseId}-${index}`}>
+                  {startsBlock && (
+                    <Text style={styles.blockHeading}>{describeBlock(rowBlock)}</Text>
+                  )}
+                  <View
+                    style={[
+                      styles.exerciseRow,
+                      templateEx.blockId !== undefined && styles.exerciseRowInBlock,
+                    ]}
+                  >
+                    <Pressable
+                      style={styles.exerciseMain}
                       onPress={() => {
                         haptics.tap();
-                        reorderExercises(template.id, selectedDay.id, index, index - 1);
+                        setEditTarget({ dayId: selectedDay.id, index });
                       }}
-                    />
-                    <ControlButton
-                      icon={ArrowDown}
-                      label="Move down"
-                      disabled={index === selectedDay.exercises.length - 1}
-                      onPress={() => {
-                        haptics.tap();
-                        reorderExercises(template.id, selectedDay.id, index, index + 1);
-                      }}
-                    />
-                    <ControlButton
-                      icon={X}
-                      label="Remove exercise"
-                      tone="danger"
-                      onPress={() => {
-                        haptics.warning();
-                        removeExercise(template.id, selectedDay.id, index);
-                      }}
-                    />
+                    >
+                      <View style={styles.exerciseNumber}>
+                        <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+                      </View>
+                      <View style={styles.exerciseInfo}>
+                        <Text style={styles.exerciseName}>
+                          {exercise?.name ?? 'Unknown Exercise'}
+                        </Text>
+                        <Text style={styles.exerciseDetails}>
+                          {isTimed(rowBlock.mode)
+                            ? describeScheme(templateEx, selectedDay.blocks)
+                            : `${describeScheme(templateEx, selectedDay.blocks)} · ${Math.round(
+                                templateEx.restSeconds / 60
+                              )}m rest`}
+                        </Text>
+                      </View>
+                      <View style={styles.editHint}>
+                        <Text style={styles.editHintText}>Edit</Text>
+                        <ChevronRight size={14} color={roles.textMuted} />
+                      </View>
+                    </Pressable>
+
+                    <View style={styles.rowControls}>
+                      <ControlButton
+                        icon={ArrowUp}
+                        label="Move up"
+                        disabled={index === 0}
+                        onPress={() => {
+                          haptics.tap();
+                          reorderExercises(template.id, selectedDay.id, index, index - 1);
+                        }}
+                      />
+                      <ControlButton
+                        icon={ArrowDown}
+                        label="Move down"
+                        disabled={index === selectedDay.exercises.length - 1}
+                        onPress={() => {
+                          haptics.tap();
+                          reorderExercises(template.id, selectedDay.id, index, index + 1);
+                        }}
+                      />
+                      <ControlButton
+                        icon={X}
+                        label="Remove exercise"
+                        tone="danger"
+                        onPress={() => {
+                          haptics.warning();
+                          removeExercise(template.id, selectedDay.id, index);
+                        }}
+                      />
+                    </View>
                   </View>
                 </View>
               );
@@ -324,8 +352,6 @@ interface EditExerciseSheetProps {
       sets?: number;
       reps?: string;
       restSeconds?: number;
-      mode?: ExerciseMode;
-      durationSeconds?: number;
     }
   ) => void;
 }
@@ -350,11 +376,17 @@ function EditExerciseSheet({
     return day.exercises[target.index];
   }, [target, day]);
 
+  const setExerciseMode = useTemplateStore((state) => state.setExerciseMode);
+  const updateBlock = useTemplateStore((state) => state.updateBlock);
+  const joinBlock = useTemplateStore((state) => state.joinBlock);
+
   const [setsDraft, setSetsDraft] = useState(3);
   const [repsDraft, setRepsDraft] = useState('');
   const [restDraft, setRestDraft] = useState(90);
-  const [modeDraft, setModeDraft] = useState<ExerciseMode>('sets');
+  const [modeDraft, setModeDraft] = useState<BlockMode>('sets');
   const [durationDraft, setDurationDraft] = useState(DEFAULT_AMRAP_SECONDS);
+  const [intervalDraft, setIntervalDraft] = useState(60);
+  const [roundsDraft, setRoundsDraft] = useState(5);
 
   // Initialize the drafts from the targeted exercise. Pulling primitive deps
   // means stepper/typing edits (which stay local) never re-trigger this, while
@@ -363,38 +395,87 @@ function EditExerciseSheet({
   const editedSets = exercise?.sets;
   const editedReps = exercise?.reps;
   const editedRest = exercise?.restSeconds;
-  const editedMode = exercise?.mode;
-  const editedDuration = exercise?.durationSeconds;
+  // Resolved rather than read raw, so a legacy `mode: 'amrap'` exercise opens
+  // in the editor as what it is (`amrap_reps`) instead of falling back to sets.
+  const resolved = useMemo(() => resolveBlock(exercise, day?.blocks), [exercise, day?.blocks]);
+  const editedMode = resolved.mode;
+  const editedDuration = resolved.durationSeconds;
+  const editedInterval = resolved.intervalSeconds;
+  const editedRounds = resolved.rounds;
   useEffect(() => {
     if (editedExerciseId !== undefined) {
       setSetsDraft(editedSets ?? 3);
       setRepsDraft(editedReps ?? '');
       setRestDraft(editedRest ?? 90);
-      setModeDraft(editedMode === 'amrap' ? 'amrap' : 'sets');
-      setDurationDraft(editedDuration ?? DEFAULT_AMRAP_SECONDS);
+      setModeDraft(editedMode);
+      setDurationDraft(editedDuration || DEFAULT_AMRAP_SECONDS);
+      setIntervalDraft(editedInterval);
+      setRoundsDraft(editedRounds);
     }
-  }, [editedExerciseId, editedSets, editedReps, editedRest, editedMode, editedDuration]);
+  }, [
+    editedExerciseId,
+    editedSets,
+    editedReps,
+    editedRest,
+    editedMode,
+    editedDuration,
+    editedInterval,
+    editedRounds,
+  ]);
 
   if (!target || !day || !exercise) return null;
 
   const exerciseName = getExerciseById(exercise.exerciseId)?.name ?? 'Unknown Exercise';
 
-  const isAmrapDraft = modeDraft === 'amrap';
+  const timedDraft = isTimed(modeDraft);
+  // Only `amrap_reps` drops the rep target. A circuit member keeps one — "5
+  // pull-ups" IS the prescription, and the clock bounds the rounds, not the reps.
+  const keepsReps = hasRepTargets(modeDraft);
+
+  // Blocks on this day that could take another movement, so an exercise can be
+  // folded into a circuit that already exists rather than only starting one.
+  const joinableBlocks = (day.blocks ?? []).filter(
+    (b) => allowsMultipleMembers(b.mode) && b.id !== exercise.blockId
+  );
 
   const commit = () => {
     const safeSets = Math.max(1, Math.min(20, Number.parseInt(String(setsDraft), 10) || 1));
-    // AMRAP has no rep target by definition — the label is the value, so the
-    // scheme still reads correctly anywhere reps are rendered as text.
-    const safeReps = isAmrapDraft ? AMRAP_REPS_LABEL : repsDraft.trim() || exercise.reps;
+    // `amrap_reps` has no rep target by definition — the label is the value, so
+    // the scheme still reads correctly anywhere reps are rendered as text.
+    const safeReps = keepsReps ? repsDraft.trim() || exercise.reps : AMRAP_REPS_LABEL;
     const safeRest = Math.max(0, Math.min(600, Number.parseInt(String(restDraft), 10) || 0));
+
+    // Order matters: the mode change creates or removes the block, and the
+    // clock patch has to land on a block that already exists.
     updateSetRepScheme(templateId, target.dayId, target.index, {
       sets: safeSets,
       reps: safeReps,
       restSeconds: safeRest,
-      mode: modeDraft,
-      ...(isAmrapDraft ? { durationSeconds: clampAmrapSeconds(durationDraft) } : {}),
     });
+    setExerciseMode(templateId, target.dayId, target.index, modeDraft);
+
+    if (timedDraft) {
+      const blockId = useTemplateStore
+        .getState()
+        .getTemplate(templateId)
+        ?.days.find((d) => d.id === target.dayId)?.exercises[target.index]?.blockId;
+
+      if (blockId) {
+        updateBlock(templateId, target.dayId, blockId, {
+          durationSeconds: clampAmrapSeconds(durationDraft),
+          intervalSeconds: clampIntervalSeconds(intervalDraft),
+          rounds: clampRounds(roundsDraft),
+        });
+      }
+    }
+
     haptics.success();
+    onClose();
+  };
+
+  const handleJoin = (blockId: string) => {
+    haptics.success();
+    joinBlock(templateId, target.dayId, target.index, blockId);
     onClose();
   };
 
@@ -423,44 +504,66 @@ function EditExerciseSheet({
               <Text style={sheetStyles.swapButtonText}>Swap Exercise</Text>
             </Pressable>
 
-            {/* How the block is bounded: a set count, or a clock. */}
+            {/* How the block is bounded: a set count, or one of four clocks. */}
             <View style={sheetStyles.field}>
               <Text style={sheetStyles.fieldLabel}>Scheme</Text>
-              <View style={sheetStyles.modeRow}>
-                <ModeOption
-                  label="Sets × Reps"
-                  selected={!isAmrapDraft}
-                  onPress={() => {
-                    haptics.selection();
-                    setModeDraft('sets');
-                    // Coming back from AMRAP the reps field still literally says
-                    // "AMRAP", which is not a rep target. Restore a usable one.
-                    setRepsDraft((r) => (r.trim().toUpperCase() === AMRAP_REPS_LABEL ? '8-12' : r));
-                  }}
-                />
-                <ModeOption
-                  label={AMRAP_REPS_LABEL}
-                  selected={isAmrapDraft}
-                  onPress={() => {
-                    haptics.selection();
-                    setModeDraft('amrap');
-                    // AMRAP runs continuously — a rest default carried over from
-                    // a set scheme would fight the clock.
-                    setRestDraft(0);
-                  }}
-                />
+              <View style={sheetStyles.modeGrid}>
+                {BLOCK_MODES.map((mode) => (
+                  <ModeOption
+                    key={mode}
+                    label={blockModeLabel(mode)}
+                    selected={modeDraft === mode}
+                    onPress={() => {
+                      haptics.selection();
+                      setModeDraft(mode);
+                      // A timed block runs continuously; a rest default carried
+                      // over from a set scheme would fight its clock.
+                      if (isTimed(mode)) setRestDraft(0);
+                      // Coming back to a rep target the field may still literally
+                      // say "AMRAP", which is not a rep target. Restore one.
+                      if (hasRepTargets(mode)) {
+                        setRepsDraft((r) =>
+                          r.trim().toUpperCase() === AMRAP_REPS_LABEL ? '8-12' : r
+                        );
+                      }
+                    }}
+                  />
+                ))}
               </View>
-              <Text style={sheetStyles.fieldHint}>
-                {isAmrapDraft
-                  ? 'As many rounds as possible inside the window. Rounds are logged as you go — no fixed set count.'
-                  : 'A fixed number of sets at a rep target.'}
-              </Text>
+              <Text style={sheetStyles.fieldHint}>{blockModeHint(modeDraft)}</Text>
             </View>
 
-            {isAmrapDraft ? (
-              /* Duration stepper — the AMRAP window */
+            {/* Fold this movement into a circuit that already exists. This is
+                what makes "5 pull-ups, 10 push-ups, 15 squats" one block
+                instead of three separate clocks. */}
+            {joinableBlocks.length > 0 && (
               <View style={sheetStyles.field}>
-                <Text style={sheetStyles.fieldLabel}>Time cap</Text>
+                <Text style={sheetStyles.fieldLabel}>Add to a block</Text>
+                {joinableBlocks.map((block) => (
+                  <Pressable
+                    key={block.id}
+                    style={sheetStyles.joinButton}
+                    onPress={() => handleJoin(block.id)}
+                  >
+                    <Text style={sheetStyles.joinButtonText}>
+                      Join {describeBlock(resolveBlock({ blockId: block.id }, day.blocks))}
+                    </Text>
+                  </Pressable>
+                ))}
+                <Text style={sheetStyles.fieldHint}>
+                  Joining moves this movement next to the others and puts them all under one clock.
+                </Text>
+              </View>
+            )}
+
+            {/* Time cap — the window for the AMRAP modes, an optional ceiling
+                for a for-time block. EMOM sets its length from the interval
+                plan instead, so it has no cap of its own. */}
+            {timedDraft && modeDraft !== 'emom' && (
+              <View style={sheetStyles.field}>
+                <Text style={sheetStyles.fieldLabel}>
+                  {modeDraft === 'for_time' ? 'Time cap' : 'Window'}
+                </Text>
                 <View style={sheetStyles.stepperRow}>
                   <StepperButton
                     label="-1m"
@@ -473,43 +576,86 @@ function EditExerciseSheet({
                   />
                 </View>
               </View>
-            ) : (
-              <>
-                {/* Sets stepper */}
-                <View style={sheetStyles.field}>
-                  <Text style={sheetStyles.fieldLabel}>Sets</Text>
-                  <View style={sheetStyles.stepperRow}>
-                    <StepperButton
-                      label="-"
-                      onPress={() => setSetsDraft((s) => Math.max(1, s - 1))}
-                    />
-                    <Text style={sheetStyles.fieldValue}>{setsDraft}</Text>
-                    <StepperButton
-                      label="+"
-                      onPress={() => setSetsDraft((s) => Math.min(20, s + 1))}
-                    />
-                  </View>
-                </View>
-
-                {/* Reps text */}
-                <View style={sheetStyles.field}>
-                  <Text style={sheetStyles.fieldLabel}>Reps</Text>
-                  <TextInput
-                    style={sheetStyles.repsInput}
-                    value={repsDraft}
-                    onChangeText={setRepsDraft}
-                    placeholder="8-12"
-                    placeholderTextColor={colors.text.muted}
-                    returnKeyType="done"
-                  />
-                </View>
-              </>
             )}
 
-            {/* Rest stepper. Hidden for AMRAP: the session deliberately never
-                starts a rest timer inside a window, so offering a rest value
+            {/* EMOM cadence. */}
+            {modeDraft === 'emom' && (
+              <View style={sheetStyles.field}>
+                <Text style={sheetStyles.fieldLabel}>Interval</Text>
+                <View style={sheetStyles.stepperRow}>
+                  <StepperButton
+                    label="-15s"
+                    onPress={() => setIntervalDraft((d) => clampIntervalSeconds(d - 15))}
+                  />
+                  <Text style={sheetStyles.fieldValue}>{formatClock(intervalDraft)}</Text>
+                  <StepperButton
+                    label="+15s"
+                    onPress={() => setIntervalDraft((d) => clampIntervalSeconds(d + 15))}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Round plan. Only the modes that know their round count up front
+                have one — an AMRAP's round count is the result, not the plan. */}
+            {(modeDraft === 'for_time' || modeDraft === 'emom') && (
+              <View style={sheetStyles.field}>
+                <Text style={sheetStyles.fieldLabel}>
+                  {modeDraft === 'emom' ? 'Intervals' : 'Rounds'}
+                </Text>
+                <View style={sheetStyles.stepperRow}>
+                  <StepperButton
+                    label="-"
+                    onPress={() => setRoundsDraft((r) => clampRounds(r - 1))}
+                  />
+                  <Text style={sheetStyles.fieldValue}>{roundsDraft}</Text>
+                  <StepperButton
+                    label="+"
+                    onPress={() => setRoundsDraft((r) => clampRounds(r + 1))}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Sets stepper. A timed block has no planned set count — the clock
+                or the round plan ends it. */}
+            {!timedDraft && (
+              <View style={sheetStyles.field}>
+                <Text style={sheetStyles.fieldLabel}>Sets</Text>
+                <View style={sheetStyles.stepperRow}>
+                  <StepperButton
+                    label="-"
+                    onPress={() => setSetsDraft((s) => Math.max(1, s - 1))}
+                  />
+                  <Text style={sheetStyles.fieldValue}>{setsDraft}</Text>
+                  <StepperButton
+                    label="+"
+                    onPress={() => setSetsDraft((s) => Math.min(20, s + 1))}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Reps. Survives into a timed block, because the reps per round
+                are exactly what a circuit prescribes. */}
+            {keepsReps && (
+              <View style={sheetStyles.field}>
+                <Text style={sheetStyles.fieldLabel}>{timedDraft ? 'Reps per round' : 'Reps'}</Text>
+                <TextInput
+                  style={sheetStyles.repsInput}
+                  value={repsDraft}
+                  onChangeText={setRepsDraft}
+                  placeholder={timedDraft ? '5' : '8-12'}
+                  placeholderTextColor={colors.text.muted}
+                  returnKeyType="done"
+                />
+              </View>
+            )}
+
+            {/* Rest stepper. Hidden for a timed block: the session deliberately
+                never starts a rest timer inside one, so offering a rest value
                 here would promise something the session won't do. */}
-            {!isAmrapDraft && (
+            {!timedDraft && (
               <View style={sheetStyles.field}>
                 <Text style={sheetStyles.fieldLabel}>Rest (seconds)</Text>
                 <View style={sheetStyles.stepperRow}>
@@ -749,6 +895,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
   },
+  // A block heading states the clock once, above its members.
+  blockHeading: {
+    ...textStyles.label,
+    color: roles.accentText,
+    letterSpacing: 0.5,
+    marginBottom: spacing[1],
+    marginTop: spacing[2],
+  },
+  // Members are inset so the block reads as one unit you work through.
+  exerciseRowInBlock: {
+    borderLeftWidth: 2,
+    borderLeftColor: roles.accent,
+    marginLeft: spacing[2],
+  },
   exerciseRow: {
     borderBottomWidth: 1,
     borderBottomColor: colors.ui.border,
@@ -911,6 +1071,24 @@ const sheetStyles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.text.muted,
     marginTop: spacing[2],
+  },
+  modeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  joinButton: {
+    borderWidth: 1,
+    borderColor: roles.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[3],
+    alignItems: 'center',
+    marginBottom: spacing[2],
+  },
+  joinButtonText: {
+    ...textStyles.button,
+    color: roles.accentText,
   },
   modeRow: {
     flexDirection: 'row',

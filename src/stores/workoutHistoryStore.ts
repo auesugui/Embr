@@ -17,7 +17,7 @@
 // this store, so the claimed log — and its `claimedAt` guard — is restored
 // before any re-claim can happen.
 
-import type { Exercise, SessionIntent, WorkoutLog } from '@/types';
+import type { Exercise, SessionIntent, WorkoutBlock, WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 
@@ -31,6 +31,16 @@ export interface CreateLogInput {
   /** Streak day count snapshot at finish time. */
   streakDays: number;
   sessionIntent: SessionIntent;
+  /**
+   * The clocks the exercises ran under, copied from the session.
+   *
+   * Without these a finished circuit reads back as three unrelated exercises
+   * with one set each — the rounds and the window would be unrecoverable, and
+   * a workout log is the one thing there is no way to reconstruct.
+   */
+  blocks?: WorkoutBlock[];
+  /** `for_time` finishing times, keyed by block key. */
+  blockTimes?: Record<string, number>;
 }
 
 interface WorkoutHistoryState {
@@ -81,7 +91,7 @@ const persistLogs = async (logs: WorkoutLog[]) => {
 export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => ({
   ...initialState,
 
-  createLog: ({ exercises, durationSeconds, streakDays, sessionIntent }) => {
+  createLog: ({ exercises, durationSeconds, streakDays, sessionIntent, blocks, blockTimes }) => {
     const id = generateId();
     const log: WorkoutLog = {
       id,
@@ -91,6 +101,10 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
       streakDays,
       sessionIntent,
       claimedAt: null,
+      // Omitted entirely when empty, so a plain session's log keeps exactly the
+      // shape it had before blocks existed and old backups stay comparable.
+      ...(blocks?.length ? { blocks } : {}),
+      ...(blockTimes && Object.keys(blockTimes).length ? { blockTimes } : {}),
     };
 
     set((state) => {

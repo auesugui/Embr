@@ -117,6 +117,43 @@ export interface LoggedSet {
  */
 export type ExerciseMode = 'sets' | 'amrap';
 
+/**
+ * How a *block* of work is bounded.
+ *
+ * - `sets`         — the classic scheme: a fixed number of sets at a rep target.
+ * - `amrap_rounds` — fixed reps per movement, as many rounds as possible before
+ *                    the clock runs out. "5 pull-ups / 10 push-ups / 15 squats,
+ *                    AMRAP 20 min" is this.
+ * - `amrap_reps`   — one movement, no rep target, as many reps as possible in
+ *                    the window. This is what `ExerciseMode: 'amrap'` meant.
+ * - `for_time`     — fixed rounds at fixed reps, clock counts UP, optional cap.
+ * - `emom`         — every minute on the minute: one interval of work, then
+ *                    whatever is left of the interval is rest.
+ *
+ * Read through `resolveBlock` (src/lib/blocks.ts), never compared directly.
+ */
+export type BlockMode = 'sets' | 'amrap_rounds' | 'amrap_reps' | 'for_time' | 'emom';
+
+/**
+ * The clock and round plan shared by one or more exercises.
+ *
+ * Kept in a side list rather than nesting the exercises inside it. `Exercise[]`
+ * on a WorkoutLog is the only irreplaceable slice in storage, and reshaping it
+ * would break every stored workout and every exported backup. Membership is a
+ * key (`Exercise.blockId`), so both sides stay flat and both fields are
+ * optional additions.
+ */
+export interface WorkoutBlock {
+  id: string;
+  mode: BlockMode;
+  /** Window for the AMRAP modes; the cap for `for_time` (absent/0 = uncapped). */
+  durationSeconds?: number;
+  /** EMOM only: seconds per interval. Defaults to 60. */
+  intervalSeconds?: number;
+  /** Planned rounds for `for_time`; interval count for `emom`. */
+  rounds?: number;
+}
+
 export interface Exercise {
   id: string;
   name: string;
@@ -124,10 +161,25 @@ export interface Exercise {
   sets: LoggedSet[];
   restSeconds: number;
   completed: boolean;
-  /** Absent on pre-AMRAP sessions, which were all fixed sets × reps. */
+  /**
+   * @deprecated Pre-block AMRAP, kept so sessions and logs written by the first
+   * AMRAP pass still load. `resolveBlock` reads it as a one-member `amrap_reps`
+   * block. New records carry `blockId` instead.
+   */
   mode?: ExerciseMode;
-  /** AMRAP only: length of the work window in seconds. */
+  /** Legacy companion to `mode`. See the note above. */
   durationSeconds?: number;
+  /** Which block this exercise belongs to. Absent means a plain set scheme. */
+  blockId?: string;
+  /**
+   * The prescribed reps carried over from the template (`'5'`, `'8-12'`).
+   *
+   * A set scheme never needed this — you read it off the template beforehand
+   * and the session just counts sets. A circuit does: "5 pull-ups, 10 push-ups,
+   * 15 squats" IS the prescription, and it has to be on screen and one tap away
+   * while the clock runs. Absent on every session logged before blocks existed.
+   */
+  targetReps?: string;
 }
 
 export interface WorkoutSession {
@@ -138,6 +190,8 @@ export interface WorkoutSession {
   exercises: Exercise[];
   intent: SessionIntent;
   gymRushActive: boolean;
+  /** Blocks referenced by `exercises[].blockId`. Absent on pre-block sessions. */
+  blocks?: WorkoutBlock[];
 }
 
 /**
@@ -168,6 +222,20 @@ export interface WorkoutLog {
    * it means migrating stored history for no functional gain.
    */
   claimedAt: string | null;
+  /**
+   * Blocks referenced by `exercises[].blockId`.
+   *
+   * Optional, and absent on every log written before blocks existed — those
+   * read back as plain set schemes, which is what they were. History and the
+   * summary must never require this field (Export or it's gone).
+   */
+  blocks?: WorkoutBlock[];
+  /**
+   * `for_time` only: the elapsed seconds when the block was finished, per block
+   * id. A count-up block's whole point is the finishing time, and it cannot be
+   * recomputed from the set rows after the fact.
+   */
+  blockTimes?: Record<string, number>;
 }
 
 export interface PRRecord {

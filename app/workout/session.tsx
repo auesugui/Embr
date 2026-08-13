@@ -14,12 +14,19 @@ import { ExerciseDemo } from '@/components/workout/ExerciseDemo';
 import { RestTimerRing } from '@/components/workout/RestTimerRing';
 import { SetInputModal } from '@/components/workout/SetInputModal';
 import {
-  AMRAP_REPS_LABEL,
-  amrapDuration,
-  formatAmrapWindow,
+  blockKey as blockKeyOf,
+  blockMembers,
+  completedRounds,
+  countsUp,
+  describeBlock,
   formatClock,
-  isAmrap,
-} from '@/lib/amrap';
+  groupIntoBlocks,
+  isOpenEnded,
+  isTimed,
+  resolveBlock,
+  targetRepCount,
+  usesRestTimer,
+} from '@/lib/blocks';
 import {
   usePlayerStore,
   useSettingsStore,
@@ -27,6 +34,7 @@ import {
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
+import { blockElapsed, blockInterval, blockRemaining } from '@/stores/workoutStore';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { showAlert } from '@/utils/alert';
 import { haptics } from '@/utils/haptics';
@@ -46,25 +54,27 @@ export default function WorkoutSessionScreen() {
   const exercises = useWorkoutStore((state) => state.exercises);
   const currentExerciseIndex = useWorkoutStore((state) => state.currentExerciseIndex);
   const restTimer = useWorkoutStore((state) => state.restTimer);
-  const amrapTimer = useWorkoutStore((state) => state.amrapTimer);
+  const blockTimer = useWorkoutStore((state) => state.blockTimer);
+  const blocks = useWorkoutStore((state) => state.blocks);
 
   // Store actions
   const logSet = useWorkoutStore((state) => state.logSet);
   const editSet = useWorkoutStore((state) => state.editSet);
   const clearSet = useWorkoutStore((state) => state.clearSet);
   const addSet = useWorkoutStore((state) => state.addSet);
+  const openRound = useWorkoutStore((state) => state.openRound);
+  const logRound = useWorkoutStore((state) => state.logRound);
   const startRestTimer = useWorkoutStore((state) => state.startRestTimer);
   const pauseRestTimer = useWorkoutStore((state) => state.pauseRestTimer);
   const resumeRestTimer = useWorkoutStore((state) => state.resumeRestTimer);
   const resetRestTimer = useWorkoutStore((state) => state.resetRestTimer);
   const tickRestTimer = useWorkoutStore((state) => state.tickRestTimer);
-  const startAmrapTimer = useWorkoutStore((state) => state.startAmrapTimer);
-  const pauseAmrapTimer = useWorkoutStore((state) => state.pauseAmrapTimer);
-  const resumeAmrapTimer = useWorkoutStore((state) => state.resumeAmrapTimer);
-  const resetAmrapTimer = useWorkoutStore((state) => state.resetAmrapTimer);
-  const tickAmrapTimer = useWorkoutStore((state) => state.tickAmrapTimer);
-  const nextExercise = useWorkoutStore((state) => state.nextExercise);
-  const previousExercise = useWorkoutStore((state) => state.previousExercise);
+  const startBlockTimer = useWorkoutStore((state) => state.startBlockTimer);
+  const pauseBlockTimer = useWorkoutStore((state) => state.pauseBlockTimer);
+  const resumeBlockTimer = useWorkoutStore((state) => state.resumeBlockTimer);
+  const resetBlockTimer = useWorkoutStore((state) => state.resetBlockTimer);
+  const tickBlockTimer = useWorkoutStore((state) => state.tickBlockTimer);
+  const finishBlockTimer = useWorkoutStore((state) => state.finishBlockTimer);
   const setCurrentExercise = useWorkoutStore((state) => state.setCurrentExercise);
   const endSession = useWorkoutStore((state) => state.endSession);
   const getCompletedSets = useWorkoutStore((state) => state.getCompletedSets);
@@ -100,40 +110,113 @@ export default function WorkoutSessionScreen() {
     };
   }, [restTimer.running, restTimer.paused, tickRestTimer]);
 
-  // AMRAP window ticks on its own interval so it keeps running while a rest
-  // timer isn't (and vice versa). The store derives remaining from a wall-clock
-  // end time, so a dropped tick can't slow the clock down.
-  const amrapRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The block clock ticks on its own interval so it keeps running while a rest
+  // timer isn't (and vice versa). The store derives elapsed from a wall-clock
+  // anchor, so a dropped tick can't slow the clock down.
+  const blockRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (amrapTimer.running && !amrapTimer.paused) {
-      amrapRef.current = setInterval(() => {
-        tickAmrapTimer();
+    if (blockTimer.running && !blockTimer.paused) {
+      blockRef.current = setInterval(() => {
+        tickBlockTimer();
       }, 1000);
-    } else if (amrapRef.current) {
-      clearInterval(amrapRef.current);
-      amrapRef.current = null;
+    } else if (blockRef.current) {
+      clearInterval(blockRef.current);
+      blockRef.current = null;
     }
 
     return () => {
-      if (amrapRef.current) {
-        clearInterval(amrapRef.current);
+      if (blockRef.current) {
+        clearInterval(blockRef.current);
       }
     };
-  }, [amrapTimer.running, amrapTimer.paused, tickAmrapTimer]);
+  }, [blockTimer.running, blockTimer.paused, tickBlockTimer]);
 
   const currentExercise = exercises[currentExerciseIndex];
   const totalReps = getTotalReps();
 
-  const currentIsAmrap = isAmrap(currentExercise);
-  const currentAmrapDuration = currentIsAmrap ? amrapDuration(currentExercise) : 0;
-  // The clock belongs to one exercise at a time — tabbing away from an AMRAP
-  // block leaves its window running, but the controls only show on its own card.
-  const amrapForThisExercise = amrapTimer.exerciseIndex === currentExerciseIndex;
-  const amrapRunning = amrapForThisExercise && amrapTimer.running;
-  const amrapPaused = amrapForThisExercise && amrapTimer.paused;
-  const amrapFinished = amrapForThisExercise && !amrapTimer.running && amrapTimer.remaining === 0;
-  const amrapRemaining = amrapForThisExercise ? amrapTimer.remaining : currentAmrapDuration;
+  // ---------------------------------------------------------------------------
+  // The block the current exercise belongs to
+  // ---------------------------------------------------------------------------
+  // A block may hold several movements, and a round spans all of them. So the
+  // unit on screen is the BLOCK, not the exercise: "5 pull-ups, 10 push-ups, 15
+  // squats" is one thing you work through, and showing one movement at a time
+  // would hide the round you are actually in.
+
+  const currentBlock = resolveBlock(currentExercise, blocks);
+  const currentTimed = isTimed(currentBlock.mode);
+
+  const entries = currentExercise?.blockId
+    ? blockMembers(exercises, currentExercise.blockId)
+    : [{ exercise: currentExercise, index: currentExerciseIndex }];
+  const isCircuit = entries.length > 1;
+
+  const currentKey = blockKeyOf(currentExercise, currentExerciseIndex);
+  // The clock belongs to one block at a time — moving away leaves its window
+  // running, but the controls only show on the block that owns it.
+  const clockIsOurs = blockTimer.blockKey === currentKey;
+  const clockRunning = clockIsOurs && blockTimer.running;
+  const clockPaused = clockIsOurs && blockTimer.paused;
+  const counting = countsUp(currentBlock.mode);
+
+  const elapsed = clockIsOurs ? blockElapsed(blockTimer) : 0;
+  const remaining = clockIsOurs ? blockRemaining(blockTimer) : currentBlock.durationSeconds;
+  // A count-up block is finished when its time has been recorded, not when a
+  // window closes — there is no window to close.
+  const clockFinished =
+    clockIsOurs &&
+    (counting ? blockTimer.finishedElapsed !== null : !blockTimer.running && remaining === 0);
+  const clockDisplay = counting ? elapsed : remaining;
+
+  const interval = clockIsOurs && currentBlock.mode === 'emom' ? blockInterval(blockTimer) : null;
+  const roundsDone = completedRounds(entries.filter((e) => e.exercise));
+
+  // Rounds split into "banked" and "the one you are in". Banked rounds collapse
+  // to a line each; only the open round needs its controls on screen. Twenty
+  // rounds of Cindy is otherwise sixty rows to scroll past to reach the button.
+  const deepest = Math.max(0, ...entries.map((e) => e.exercise?.sets.length ?? 0));
+  // Only a round every member finished collapses to a line. A partial round
+  // stays open below, showing what landed and what is outstanding — banking it
+  // too would print the same round number twice.
+  const loggedRounds = Array.from({ length: deepest }, (_, i) => i).filter((round) =>
+    entries.every(({ exercise }) => exercise?.sets[round]?.logged)
+  );
+  const openRoundIndex =
+    Array.from({ length: deepest }, (_, i) => i).find((round) =>
+      entries.some(({ exercise }) => exercise?.sets[round] && !exercise.sets[round].logged)
+    ) ?? null;
+
+  // The single-movement quick ladder. A timed block leads with its own
+  // prescription so the common tap is the prescribed one rather than whichever
+  // generic number happens to sit closest.
+  const singleTarget = currentTimed ? targetRepCount(currentExercise?.targetReps) : null;
+  const GENERIC_REPS = [5, 8, 10, 12];
+  const quickReps =
+    singleTarget !== null && !GENERIC_REPS.includes(singleTarget)
+      ? [singleTarget, ...GENERIC_REPS.slice(0, 3)]
+      : GENERIC_REPS;
+
+  // The one-tap path only exists when every movement has a number to log. A
+  // circuit member whose reps read "max" has no prescription to fire.
+  const roundFullyPrescribed =
+    openRoundIndex !== null &&
+    entries.every(({ exercise }) => targetRepCount(exercise?.targetReps) !== null);
+
+  // Navigation moves by BLOCK, not by exercise. Stepping into the middle of a
+  // circuit would show one movement of a round you are working through as a
+  // whole, and "Next: Push-ups" is a lie when the push-ups are already on
+  // screen.
+  const groups = groupIntoBlocks(exercises, blocks);
+  const groupIndex = Math.max(
+    0,
+    groups.findIndex((g) => g.entries.some((e) => e.index === currentExerciseIndex))
+  );
+  const isLastGroup = groupIndex >= groups.length - 1;
+  const nextGroup = groups[groupIndex + 1];
+  const nextGroupLabel =
+    nextGroup && nextGroup.entries.length > 1
+      ? 'Circuit'
+      : (nextGroup?.entries[0]?.exercise?.name ?? '');
 
   // Reactive last-used weight for the current exercise — drives the chip-row
   // hint AND mirrors what the next quick-tap will log. Subscribing (rather
@@ -166,49 +249,72 @@ export default function WorkoutSessionScreen() {
   // weightHistory so the next chip shows "@ 0 lb", and the summary's volume
   // calc treats null and 0 identically (`(weight ?? 0) * reps`). Null keeps
   // the set volume-neutral, history-clean, and PR-silent.
-  const handleQuickLog = (setIndex: number, reps: number) => {
-    if (!currentExercise) return;
+  const handleQuickLog = (exerciseIndex: number, setIndex: number, reps: number) => {
+    const exercise = exercises[exerciseIndex];
+    if (!exercise) return;
 
-    const lastWeight = getLastWeight(currentExercise.id);
+    const lastWeight = getLastWeight(exercise.id);
     const quickWeight = lastWeight && lastWeight > 0 && weightUnitMatches ? lastWeight : undefined;
 
     haptics.success();
-    logSet(currentExerciseIndex, setIndex, reps, quickWeight);
-    afterLog(setIndex);
+    logSet(exerciseIndex, setIndex, reps, quickWeight);
+    afterLog(exerciseIndex, setIndex);
   };
 
-  // What happens once a set lands. In a set scheme that's rest; in an AMRAP
-  // block it's the opposite — the clock is the whole constraint, so we never
-  // interrupt it with a rest overlay, and we open the next round's row instead
-  // (rounds are open-ended: there is no planned last set to stop at).
-  const afterLog = (setIndex: number) => {
-    if (!currentExercise) return;
+  // What happens once a set lands.
+  //
+  // In a set scheme that's rest. In a timed block it's the opposite — the clock
+  // is the whole constraint, so nothing may cover the rows, and the next round
+  // opens instead of a rest overlay.
+  //
+  // The round opens for EVERY member at once, not just the one just logged.
+  // Round index is what pairs the movements: if the squats could run ahead,
+  // round 3 of the squats would sit beside round 2 of the pull-ups.
+  const afterLog = (exerciseIndex: number, setIndex: number) => {
+    const exercise = exercises[exerciseIndex];
+    if (!exercise) return;
 
-    if (currentIsAmrap) {
-      if (setIndex === currentExercise.sets.length - 1) {
-        addSet(currentExerciseIndex);
-      }
+    if (currentTimed) {
+      // Only the open-ended modes grow. `for_time` and `emom` have a planned
+      // round count and stop there.
+      if (!isOpenEnded(currentBlock.mode)) return;
+
+      // The next round opens when the round CLOSES — when the last movement of
+      // it lands — not when any one movement is logged. Keying off row counts
+      // instead fires on the first movement of the round and grows only that
+      // one, leaving the circuit ragged.
+      //
+      // Read fresh state: the set that triggered this is not in the render
+      // closure's copy of `exercises` yet.
+      const fresh = useWorkoutStore.getState().exercises;
+      const members = entries.map((e) => e.index);
+      const roundClosed = members.every((i) => fresh[i]?.sets[setIndex]?.logged);
+
+      if (roundClosed) openRound(members);
       return;
     }
 
-    startRestTimer(currentExercise.restSeconds);
+    if (usesRestTimer(currentBlock.mode)) {
+      startRestTimer(exercise.restSeconds);
+    }
   };
 
-  // Open modal for custom input
-  const handleOpenCustomInput = (setIndex: number) => {
+  // Open modal for custom input. Takes the exercise index explicitly: inside a
+  // circuit the row you tapped may belong to any member, not the current one.
+  const handleOpenCustomInput = (exerciseIndex: number, setIndex: number) => {
     haptics.tap();
     setSetEdit({
-      exerciseIndex: currentExerciseIndex,
+      exerciseIndex,
       setIndex,
       visible: true,
     });
   };
 
   // Open modal to edit existing set
-  const handleEditSet = (setIndex: number) => {
+  const handleEditSet = (exerciseIndex: number, setIndex: number) => {
     haptics.tap();
     setSetEdit({
-      exerciseIndex: currentExerciseIndex,
+      exerciseIndex,
       setIndex,
       visible: true,
     });
@@ -216,15 +322,18 @@ export default function WorkoutSessionScreen() {
 
   // Save from modal (new set)
   const handleModalSave = (reps: number, weight?: number) => {
-    const set = currentExercise?.sets[setEdit.setIndex];
+    // Read the set off the exercise being edited, not the current one — inside
+    // a circuit those differ, and asking the wrong exercise would treat an edit
+    // as a fresh log and re-open a round that is already open.
+    const set = exercises[setEdit.exerciseIndex]?.sets[setEdit.setIndex];
 
     if (set?.logged) {
       // Editing existing set - don't restart timer
       editSet(setEdit.exerciseIndex, setEdit.setIndex, reps, weight);
     } else {
-      // New set - log, then rest (sets) or open the next round (AMRAP)
+      // New set - log, then rest (sets) or open the next round (timed block)
       logSet(setEdit.exerciseIndex, setEdit.setIndex, reps, weight);
-      afterLog(setEdit.setIndex);
+      afterLog(setEdit.exerciseIndex, setEdit.setIndex);
     }
   };
 
@@ -271,6 +380,10 @@ export default function WorkoutSessionScreen() {
       durationSeconds: duration,
       streakDays,
       sessionIntent: intent,
+      // The clocks go with the exercises. Without them a finished circuit reads
+      // back as three unrelated exercises with one set each.
+      blocks: workoutStoreState.blocks,
+      blockTimes: workoutStoreState.blockTimes,
     });
 
     router.replace({
@@ -281,18 +394,18 @@ export default function WorkoutSessionScreen() {
 
   const handleNextExercise = () => {
     haptics.tap();
-    if (currentExerciseIndex < exercises.length - 1) {
-      nextExercise();
-      resetRestTimer();
-    }
+    const target = groups[groupIndex + 1]?.entries[0]?.index;
+    if (target === undefined) return;
+    setCurrentExercise(target);
+    resetRestTimer();
   };
 
   const handlePreviousExercise = () => {
     haptics.tap();
-    if (currentExerciseIndex > 0) {
-      previousExercise();
-      resetRestTimer();
-    }
+    const target = groups[groupIndex - 1]?.entries[0]?.index;
+    if (target === undefined) return;
+    setCurrentExercise(target);
+    resetRestTimer();
   };
 
   const handleSkipRest = () => {
@@ -309,29 +422,107 @@ export default function WorkoutSessionScreen() {
     }
   };
 
-  const handleStartAmrap = () => {
+  // The primary circuit action: bank the whole round in one tap.
+  //
+  // Weight is resolved per movement the same way a quick-tap does, so a loaded
+  // circuit still records real volume rather than a bodyweight-shaped hole.
+  const handleLogRound = () => {
+    if (openRoundIndex === null) return;
+
+    const rows = entries.flatMap(({ exercise, index }) => {
+      const reps = targetRepCount(exercise?.targetReps);
+      if (!exercise || reps === null) return [];
+      // Skip anything already logged — re-logging would clobber an edit the
+      // user made to this round.
+      if (exercise.sets[openRoundIndex]?.logged) return [];
+
+      const lastWeight = getLastWeight(exercise.id);
+      const weight = lastWeight && lastWeight > 0 && weightUnitMatches ? lastWeight : undefined;
+      return [{ exerciseIndex: index, setIndex: openRoundIndex, reps, weight }];
+    });
+
+    if (rows.length === 0) return;
+
     haptics.success();
-    startAmrapTimer(currentExerciseIndex, currentAmrapDuration);
+    logRound(
+      rows,
+      entries.map((e) => e.index),
+      // `for_time` and `emom` stop at their planned round count.
+      isOpenEnded(currentBlock.mode)
+    );
   };
 
-  const handleToggleAmrapPause = () => {
+  const handleStartBlock = () => {
+    haptics.success();
+    startBlockTimer(currentKey, {
+      mode: currentBlock.mode,
+      // EMOM's total length is its interval plan, not a window someone typed.
+      duration:
+        currentBlock.mode === 'emom'
+          ? currentBlock.rounds * currentBlock.intervalSeconds
+          : currentBlock.durationSeconds,
+      intervalSeconds: currentBlock.intervalSeconds,
+    });
+  };
+
+  const handleToggleBlockPause = () => {
     haptics.selection();
-    if (amrapPaused) {
-      resumeAmrapTimer();
+    if (clockPaused) {
+      resumeBlockTimer();
     } else {
-      pauseAmrapTimer();
+      pauseBlockTimer();
     }
   };
 
-  const handleResetAmrap = () => {
+  const handleResetBlock = () => {
     haptics.tap();
-    resetAmrapTimer();
+    resetBlockTimer();
+  };
+
+  const handleFinishBlock = () => {
+    haptics.success();
+    finishBlockTimer();
   };
 
   const handleExerciseTabPress = (index: number) => {
     haptics.tap();
     setCurrentExercise(index);
     resetRestTimer();
+  };
+
+  // One line of plain instruction under the clock. Each mode is bounded by a
+  // different thing, so each needs to say a different thing.
+  const blockHint = (): string => {
+    if (clockPaused) return 'Paused.';
+
+    switch (currentBlock.mode) {
+      case 'amrap_rounds':
+        return clockFinished
+          ? 'Time — finish the round you’re in, then move on.'
+          : clockRunning
+            ? 'One tap banks the whole round.'
+            : 'As many rounds as possible in the window.';
+      case 'amrap_reps':
+        return clockFinished
+          ? 'Time — finish the round you’re in, then move on.'
+          : clockRunning
+            ? 'Log each round as you finish it. No rest timer here.'
+            : 'As many reps as possible in the window.';
+      case 'for_time':
+        return clockFinished
+          ? `Finished in ${formatClock(elapsed)}.`
+          : clockRunning
+            ? 'Clock is up. Hit Done the moment the last round lands.'
+            : `${currentBlock.rounds} rounds, as fast as you can.`;
+      case 'emom':
+        return clockFinished
+          ? 'Done.'
+          : clockRunning
+            ? 'Work at the top of each minute. Rest whatever is left of it.'
+            : `${currentBlock.rounds} intervals of ${formatClock(currentBlock.intervalSeconds)}.`;
+      default:
+        return '';
+    }
   };
 
   // Get the set being edited
@@ -440,61 +631,101 @@ export default function WorkoutSessionScreen() {
       {/* Current Exercise */}
       <ScrollView style={styles.exerciseScroll} contentContainerStyle={styles.exerciseContent}>
         <View style={styles.exerciseCard}>
-          <Text style={styles.exerciseName}>{currentExercise.name}</Text>
-          <Text style={styles.exerciseMeta}>{currentExercise.muscleGroups.join(', ')}</Text>
+          {isCircuit ? (
+            <>
+              {/* In a circuit the prescription IS the workout, so it sits at
+                  the top as a list rather than being spread across cards you
+                  have to tab between. */}
+              <Text style={styles.exerciseName}>Circuit</Text>
+              <View style={styles.prescription}>
+                {entries.map(({ exercise, index }) => (
+                  <View key={exercise?.id ?? index} style={styles.prescriptionRow}>
+                    <Text style={styles.prescriptionReps}>{exercise?.targetReps ?? '—'}</Text>
+                    <Text style={styles.prescriptionName}>{exercise?.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.exerciseName}>{currentExercise.name}</Text>
+              <Text style={styles.exerciseMeta}>{currentExercise.muscleGroups.join(', ')}</Text>
 
-          {/* Collapsed by default — the 3-second rule means logging a set must
-              never be behind a picture. Opt in when you want the reminder. */}
-          <ExerciseDemo exerciseId={currentExercise.id.replace(/-\d+$/, '')} />
+              {/* Collapsed by default — the 3-second rule means logging a set
+                  must never be behind a picture. Opt in when you want it. */}
+              <ExerciseDemo exerciseId={currentExercise.id.replace(/-\d+$/, '')} />
+            </>
+          )}
 
-          {/* AMRAP window. Inline rather than a full-screen overlay like rest:
-              the whole point of the block is to keep logging while it runs, so
-              it must never cover the set rows. */}
-          {currentIsAmrap && (
+          {/* The block clock. Inline rather than a full-screen overlay like
+              rest: the whole point of a timed block is to keep logging while it
+              runs, so it must never cover the rows. */}
+          {currentTimed && (
             <View style={styles.amrapCard}>
               <View style={styles.amrapHeader}>
-                <Text style={styles.amrapLabel}>
-                  {AMRAP_REPS_LABEL} · {formatAmrapWindow(currentAmrapDuration)}
-                </Text>
+                <Text style={styles.amrapLabel}>{describeBlock(currentBlock)}</Text>
                 <Text
                   style={[
                     styles.amrapClock,
-                    amrapRunning && styles.amrapClockRunning,
-                    amrapFinished && styles.amrapClockDone,
+                    clockRunning && styles.amrapClockRunning,
+                    clockFinished && styles.amrapClockDone,
                   ]}
                 >
-                  {formatClock(amrapRemaining)}
+                  {formatClock(clockDisplay)}
                 </Text>
               </View>
 
-              <Text style={styles.amrapHint}>
-                {amrapFinished
-                  ? 'Time — finish the round you’re in, then move on.'
-                  : amrapRunning
-                    ? 'Log each round as you finish it. No rest timer here.'
-                    : amrapPaused
-                      ? 'Paused.'
-                      : 'As many rounds as possible in the window.'}
-              </Text>
+              {/* EMOM's own clock is the interval, not the total. The minute
+                  you are on is the number you act on. */}
+              {interval && !clockFinished && (
+                <View style={styles.amrapHeader}>
+                  <Text style={styles.amrapHint}>
+                    Minute {Math.min(interval.index + 1, currentBlock.rounds)} of{' '}
+                    {currentBlock.rounds}
+                  </Text>
+                  <Text style={styles.intervalClock}>{formatClock(interval.remaining)}</Text>
+                </View>
+              )}
+
+              <Text style={styles.amrapHint}>{blockHint()}</Text>
+
+              {isCircuit && (
+                <Text style={styles.roundTally}>
+                  {roundsDone} {roundsDone === 1 ? 'round' : 'rounds'} complete
+                </Text>
+              )}
 
               <View style={styles.amrapControls}>
-                {amrapForThisExercise && !amrapFinished ? (
-                  <Pressable style={styles.amrapButton} onPress={handleToggleAmrapPause}>
-                    <Text style={styles.amrapButtonText}>{amrapPaused ? 'Resume' : 'Pause'}</Text>
+                {clockIsOurs && !clockFinished ? (
+                  <Pressable style={styles.amrapButton} onPress={handleToggleBlockPause}>
+                    <Text style={styles.amrapButtonText}>{clockPaused ? 'Resume' : 'Pause'}</Text>
                   </Pressable>
                 ) : (
                   <Pressable
                     style={[styles.amrapButton, styles.amrapButtonPrimary]}
-                    onPress={handleStartAmrap}
+                    onPress={handleStartBlock}
                   >
                     <Text style={[styles.amrapButtonText, styles.amrapButtonTextPrimary]}>
-                      {amrapFinished ? 'Restart' : 'Start'}
+                      {clockFinished ? 'Restart' : 'Start'}
                     </Text>
                   </Pressable>
                 )}
 
-                {amrapForThisExercise && !amrapFinished && (
-                  <Pressable style={styles.amrapButton} onPress={handleResetAmrap}>
+                {/* Only a count-up block needs a finish button: its result IS
+                    the elapsed time, and nothing else can stop the clock. */}
+                {counting && clockIsOurs && !clockFinished && (
+                  <Pressable
+                    style={[styles.amrapButton, styles.amrapButtonPrimary]}
+                    onPress={handleFinishBlock}
+                  >
+                    <Text style={[styles.amrapButtonText, styles.amrapButtonTextPrimary]}>
+                      Done
+                    </Text>
+                  </Pressable>
+                )}
+
+                {clockIsOurs && !clockFinished && (
+                  <Pressable style={styles.amrapButton} onPress={handleResetBlock}>
                     <Text style={styles.amrapButtonText}>Reset</Text>
                   </Pressable>
                 )}
@@ -502,130 +733,257 @@ export default function WorkoutSessionScreen() {
             </View>
           )}
 
-          {/* Sets */}
-          <View style={styles.setsContainer}>
-            {currentExercise.sets.map((set, index) => (
-              <View
-                // biome-ignore lint/suspicious/noArrayIndexKey: set positions are stable and never reordered
-                key={index}
-                style={styles.setRow}
-              >
-                <View style={styles.setRowHeader}>
-                  <Text style={styles.setNumber}>
-                    {currentIsAmrap ? `Round ${index + 1}` : `Set ${index + 1}`}
-                  </Text>
-                  {!set.logged && (
-                    <Text style={styles.weightHint}>
-                      {hasWeight
-                        ? weightUnitMatches
-                          ? `@ ${currentWeight} ${currentWeightUnit} · tap ... to change`
-                          : `last: ${currentWeight} ${currentWeightUnit} · tap ... to set ${units}`
-                        : 'no weight · tap ... to set'}
+          {/* Rounds — the circuit view.
+
+              A circuit is worked as a unit: five pull-ups, ten push-ups,
+              fifteen squats, THEN you have finished a round. So the primary
+              action is one button for the whole round. Logging it movement by
+              movement was three taps for something done as one thing, and over
+              twenty rounds of Cindy that is sixty taps against a running clock.
+
+              Per-movement logging is still here, demoted, because a round that
+              the clock cuts short is real and has to be recordable. */}
+          {isCircuit && (
+            <View style={styles.setsContainer}>
+              {/* Rounds already banked. One line each — twenty rounds must not
+                  become sixty rows of scroll. Tap a rep count to correct it. */}
+              {loggedRounds.map((round) => (
+                <View key={`done-${round}`} style={styles.roundDoneRow}>
+                  <Text style={styles.roundDoneLabel}>Round {round + 1}</Text>
+                  <View style={styles.roundDoneReps}>
+                    {entries.map(({ exercise, index }) => {
+                      const set = exercise?.sets[round];
+                      if (!exercise || !set?.logged) return null;
+                      return (
+                        <Pressable
+                          key={exercise.id}
+                          onPress={() => handleEditSet(index, round)}
+                          style={styles.roundDoneChip}
+                        >
+                          <Text style={styles.roundDoneChipText}>{set.reps}</Text>
+                          {set.isPR && <Text style={styles.prBadge}>PR</Text>}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+
+              {/* The round in progress. */}
+              {openRoundIndex !== null && (
+                <Settle from={0.98}>
+                  <View style={styles.roundGroup}>
+                    <Text style={styles.roundHeading}>Round {openRoundIndex + 1}</Text>
+
+                    {/* The one tap that matters. Logs every movement at its
+                        prescription and opens the next round. */}
+                    {roundFullyPrescribed && (
+                      <Pressable style={styles.roundDoneButton} onPress={handleLogRound}>
+                        <Text style={styles.roundDoneButtonText}>Round done</Text>
+                        <Text style={styles.roundDoneButtonMeta}>
+                          {entries
+                            .map(({ exercise }) => targetRepCount(exercise?.targetReps))
+                            .join(' · ')}
+                        </Text>
+                      </Pressable>
+                    )}
+
+                    {/* The partial path. Deliberately quiet: it is what you
+                        reach for when the clock beat you, not the default. */}
+                    <Text style={styles.partialLabel}>
+                      {roundFullyPrescribed ? 'Or log one at a time' : 'Log each movement'}
                     </Text>
+
+                    {entries.map(({ exercise, index }) => {
+                      const set = exercise?.sets[openRoundIndex];
+                      if (!exercise || !set) return null;
+                      const target = targetRepCount(exercise.targetReps);
+
+                      return (
+                        <View key={exercise.id} style={styles.circuitRow}>
+                          <Text style={styles.circuitName} numberOfLines={1}>
+                            {exercise.name}
+                          </Text>
+
+                          {set.logged ? (
+                            <Settle from={0.96}>
+                              <PRFlash active={set.isPR} style={styles.prFlashWrapper}>
+                                <Pressable
+                                  style={styles.circuitLogged}
+                                  onPress={() => handleEditSet(index, openRoundIndex)}
+                                >
+                                  <Text style={styles.loggedReps}>{set.reps}</Text>
+                                  {set.weight ? (
+                                    <Text style={styles.loggedWeight}>
+                                      @ {set.weight} {units}
+                                    </Text>
+                                  ) : null}
+                                  {set.isPR && <Text style={styles.prBadge}>PR!</Text>}
+                                </Pressable>
+                              </PRFlash>
+                            </Settle>
+                          ) : (
+                            <View style={styles.circuitButtons}>
+                              {target !== null && (
+                                <Pressable
+                                  style={styles.circuitTargetButton}
+                                  onPress={() => handleQuickLog(index, openRoundIndex, target)}
+                                >
+                                  <Text style={styles.circuitTargetText}>{target}</Text>
+                                </Pressable>
+                              )}
+                              <Pressable
+                                style={styles.customButton}
+                                onPress={() => handleOpenCustomInput(index, openRoundIndex)}
+                              >
+                                <Text style={styles.customButtonText}>...</Text>
+                              </Pressable>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </Settle>
+              )}
+            </View>
+          )}
+
+          {/* Sets — the single-movement view. */}
+          {!isCircuit && (
+            <View style={styles.setsContainer}>
+              {currentExercise.sets.map((set, index) => (
+                <View
+                  // biome-ignore lint/suspicious/noArrayIndexKey: set positions are stable and never reordered
+                  key={index}
+                  style={styles.setRow}
+                >
+                  <View style={styles.setRowHeader}>
+                    <Text style={styles.setNumber}>
+                      {currentTimed ? `Round ${index + 1}` : `Set ${index + 1}`}
+                    </Text>
+                    {!set.logged && (
+                      <Text style={styles.weightHint}>
+                        {hasWeight
+                          ? weightUnitMatches
+                            ? `@ ${currentWeight} ${currentWeightUnit} · tap ... to change`
+                            : `last: ${currentWeight} ${currentWeightUnit} · tap ... to set ${units}`
+                          : 'no weight · tap ... to set'}
+                      </Text>
+                    )}
+                  </View>
+
+                  {set.logged ? (
+                    <Settle from={0.96}>
+                      <PRFlash active={set.isPR} style={styles.prFlashWrapper}>
+                        <Pressable
+                          style={styles.loggedSet}
+                          onPress={() => handleEditSet(currentExerciseIndex, index)}
+                        >
+                          <Text style={styles.loggedReps}>{set.reps} reps</Text>
+                          {set.weight && (
+                            <Text style={styles.loggedWeight}>
+                              @ {set.weight} {units}
+                            </Text>
+                          )}
+                          {set.isPR && <Text style={styles.prBadge}>PR!</Text>}
+                          <Text style={styles.editHint}>tap to edit</Text>
+                        </Pressable>
+                      </PRFlash>
+                    </Settle>
+                  ) : (
+                    <View style={styles.logButtons}>
+                      {quickReps.map((reps) => {
+                        // Inside a timed block the prescription leads and is
+                        // highlighted — same one-tap rule as a circuit. A set
+                        // scheme keeps the plain generic ladder it always had.
+                        const isTarget = currentTimed && reps === singleTarget;
+                        return (
+                          <Pressable
+                            key={reps}
+                            style={[styles.logButton, isTarget && styles.logButtonTarget]}
+                            onPress={() => handleQuickLog(currentExerciseIndex, index, reps)}
+                          >
+                            <Text
+                              style={[styles.logButtonText, isTarget && styles.logButtonTextTarget]}
+                            >
+                              {reps}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                      <Pressable
+                        style={styles.customButton}
+                        onPress={() => handleOpenCustomInput(currentExerciseIndex, index)}
+                      >
+                        <Text style={styles.customButtonText}>...</Text>
+                      </Pressable>
+                    </View>
                   )}
                 </View>
+              ))}
 
-                {set.logged ? (
-                  <Settle from={0.96}>
-                    <PRFlash active={set.isPR} style={styles.prFlashWrapper}>
-                      <Pressable style={styles.loggedSet} onPress={() => handleEditSet(index)}>
-                        <Text style={styles.loggedReps}>{set.reps} reps</Text>
-                        {set.weight && (
-                          <Text style={styles.loggedWeight}>
-                            @ {set.weight} {units}
-                          </Text>
-                        )}
-                        {set.isPR && <Text style={styles.prBadge}>PR!</Text>}
-                        <Text style={styles.editHint}>tap to edit</Text>
-                      </Pressable>
-                    </PRFlash>
-                  </Settle>
-                ) : (
-                  <View style={styles.logButtons}>
-                    {[5, 8, 10, 12].map((reps) => (
-                      <Pressable
-                        key={reps}
-                        style={styles.logButton}
-                        onPress={() => handleQuickLog(index, reps)}
-                      >
-                        <Text style={styles.logButtonText}>{reps}</Text>
-                      </Pressable>
-                    ))}
-                    <Pressable
-                      style={styles.customButton}
-                      onPress={() => handleOpenCustomInput(index)}
-                    >
-                      <Text style={styles.customButtonText}>...</Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
-            ))}
-
-            {/* Rounds are open-ended. Logging the last row opens the next one
+              {/* Rounds are open-ended. Logging the last row opens the next one
                 automatically; this is the manual escape hatch (e.g. after
                 clearing a row, or to queue one up before you start). */}
-            {currentIsAmrap && (
-              <Pressable
-                style={styles.addRoundButton}
-                onPress={() => {
-                  haptics.tap();
-                  addSet(currentExerciseIndex);
-                }}
-              >
-                <Text style={styles.addRoundText}>Add round</Text>
-              </Pressable>
-            )}
-          </View>
+              {isOpenEnded(currentBlock.mode) && (
+                <Pressable
+                  style={styles.addRoundButton}
+                  onPress={() => {
+                    haptics.tap();
+                    addSet(currentExerciseIndex);
+                  }}
+                >
+                  <Text style={styles.addRoundText}>Add round</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
 
       {/* Navigation */}
       <View style={[styles.navigation, { paddingBottom: insets.bottom + spacing[2] }]}>
         <Pressable
-          style={[
-            styles.navButton,
-            currentExerciseIndex >= exercises.length - 1 && styles.finishButton,
-          ]}
-          onPress={
-            currentExerciseIndex >= exercises.length - 1 ? handleFinishWorkout : handleNextExercise
-          }
+          style={[styles.navButton, isLastGroup && styles.finishButton]}
+          onPress={isLastGroup ? handleFinishWorkout : handleNextExercise}
         >
-          <Text
-            style={[
-              styles.navButtonText,
-              currentExerciseIndex >= exercises.length - 1 && styles.navButtonTextFinish,
-            ]}
-          >
-            {currentExerciseIndex < exercises.length - 1
-              ? `Next: ${exercises[currentExerciseIndex + 1]?.name}`
-              : 'Finish Workout'}
+          <Text style={[styles.navButtonText, isLastGroup && styles.navButtonTextFinish]}>
+            {isLastGroup ? 'Finish Workout' : `Next: ${nextGroupLabel}`}
           </Text>
         </Pressable>
 
-        {/* Exercise List */}
+        {/* Block list. One tab per block, so a three-movement circuit is one
+            destination rather than three that all show the same rounds. */}
         <ScrollView style={styles.exerciseList} horizontal showsHorizontalScrollIndicator={false}>
-          {exercises.map((exercise, index) => (
-            <Pressable
-              key={exercise.id}
-              style={[
-                styles.exerciseTab,
-                index === currentExerciseIndex && styles.exerciseTabActive,
-                exercise.completed && styles.exerciseTabCompleted,
-              ]}
-              onPress={() => handleExerciseTabPress(index)}
-            >
-              <Text
+          {groups.map((group, index) => {
+            const first = group.entries[0];
+            if (!first?.exercise) return null;
+            const label =
+              group.entries.length > 1 ? 'Circuit' : (first.exercise.name ?? 'Exercise');
+
+            return (
+              <Pressable
+                key={first.exercise.id}
                 style={[
-                  styles.exerciseTabText,
-                  index === currentExerciseIndex && styles.exerciseTabTextActive,
+                  styles.exerciseTab,
+                  index === groupIndex && styles.exerciseTabActive,
+                  group.entries.every((e) => e.exercise?.completed) && styles.exerciseTabCompleted,
                 ]}
-                numberOfLines={1}
+                onPress={() => handleExerciseTabPress(first.index)}
               >
-                {exercise.name}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  style={[
+                    styles.exerciseTabText,
+                    index === groupIndex && styles.exerciseTabTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
 
@@ -639,7 +997,11 @@ export default function WorkoutSessionScreen() {
         initialWeight={editingSet?.weight}
         suggestedWeight={suggestedWeight}
         setNumber={setEdit.setIndex + 1}
-        exerciseName={currentExercise.name}
+        // The exercise being EDITED, not the current one. Inside a circuit the
+        // row you tapped can belong to any member, and labelling the sheet with
+        // the block's first movement told you you were editing the wrong thing.
+        exerciseName={editingExercise?.name ?? currentExercise.name}
+        unitLabel={currentTimed ? 'Round' : 'Set'}
         isEditing={editingSet?.logged}
       />
     </View>
@@ -828,6 +1190,145 @@ const styles = StyleSheet.create({
     color: roles.textPrimary,
   },
   amrapButtonTextPrimary: {
+    color: colors.background.primary,
+  },
+  intervalClock: {
+    ...textStyles.number,
+    fontSize: 20,
+    color: roles.accent,
+  },
+  roundTally: {
+    ...textStyles.caption,
+    color: roles.textSecondary,
+  },
+  // The prescription block: dense and tabular, Hevy register. This is a
+  // reference you glance at mid-round, not something to decorate.
+  prescription: {
+    gap: spacing[1],
+    marginBottom: spacing[4],
+  },
+  prescriptionRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing[2],
+  },
+  prescriptionReps: {
+    ...textStyles.number,
+    fontSize: 18,
+    color: roles.accent,
+    minWidth: 44,
+  },
+  prescriptionName: {
+    ...textStyles.body,
+    color: roles.textPrimary,
+  },
+  // A banked round: one line, tap a number to correct it.
+  roundDoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[3],
+    borderRadius: radius.md,
+    backgroundColor: colors.background.secondary,
+  },
+  roundDoneLabel: {
+    ...textStyles.caption,
+    color: roles.textSecondary,
+  },
+  roundDoneReps: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  roundDoneChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: radius.sm,
+    backgroundColor: colors.background.tertiary,
+  },
+  roundDoneChipText: {
+    ...textStyles.number,
+    fontSize: 15,
+    color: roles.textPrimary,
+  },
+  // The one tap that matters. Sized like it.
+  roundDoneButton: {
+    backgroundColor: roles.accent,
+    borderRadius: radius.lg,
+    paddingVertical: spacing[4],
+    alignItems: 'center',
+    gap: spacing[1],
+  },
+  roundDoneButtonText: {
+    ...textStyles.button,
+    fontSize: 17,
+    color: colors.background.primary,
+  },
+  roundDoneButtonMeta: {
+    ...textStyles.caption,
+    color: colors.background.primary,
+    opacity: 0.8,
+  },
+  partialLabel: {
+    ...textStyles.caption,
+    color: roles.textMuted,
+    marginTop: spacing[1],
+  },
+  circuitTargetButton: {
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: roles.border,
+  },
+  circuitTargetText: {
+    ...textStyles.number,
+    fontSize: 15,
+    color: roles.textPrimary,
+  },
+  roundGroup: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.lg,
+    padding: spacing[3],
+    gap: spacing[2],
+  },
+  roundHeading: {
+    ...textStyles.label,
+    color: roles.textSecondary,
+    letterSpacing: 0.5,
+  },
+  circuitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing[2],
+  },
+  circuitName: {
+    ...textStyles.body,
+    color: roles.textPrimary,
+    flex: 1,
+  },
+  circuitButtons: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  circuitLogged: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderRadius: radius.md,
+    backgroundColor: colors.background.tertiary,
+  },
+  logButtonTarget: {
+    backgroundColor: roles.accent,
+  },
+  logButtonTextTarget: {
     color: colors.background.primary,
   },
   addRoundButton: {

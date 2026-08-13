@@ -10,10 +10,17 @@ import {
   getExerciseById,
   getTemplateById,
 } from '@/data';
-import { amrapDuration, describeScheme, isAmrap } from '@/lib/amrap';
+import {
+  describeBlock,
+  describeScheme,
+  isOpenEnded,
+  isTimed,
+  resolveBlock,
+  usesRestTimer,
+} from '@/lib/blocks';
 import { useTemplateStore, useWorkoutStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
-import type { Exercise, SessionIntent } from '@/types';
+import type { Exercise, SessionIntent, WorkoutBlock } from '@/types';
 import { haptics } from '@/utils/haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Check } from 'lucide-react-native';
@@ -74,10 +81,18 @@ const INTENT_OPTIONS: IntentOption[] = [
 function buildExercises(day: TemplateDay): Exercise[] {
   return day.exercises.map((templateEx, index) => {
     const def = getExerciseById(templateEx.exerciseId);
-    const amrap = isAmrap(templateEx);
-    // An AMRAP block has no planned set count — the clock ends it. Seed one
-    // open row; the session appends the next as each round is logged.
-    const setCount = amrap ? 1 : templateEx.sets;
+    const block = resolveBlock(templateEx, day.blocks);
+    const timed = isTimed(block.mode);
+
+    // A timed block has no planned set count — the clock ends it, or the round
+    // plan does. Seed one open row; the session opens the next as you log.
+    // `for_time` and `emom` know their round count up front, so seed that many.
+    const setCount = !timed
+      ? templateEx.sets
+      : isOpenEnded(block.mode)
+        ? 1
+        : Math.max(1, block.rounds);
+
     return {
       id: `${templateEx.exerciseId}-${index}`,
       name: def?.name ?? 'Unknown Exercise',
@@ -89,12 +104,50 @@ function buildExercises(day: TemplateDay): Exercise[] {
         isPR: false,
         isRepPR: false,
       })),
-      restSeconds: templateEx.restSeconds,
+      // A timed block runs its own clock; a rest overlay inside one would cover
+      // the rows you are meant to keep logging into.
+      restSeconds: usesRestTimer(block.mode) ? templateEx.restSeconds : 0,
       completed: false,
-      mode: amrap ? ('amrap' as const) : ('sets' as const),
-      ...(amrap ? { durationSeconds: amrapDuration(templateEx) } : {}),
+      // The prescription travels with the session. In a circuit it is the
+      // thing you read mid-round, not something you looked up beforehand.
+      targetReps: templateEx.reps,
+      // A legacy `mode: 'amrap'` exercise has no block id of its own, so it is
+      // given the synthesised one (see `buildBlocks`) rather than carrying the
+      // deprecated field forward into new session records.
+      ...(templateEx.blockId
+        ? { blockId: templateEx.blockId }
+        : timed
+          ? { blockId: `exercise:${index}` }
+          : {}),
     };
   });
+}
+
+/**
+ * The blocks a day actually uses.
+ *
+ * A legacy `mode: 'amrap'` exercise has no block record — it predates them — so
+ * one is synthesised here rather than leaving the session with an exercise in a
+ * timed mode and no clock to match.
+ */
+function buildBlocks(day: TemplateDay): WorkoutBlock[] {
+  const blocks = [...(day.blocks ?? [])];
+
+  day.exercises.forEach((templateEx, index) => {
+    if (templateEx.blockId) return;
+    const resolved = resolveBlock(templateEx, day.blocks);
+    if (!isTimed(resolved.mode)) return;
+
+    blocks.push({
+      id: `exercise:${index}`,
+      mode: resolved.mode,
+      durationSeconds: resolved.durationSeconds,
+      intervalSeconds: resolved.intervalSeconds,
+      rounds: resolved.rounds,
+    });
+  });
+
+  return blocks;
 }
 
 export default function WorkoutLoadoutScreen() {
@@ -153,7 +206,7 @@ export default function WorkoutLoadoutScreen() {
     if (isEmptyDay) return;
     haptics.success();
     const exercises = buildExercises(day);
-    startSession(template.id, exercises, intent);
+    startSession(template.id, exercises, intent, buildBlocks(day));
     router.replace('/workout/session');
   };
 
@@ -174,20 +227,40 @@ export default function WorkoutLoadoutScreen() {
         <View style={styles.exerciseList}>
           {day.exercises.map((templateEx, index) => {
             const def = getExerciseById(templateEx.exerciseId);
+            const block = resolveBlock(templateEx, day.blocks);
+            // The clock is stated once, above the first member, so a circuit
+            // reads as one thing you work through rather than three exercises
+            // that happen to share a duration.
+            const startsBlock =
+              templateEx.blockId !== undefined &&
+              day.exercises.findIndex((e) => e.blockId === templateEx.blockId) === index;
+
             return (
-              <View key={`${templateEx.exerciseId}-${index}`} style={styles.exerciseRow}>
-                <View style={styles.exerciseNumber}>
-                  <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+              <View key={`${templateEx.exerciseId}-${index}`}>
+                {startsBlock && <Text style={styles.blockHeading}>{describeBlock(block)}</Text>}
+                <View
+                  style={[
+                    styles.exerciseRow,
+                    templateEx.blockId !== undefined && styles.exerciseRowInBlock,
+                  ]}
+                >
+                  <View style={styles.exerciseNumber}>
+                    <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.exerciseInfo}>
+                    <Text style={styles.exerciseName}>{def?.name ?? 'Unknown'}</Text>
+                    <Text style={styles.exerciseDetails}>
+                      {describeScheme(templateEx, day.blocks)}
+                    </Text>
+                  </View>
+                  {/* Right column is planned rest. A timed block has none by
+                      definition — its clock is already in the heading. */}
+                  <Text style={styles.restTime}>
+                    {isTimed(block.mode)
+                      ? 'no rest'
+                      : `${Math.floor(templateEx.restSeconds / 60)}m`}
+                  </Text>
                 </View>
-                <View style={styles.exerciseInfo}>
-                  <Text style={styles.exerciseName}>{def?.name ?? 'Unknown'}</Text>
-                  <Text style={styles.exerciseDetails}>{describeScheme(templateEx)}</Text>
-                </View>
-                {/* Right column is planned rest. An AMRAP block has none by
-                    definition — the window is already in the detail line. */}
-                <Text style={styles.restTime}>
-                  {isAmrap(templateEx) ? 'no rest' : `${Math.floor(templateEx.restSeconds / 60)}m`}
-                </Text>
               </View>
             );
           })}
@@ -324,6 +397,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.secondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
+  },
+  // A block heading states the clock once, above its members.
+  blockHeading: {
+    ...textStyles.label,
+    color: roles.accentText,
+    letterSpacing: 0.5,
+    marginBottom: spacing[1],
+    marginTop: spacing[2],
+  },
+  // Members are inset so the block reads as one unit.
+  exerciseRowInBlock: {
+    borderLeftWidth: 2,
+    borderLeftColor: roles.accent,
+    marginLeft: spacing[2],
   },
   exerciseRow: {
     flexDirection: 'row',

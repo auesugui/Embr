@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   BACKUP_FORMAT_VERSION,
+  BACKUP_KEYS,
   type BackupFile,
   BackupParseError,
   backupFilename,
@@ -241,5 +242,33 @@ describe('restoreBackup', () => {
 
     const written = mockMultiSet.mock.calls[0][0] as [string, string][];
     expect(written.map(([k]) => k)).not.toContain('pr.full_state');
+  });
+});
+
+// -----------------------------------------------------------------------------
+// The avatar rides along
+// -----------------------------------------------------------------------------
+// A profile photo lives inside the player slice, so it is carried by the same
+// key as the streak and the name. That is currently an accident of the key
+// list rather than a decision anyone wrote down — this test makes it a
+// decision. A restore that loses your face is a bug report.
+
+describe('profile avatar', () => {
+  it('carries the player slice, which is where the avatar lives', () => {
+    expect(BACKUP_KEYS).toContain('player.full_state');
+  });
+
+  it('round-trips a stored avatar verbatim', async () => {
+    const avatar = 'data:image/jpeg;base64,YWJj';
+    const player = JSON.stringify({ profile: { name: 'A', avatar, createdAt: 'x' } });
+
+    (AsyncStorage.multiGet as jest.Mock).mockResolvedValueOnce(
+      BACKUP_KEYS.map((k) => [k, k === 'player.full_state' ? player : null])
+    );
+
+    const backup = await createBackup(0);
+
+    expect(backup.data['player.full_state']).toBe(player);
+    expect(JSON.parse(backup.data['player.full_state']).profile.avatar).toBe(avatar);
   });
 });

@@ -13,7 +13,14 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RevealRow } from '@/components/celebration';
-import { amrapDuration, formatAmrapWindow, isAmrap } from '@/lib/amrap';
+import {
+  blockReps,
+  completedRounds,
+  describeBlock,
+  formatClock,
+  groupIntoBlocks,
+  isTimed,
+} from '@/lib/blocks';
 import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
 import {
   useBaselineStore,
@@ -175,23 +182,57 @@ export default function WorkoutSummaryScreen() {
         <RevealRow index={3} style={styles.exercisesCard}>
           <Text style={styles.exercisesTitle}>Exercises Completed</Text>
 
-          {summary.exercises.map((exercise) => {
-            const loggedSets = exercise.sets.filter((s) => s.logged);
-            const exerciseReps = loggedSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
+          {/* Grouped by block, so a circuit is one entry with its rounds and
+              its clock stated once. Listing each movement separately repeated
+              "AMRAP · 20 min" on every line for something done as one thing. */}
+          {groupIntoBlocks(summary.exercises, log?.blocks).map(({ block, entries }) => {
+            const rounds = completedRounds(entries);
+            const reps = blockReps(entries);
+            const anyPR = entries.some(({ exercise }) => exercise.sets.some((s) => s.isPR));
+            const timed = isTimed(block.mode);
+            const finish = block.id ? log?.blockTimes?.[block.id] : undefined;
+
+            // A lone exercise keeps exactly the line it always had.
+            if (entries.length === 1 && !timed) {
+              const [{ exercise }] = entries;
+              const loggedSets = exercise.sets.filter((s) => s.logged);
+              return (
+                <View key={exercise.id} style={styles.exerciseRow}>
+                  <View style={styles.exerciseInfo}>
+                    <Text style={styles.exerciseName}>{exercise.name}</Text>
+                    <Text style={styles.exerciseSets}>
+                      {`${loggedSets.length} ${loggedSets.length === 1 ? 'set' : 'sets'} · ${reps} reps`}
+                    </Text>
+                  </View>
+                  {anyPR && (
+                    <View style={styles.prTag}>
+                      <Text style={styles.prTagText}>PR</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            }
 
             return (
-              <View key={exercise.id} style={styles.exerciseRow}>
+              <View key={block.id ?? entries[0].exercise.id} style={styles.exerciseRow}>
                 <View style={styles.exerciseInfo}>
-                  <Text style={styles.exerciseName}>{exercise.name}</Text>
+                  <Text style={styles.exerciseName}>
+                    {entries.map(({ exercise }) => exercise.name).join(' · ')}
+                  </Text>
                   <Text style={styles.exerciseSets}>
-                    {isAmrap(exercise)
-                      ? `${loggedSets.length} rounds · ${exerciseReps} reps · ${formatAmrapWindow(
-                          amrapDuration(exercise)
-                        )}`
-                      : `${loggedSets.length} sets · ${exerciseReps} reps`}
+                    {/* A count-up block already states its round count in the
+                        tally, so repeating "2 rounds for time" after "2 rounds"
+                        just says rounds twice. Its result is the time. */}
+                    {`${rounds} ${rounds === 1 ? 'round' : 'rounds'} · ${reps} reps · ${
+                      block.mode === 'for_time'
+                        ? finish !== undefined
+                          ? `for time in ${formatClock(finish)}`
+                          : 'for time'
+                        : describeBlock(block)
+                    }`}
                   </Text>
                 </View>
-                {exercise.sets.some((s) => s.isPR) && (
+                {anyPR && (
                   <View style={styles.prTag}>
                     <Text style={styles.prTagText}>PR</Text>
                   </View>
