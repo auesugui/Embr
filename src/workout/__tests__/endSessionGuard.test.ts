@@ -33,7 +33,7 @@ describe('End-Session Guard', () => {
   describe('buildEndSessionMessage', () => {
     it('pluralizes "set" for a single logged set', () => {
       expect(buildEndSessionMessage(1)).toBe(
-        "You have 1 logged set that haven't been saved. Ending now will discard them."
+        "You have 1 logged set that hasn't been saved. Ending now will discard it."
       );
     });
 

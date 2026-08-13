@@ -76,6 +76,43 @@ test.describe('Template → workout', () => {
   });
 });
 
+test.describe('Session teardown', () => {
+  test.beforeEach(({ page }) => seed(page));
+
+  // Regression: ending a session emptied the workout store while the session
+  // screen was still mounted. The screen's "No active workout" guard sits below
+  // two weight-history selectors that dereference `currentExercise.id`, so the
+  // selectors threw before the guard could run and React unmounted the whole
+  // tree — a white screen, not a fallback.
+  test('ending a workout early does not blank the app', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+
+    await page.getByText('Full Body').first().click();
+    await page.waitForTimeout(1000);
+    await page
+      .getByText(/Review Day A & Start/)
+      .first()
+      .click();
+    await page.waitForTimeout(1200);
+    await page
+      .getByText(/^Start Day \w+ Workout$/i)
+      .first()
+      .click();
+    await page.waitForTimeout(1500);
+
+    const endButton = page.getByText(/^End$/).first();
+    await expect(endButton).toBeVisible({ timeout: 10000 });
+
+    await endButton.click();
+    await page.waitForTimeout(2000);
+
+    const text = ((await page.locator('body').innerText()) || '').trim();
+    expect(text.length, 'app rendered a white screen after ending the session').toBeGreaterThan(0);
+    expect(errors, 'uncaught render errors after ending the session').toEqual([]);
+  });
+});
+
 test.describe('Profile', () => {
   test.beforeEach(({ page }) => seed(page));
 
