@@ -30,9 +30,12 @@ jobs:
   e2e:
     name: Playwright (golden paths)
     runs-on: ubuntu-latest
-    # NOTE: continue-on-error while Expo web in CI is being stabilized.
-    # Remove this flag once the 4 specs reliably pass on the runner.
-    continue-on-error: true
+    # No continue-on-error. This job gates.
+    #
+    # It used to be exempt "while Expo web in CI is being stabilized", and it
+    # then failed on every run for months — the flag meant nobody saw it. A
+    # suite that always fails is the same as no suite, with the added cost of
+    # training people to ignore a red mark.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,12 +45,15 @@ jobs:
       - run: npm ci
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      - name: Start Expo web
-        run: |
-          npm run web &
-          npx wait-on http://localhost:8081 --timeout 120000
-      - name: Run e2e tests
-        run: npm run test:e2e
+
+      # Tests the artifact that actually ships — a static export, not the
+      # Metro dev server. See the note in playwright.config.ts for why.
+      # `npm run e2e` builds the export and runs the specs; Playwright starts
+      # and stops the server itself (see playwright.config.ts). The same one
+      # command reproduces this job locally rather than approximating it.
+      - name: Build web export and run e2e
+        run: npm run e2e
+
       - name: Upload artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
