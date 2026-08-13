@@ -4,6 +4,7 @@
 // Pre-session staging: pick an intensity (Normal / Deload in Phase 1),
 // preview the exercise list, then begin the session.
 
+import { Check } from '@/components/icons';
 import {
   type TemplateDay,
   type WorkoutTemplateDefinition,
@@ -23,7 +24,6 @@ import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, SessionIntent, WorkoutBlock } from '@/types';
 import { haptics } from '@/utils/haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Check } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 

@@ -5,8 +5,8 @@
 // It gets breathing room, the display face, and the one emotional beat the
 // tracker has — the streak. Density belongs on session/history, not here.
 
+import { ChevronRight, Flame, Plus } from '@/components/icons';
 import { router } from 'expo-router';
-import { ChevronRight, Flame, Plus } from 'lucide-react-native';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CountUpText, RevealRow } from '@/components/celebration';

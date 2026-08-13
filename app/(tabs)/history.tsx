@@ -13,12 +13,12 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { ChevronDown, ChevronUp, ClipboardList } from '@/components/icons';
 import { describeBlock, isTimed, resolveBlock } from '@/lib/blocks';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, LoggedSet, WorkoutBlock, WorkoutLog } from '@/types';
-import { ChevronDown, ChevronUp, ClipboardList } from 'lucide-react-native';
 
 import { RevealRow } from '@/components/celebration';
 

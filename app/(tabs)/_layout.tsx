@@ -2,8 +2,8 @@
 // Embr Tab Navigation Layout
 // =============================================================================
 
+import { ChevronLeft } from '@/components/icons';
 import { Tabs, router } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

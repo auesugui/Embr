@@ -17,10 +17,10 @@ import {
 import { downloadTextFile, isFileIOSupported, pickTextFile, reloadApp } from '@/lib/backup-file';
 import { showAlert } from '@/utils/alert';
 
+import { ChevronRight, Download, Upload, User } from '@/components/icons';
 import { APP_NAME } from '@/config';
 import { usePlayerStore, useSettingsStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
-import { ChevronRight, Download, Upload, User } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const profile = usePlayerStore((state) => state.profile);

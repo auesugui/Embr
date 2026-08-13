@@ -19,10 +19,10 @@
 import { useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ChevronDown, ChevronUp } from '@/components/icons';
 import { getExerciseDemoUri } from '@/data';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
 
 /** Source images are 3:4 two-panel diagrams. */
 const DEMO_ASPECT_RATIO = 3 / 4;

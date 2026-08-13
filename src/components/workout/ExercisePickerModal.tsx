@@ -18,10 +18,10 @@ import {
   View,
 } from 'react-native';
 
+import { ChevronRight } from '@/components/icons';
 import { type ExerciseDefinition, searchExercises } from '@/data';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
-import { ChevronRight } from 'lucide-react-native';
 
 interface ExercisePickerModalProps {
   visible: boolean;

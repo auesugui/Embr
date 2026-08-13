@@ -6,12 +6,12 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { Copy, Pencil } from '@/components/icons';
 import { type WorkoutTemplateDefinition, getExerciseById, getTemplateById } from '@/data';
 import { describeScheme, isTimed, resolveBlock } from '@/lib/blocks';
 import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
-import { Copy, Pencil } from 'lucide-react-native';
 
 export default function TemplateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
