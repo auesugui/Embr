@@ -228,12 +228,12 @@ export default function WorkoutSessionScreen() {
   // Optional-chaining here is load-bearing: hooks can't sit below the
   // `!active || !currentExercise` guard, so an unguarded `.id` throws inside
   // the selector and takes the whole tree down before the guard can render.
-  const currentWeight = useWeightHistoryStore(
-    (state) => (currentExercise ? (state.history[currentExercise.id]?.lastWeight ?? null) : null)
+  const currentWeight = useWeightHistoryStore((state) =>
+    currentExercise ? (state.history[currentExercise.id]?.lastWeight ?? null) : null
   );
   // Pre-#42 history has no unit recorded — it was all logged in lb.
-  const currentWeightUnit = useWeightHistoryStore(
-    (state) => (currentExercise ? (state.history[currentExercise.id]?.lastUnit ?? 'lb') : 'lb')
+  const currentWeightUnit = useWeightHistoryStore((state) =>
+    currentExercise ? (state.history[currentExercise.id]?.lastUnit ?? 'lb') : 'lb'
   );
   const units = useSettingsStore((state) => state.units);
   const hasWeight = currentWeight !== null && currentWeight > 0;
