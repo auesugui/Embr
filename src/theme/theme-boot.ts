@@ -34,6 +34,21 @@ export const SETTINGS_STORAGE_KEY = 'settings.full_state';
 export const THEME_GLOBAL = '__EMBR_THEME__';
 
 /**
+ * The document background for each palette — `roles.surface`, by value.
+ *
+ * These duplicate `lightRoles.surface` (`sand[100]`) and `darkRoles.surface` in
+ * `colors.ts`, and they cannot import them: `colors.ts` imports
+ * `resolveInitialTheme` from this file, so the dependency only runs one way.
+ * They were previously written out a third time in `app/+html.tsx` as well.
+ * Three hand-copied hexes that must agree is how they drift, so both other
+ * places now read these. If `roles.surface` changes, change it here too.
+ */
+export const DOCUMENT_BACKGROUND = {
+  light: '#F5F1ED',
+  dark: '#16120F',
+} as const;
+
+/**
  * The blocking script injected into the web document head.
  *
  * Deliberately dependency-free and wrapped in try/catch: it runs before
@@ -52,10 +67,36 @@ export const WEB_THEME_BOOT_SCRIPT = `
       theme = 'dark';
     }
     window.${THEME_GLOBAL} = theme;
+
+    var color = theme === 'dark'
+      ? '${DOCUMENT_BACKGROUND.dark}'
+      : '${DOCUMENT_BACKGROUND.light}';
+
     // Paint the document background immediately so there's no light flash
     // before React mounts. The pre-hydration shell is transparent on web for
     // exactly this reason — and because server and client must agree on it.
-    document.documentElement.style.backgroundColor = theme === 'dark' ? '#16120F' : '#F5F1ED';
+    //
+    // This paints <html> only. <body> must NOT carry a background of its own:
+    // a background on body paints OVER the html canvas, so a light body under
+    // a dark app showed through everywhere the app didn't paint — the top
+    // safe area and the strip below the tab bar. app/+html.tsx keeps body
+    // transparent for this reason.
+    document.documentElement.style.backgroundColor = color;
+
+    // theme-color drives the iOS status bar in a standalone home-screen app:
+    // a light value there is why the status bar read as a light gradient with
+    // black text over a dark app. The static markup ships a media-scoped pair
+    // for the no-JS and system cases; this replaces them with the actually
+    // resolved colour, which is the only thing that also honours an explicit
+    // light/dark override that disagrees with the OS setting.
+    var metas = document.querySelectorAll('meta[name="theme-color"]');
+    for (var i = 0; i < metas.length; i++) {
+      metas[i].parentNode.removeChild(metas[i]);
+    }
+    var meta = document.createElement('meta');
+    meta.setAttribute('name', 'theme-color');
+    meta.setAttribute('content', color);
+    document.head.appendChild(meta);
   } catch (e) {
     window.${THEME_GLOBAL} = 'light';
   }
