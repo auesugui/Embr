@@ -14,9 +14,7 @@ import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
 import { APP_NAME } from '@/config';
-import { WEB_THEME_BOOT_SCRIPT } from '@/theme/theme-boot';
-
-const THEME_COLOR = '#F5F1ED';
+import { DOCUMENT_BACKGROUND, WEB_THEME_BOOT_SCRIPT } from '@/theme/theme-boot';
 
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -37,7 +35,23 @@ export default function Root({ children }: PropsWithChildren) {
 
         {/* --- PWA --- */}
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content={THEME_COLOR} />
+
+        {/* theme-color is what iOS tints the status bar with in a standalone
+            home-screen app. A single light value here is what made the status
+            bar read as a light gradient with black text sitting above a dark
+            app. The pair below covers the system case at parse time, with no
+            JS timing to get wrong; the boot script then replaces both with the
+            resolved colour so an explicit light/dark override still wins. */}
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: light)"
+          content={DOCUMENT_BACKGROUND.light}
+        />
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: dark)"
+          content={DOCUMENT_BACKGROUND.dark}
+        />
         <meta name="color-scheme" content="light dark" />
 
         {/* iOS ignores the manifest's display mode; these are what actually
@@ -76,16 +90,28 @@ export default function Root({ children }: PropsWithChildren) {
   );
 }
 
-// Painted before the JS bundle boots. THEME_COLOR is the light background; the
-// boot script overrides it inline when the resolved theme is dark. Overscroll is
-// pinned too — rubber-banding the whole document is the tell that gives away a
-// web app running fullscreen.
+// Painted before the JS bundle boots. The light value is the pre-script
+// default; the boot script overrides the <html> inline style when the resolved
+// theme is dark.
+//
+// The background lives on <html> ALONE, and body is explicitly transparent.
+// This used to say `html, body { background-color: ... }`, and the boot script
+// only repaints `document.documentElement` — so on a dark launch the body kept
+// its light background and painted straight over the dark html canvas. It
+// showed up anywhere the app itself didn't paint: the top safe area above the
+// header, and the strip below the tab bar on a device with a home indicator.
+// A background on body wins over the canvas; don't put one back.
+//
+// Overscroll is pinned too — rubber-banding the whole document is the tell
+// that gives away a web app running fullscreen.
 const BASE_STYLE = `
-html, body {
-  background-color: ${THEME_COLOR};
+html {
+  background-color: ${DOCUMENT_BACKGROUND.light};
   overscroll-behavior-y: none;
 }
 body {
+  background-color: transparent;
+  overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
 }
 `;
