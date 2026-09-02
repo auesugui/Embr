@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Deliberately identical to app/+html.tsx, so this page's window is the
+         same shape as Embr's. Change one, change both, or the numbers lie. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Embr Debug" />
+    <meta name="theme-color" content="#16120F" />
+    <title>Embr viewport probe</title>
+    <style>
+      html {
+        background: #16120f;
+        color: #f7f3ef;
+        font: 15px/1.35 -apple-system, system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      /* The whole point: a red block pinned to the bottom of the layout
+         viewport. If red does not touch the bottom edge of the screen, the
+         layout viewport is shorter than the screen and that is the bug. */
+      #fill {
+        position: fixed;
+        inset: 0;
+        border-bottom: 40px solid #d9663d;
+        box-sizing: border-box;
+        pointer-events: none;
+      }
+      /* Same idea for the safe area: green sits exactly where the home
+         indicator inset says it should. */
+      #inset {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: env(safe-area-inset-bottom);
+        background: #4ba36b;
+        pointer-events: none;
+      }
+      main {
+        padding: calc(env(safe-area-inset-top) + 12px) 14px
+          calc(env(safe-area-inset-bottom) + 56px);
+      }
+      h1 {
+        font-size: 17px;
+        margin: 0 0 10px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      td {
+        padding: 3px 0;
+        vertical-align: top;
+      }
+      td:first-child {
+        color: #a99e94;
+        padding-right: 10px;
+        white-space: nowrap;
+      }
+      b {
+        font-size: 17px;
+      }
+      .verdict {
+        margin-top: 12px;
+        padding: 10px;
+        border-radius: 8px;
+        background: #211c18;
+        font-size: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="fill"></div>
+    <div id="inset"></div>
+    <main>
+      <h1>Embr viewport probe</h1>
+      <table id="out"></table>
+      <div class="verdict" id="verdict">measuring…</div>
+      <p style="color: #a99e94; margin-top: 12px">
+        Orange bar = bottom of the page. Green bar = the safe-area inset iOS reports. If orange
+        does not reach the bottom edge of the screen, that gap is the bug.
+      </p>
+    </main>
+
+    <script>
+      function px(name) {
+        const probe = document.createElement('div');
+        probe.style.cssText =
+          'position:fixed;visibility:hidden;height:0;width:0;padding-bottom:env(' + name + ')';
+        document.body.appendChild(probe);
+        const v = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+        probe.remove();
+        return v;
+      }
+
+      function render() {
+        const insetTop = px('safe-area-inset-top');
+        const insetBottom = px('safe-area-inset-bottom');
+        const vv = window.visualViewport;
+        const screenH = window.screen.height;
+        const inner = window.innerHeight;
+        const client = document.documentElement.clientHeight;
+        const deficit = screenH - inner;
+
+        const rows = [
+          ['screen.height', screenH],
+          ['window.innerHeight', inner],
+          ['documentElement.clientHeight', client],
+          ['visualViewport.height', vv ? Math.round(vv.height) : 'n/a'],
+          ['screen - innerHeight', deficit],
+          ['safe-area-inset-top', insetTop],
+          ['safe-area-inset-bottom', insetBottom],
+          ['window.innerWidth', window.innerWidth],
+          ['screen.width', window.screen.width],
+          ['devicePixelRatio', window.devicePixelRatio],
+          ['navigator.standalone', String(window.navigator.standalone)],
+          ['display-mode: standalone', String(matchMedia('(display-mode: standalone)').matches)],
+        ];
+
+        document.getElementById('out').innerHTML = rows
+          .map((r) => '<tr><td>' + r[0] + '</td><td><b>' + r[1] + '</b></td></tr>')
+          .join('');
+
+        let verdict;
+        if (deficit === 0 && insetBottom > 0) {
+          verdict = 'OK — page fills the screen and the inset is reported.';
+        } else if (deficit === 0 && insetBottom === 0) {
+          verdict = 'viewport-fit=cover is NOT applying — inset reads 0.';
+        } else {
+          verdict = 'Page is ' + deficit + 'px SHORTER than the screen. That gap is the bug.';
+        }
+        document.getElementById('verdict').textContent = verdict;
+      }
+
+      render();
+      addEventListener('resize', render);
+      addEventListener('orientationchange', () => setTimeout(render, 300));
+    </script>
+  </body>
+</html>
