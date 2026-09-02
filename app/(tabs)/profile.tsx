@@ -1,5 +1,5 @@
 // =============================================================================
-// IronQuest Profile Tab
+// Embr Profile Tab
 // =============================================================================
 
 import { router } from 'expo-router';
@@ -17,7 +17,7 @@ import {
 import { downloadTextFile, isFileIOSupported, pickTextFile, reloadApp } from '@/lib/backup-file';
 import { showAlert } from '@/utils/alert';
 
-import { ChevronRight, Download, Upload, User } from '@/components/icons';
+import { Download, Upload, User } from '@/components/icons';
 import { APP_NAME } from '@/config';
 import { usePlayerStore, useSettingsStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
@@ -167,7 +167,18 @@ export default function ProfileScreen() {
         <Text style={styles.avatarHint}>
           {profile.avatar ? 'Tap to change · hold to remove' : 'Tap to add a photo'}
         </Text>
-        <Text style={styles.profileName}>{profile.name}</Text>
+        {/* The name is only ever typed once, during onboarding, on a phone
+            keyboard. Without an edit path a typo would be permanent, so the
+            name itself is the affordance — it reopens the same screen in edit
+            mode rather than duplicating the form here. */}
+        <Pressable
+          onPress={() => router.push('/onboarding/name?mode=edit')}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit your name, currently ${profile.name}`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.profileName}>{profile.name}</Text>
+        </Pressable>
         <Text style={styles.joinDate}>
           Training since {new Date(profile.createdAt).toLocaleDateString()}
         </Text>
@@ -279,22 +290,6 @@ export default function ProfileScreen() {
           >
             <Text style={styles.settingLabel}>Restore from backup</Text>
             <Upload size={18} color={roles.textMuted} />
-          </Pressable>
-        </View>
-      )}
-
-      {/* Dev Panel entry — __DEV__ only, never rendered in production builds */}
-      {__DEV__ && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Developer</Text>
-          <Pressable
-            style={styles.settingRow}
-            onPress={() => router.push('/(tabs)/dev')}
-            accessibilityRole="button"
-            accessibilityLabel="Open dev panel"
-          >
-            <Text style={styles.settingLabel}>Dev Panel</Text>
-            <ChevronRight size={18} color={roles.textMuted} />
           </Pressable>
         </View>
       )}

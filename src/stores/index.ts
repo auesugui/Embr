@@ -2,7 +2,13 @@
 // Embr Stores - Main Export
 // =============================================================================
 
-export { usePlayerStore, selectStreakDays } from './playerStore';
+export {
+  usePlayerStore,
+  selectStreakDays,
+  selectNeedsOnboarding,
+  needsOnboarding,
+  LEGACY_DEFAULT_NAME,
+} from './playerStore';
 export {
   useWorkoutStore,
   selectSessionDuration,

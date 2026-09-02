@@ -43,9 +43,27 @@ type PlayerStore = PlayerState & PlayerActions;
 // Initial State
 // -----------------------------------------------------------------------------
 
+/**
+ * The name every pre-onboarding install was given by default.
+ *
+ * It was never chosen by anyone — it was the seed value, and it shipped as if
+ * it were the user's name. Treating it as "unset" rather than rewriting it in
+ * a storage migration is deliberate: `player.full_state` is a live namespace,
+ * and the migration rule says migrations delete dead namespaces and never
+ * rewrite live ones (ADR-0015). So this is a read-time check. An install
+ * carrying the old default gets asked for a real name once, and the answer
+ * overwrites it through the normal `updateProfile` path.
+ */
+export const LEGACY_DEFAULT_NAME = 'Iron Master';
+
 const initialState: PlayerState = {
   profile: {
-    name: 'Iron Master',
+    // Empty, not a placeholder. An empty name is what routes a first-run user
+    // into onboarding; anything else would look like a name they'd already
+    // given. `createdAt` is stamped at module load, which for a new install is
+    // their first open — onboarding deliberately does not touch it, so an
+    // existing user re-answering the name prompt keeps their real join date.
+    name: '',
     avatar: null,
     createdAt: new Date().toISOString(),
   },
@@ -189,3 +207,21 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 // -----------------------------------------------------------------------------
 
 export const selectStreakDays = (state: PlayerStore) => state.streak.current;
+
+/**
+ * True when the app still needs to ask who this is.
+ *
+ * Two cases count as unset: a genuinely new install (empty name), and one
+ * carrying the old shipped default (see LEGACY_DEFAULT_NAME). Whitespace-only
+ * counts as empty so a stray space can't skip the prompt.
+ *
+ * Callers must only read this once the player store has hydrated — before
+ * that every install looks new. The root layout gates first paint on
+ * hydration, so any screen is safe by the time it renders.
+ */
+export function needsOnboarding(profile: PlayerProfile): boolean {
+  const name = profile.name.trim();
+  return name.length === 0 || name === LEGACY_DEFAULT_NAME;
+}
+
+export const selectNeedsOnboarding = (state: PlayerStore) => needsOnboarding(state.profile);

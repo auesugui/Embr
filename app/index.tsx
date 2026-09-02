@@ -1,16 +1,25 @@
 // =============================================================================
 // Embr Index Screen
 // =============================================================================
-// This used to gate first run: with the game layer on it routed into an
-// onboarding wizard whose whole job was picking and naming a pet, falling
-// through to the tab navigator only once one existed. The game layer is gone
-// (ADR-0014), so there's nothing to choose and nothing to gate on.
+// This gates first run. It used to gate it for the game layer — an onboarding
+// wizard whose whole job was picking and naming a pet — and that wizard died
+// with the game layer (ADR-0014). What replaced it asks one question: your
+// name. There is no account and no sync, so there is nothing else to collect.
 //
-// The route stays rather than being deleted — expo-router resolves "/" here,
-// and an installed PWA launches at "/" from its home-screen icon.
+// expo-router resolves "/" here, and an installed PWA launches at "/" from its
+// home-screen icon, so this is the one place every cold start passes through.
+//
+// Reading the store here is safe because the root layout holds first paint
+// until every store has hydrated. Without that gate a returning user would
+// flash the onboarding screen on every launch, since a pre-hydration store
+// looks exactly like a new install.
 
 import { Redirect } from 'expo-router';
 
+import { selectNeedsOnboarding, usePlayerStore } from '@/stores';
+
 export default function IndexScreen() {
-  return <Redirect href="/(tabs)" />;
+  const needsName = usePlayerStore(selectNeedsOnboarding);
+
+  return <Redirect href={needsName ? '/onboarding/name' : '/(tabs)'} />;
 }

@@ -5,7 +5,13 @@
 // spending suites went with the engine (ADR-0015).
 
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
-import { selectStreakDays, usePlayerStore } from '../playerStore';
+import {
+  LEGACY_DEFAULT_NAME,
+  needsOnboarding,
+  selectNeedsOnboarding,
+  selectStreakDays,
+  usePlayerStore,
+} from '../playerStore';
 
 // Mock storage
 jest.mock('@/utils/storage', () => ({
@@ -386,6 +392,65 @@ describe('Player Store', () => {
 
         expect(days).toBe(7);
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Onboarding gate
+  // ---------------------------------------------------------------------------
+  // `needsOnboarding` is what routes a cold start to the name prompt instead of
+  // the tab navigator. Getting it wrong in either direction is loud: too eager
+  // and a returning user is asked their name again on every launch, too lax and
+  // a new user lands on a profile labelled with nothing.
+
+  describe('needsOnboarding', () => {
+    const profile = (name: string) => ({
+      name,
+      avatar: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    it('is true for a fresh install', () => {
+      expect(needsOnboarding(profile(''))).toBe(true);
+    });
+
+    it('is true for whitespace, so a stray space cannot skip the prompt', () => {
+      expect(needsOnboarding(profile('   '))).toBe(true);
+    });
+
+    it('is true for the old shipped default, which nobody chose', () => {
+      expect(needsOnboarding(profile(LEGACY_DEFAULT_NAME))).toBe(true);
+      expect(LEGACY_DEFAULT_NAME).toBe('Iron Master');
+    });
+
+    it('is false once a real name is set', () => {
+      expect(needsOnboarding(profile('Adrian'))).toBe(false);
+    });
+
+    it('does not treat a name merely containing the old default as unset', () => {
+      expect(needsOnboarding(profile('Iron Masterson'))).toBe(false);
+    });
+
+    it('defaults a brand new store to needing onboarding', () => {
+      usePlayerStore.getState().reset();
+
+      expect(selectNeedsOnboarding(usePlayerStore.getState())).toBe(true);
+    });
+
+    it('stops needing onboarding after the name is saved', () => {
+      usePlayerStore.getState().reset();
+      usePlayerStore.getState().updateProfile({ name: 'Adrian' });
+
+      expect(selectNeedsOnboarding(usePlayerStore.getState())).toBe(false);
+    });
+
+    it('leaves createdAt alone when the name is set, so join date survives', () => {
+      usePlayerStore.getState().reset();
+      const before = usePlayerStore.getState().profile.createdAt;
+
+      usePlayerStore.getState().updateProfile({ name: 'Adrian' });
+
+      expect(usePlayerStore.getState().profile.createdAt).toBe(before);
     });
   });
 });

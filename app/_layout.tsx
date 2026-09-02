@@ -155,10 +155,11 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        {/* Phase 2 onboarding (issue #33): chrome-free first-run wizard. */}
-        <Stack.Screen name="onboarding/type" options={{ headerShown: false }} />
+        {/* First run: one question, no chrome. `onboarding/type` (pick a pet)
+            and `onboarding/template` were registered alongside this from the
+            IronQuest wizard and never had files behind them — they died with
+            the game layer (ADR-0014) and are gone now. */}
         <Stack.Screen name="onboarding/name" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding/template" options={{ headerShown: false }} />
         {/* A2: explicit human titles so headers never show raw route paths.
             Titles live in ROUTE_TITLES (single source of truth, regression-
             tested in src/__tests__/routeTitles.unit.test.ts). */}
