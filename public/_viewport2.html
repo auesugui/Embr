@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Identical to _viewport.html EXCEPT the status bar style.
+         _viewport.html uses black-translucent, which is what Embr ships, and it
+         measures 59px short: iOS sizes the web view to (screen - status bar)
+         but positions it at y=0, so the missing 59px lands at the BOTTOM.
+         `default` should make iOS position the view below the status bar
+         instead, giving a viewport that ends where the screen ends. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Embr Probe 2" />
+    <meta name="theme-color" content="#16120F" />
+    <title>Embr viewport probe 2</title>
+    <style>
+      html {
+        background: #16120f;
+        color: #f7f3ef;
+        font: 15px/1.35 -apple-system, system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      #fill {
+        position: fixed;
+        inset: 0;
+        border-bottom: 40px solid #d9663d;
+        box-sizing: border-box;
+        pointer-events: none;
+      }
+      #inset {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: env(safe-area-inset-bottom);
+        background: #4ba36b;
+        pointer-events: none;
+      }
+      main {
+        padding: calc(env(safe-area-inset-top) + 12px) 14px
+          calc(env(safe-area-inset-bottom) + 56px);
+      }
+      h1 {
+        font-size: 17px;
+        margin: 0 0 10px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      td {
+        padding: 3px 0;
+        vertical-align: top;
+      }
+      td:first-child {
+        color: #a99e94;
+        padding-right: 10px;
+        white-space: nowrap;
+      }
+      b {
+        font-size: 17px;
+      }
+      .verdict {
+        margin-top: 12px;
+        padding: 10px;
+        border-radius: 8px;
+        background: #211c18;
+        font-size: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="fill"></div>
+    <div id="inset"></div>
+    <main>
+      <h1>Probe 2 — status bar "default"</h1>
+      <table id="out"></table>
+      <div class="verdict" id="verdict">measuring…</div>
+      <p style="color: #a99e94; margin-top: 12px">
+        Looking for <b>screen - innerHeight = 0</b>. If the orange bar reaches the bottom edge of
+        the screen, this is the fix.
+      </p>
+    </main>
+
+    <script>
+      function px(name) {
+        const probe = document.createElement('div');
+        probe.style.cssText =
+          'position:fixed;visibility:hidden;height:0;width:0;padding-bottom:env(' + name + ')';
+        document.body.appendChild(probe);
+        const v = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+        probe.remove();
+        return v;
+      }
+
+      function render() {
+        const insetTop = px('safe-area-inset-top');
+        const insetBottom = px('safe-area-inset-bottom');
+        const screenH = window.screen.height;
+        const inner = window.innerHeight;
+        const deficit = screenH - inner;
+
+        const rows = [
+          ['screen.height', screenH],
+          ['window.innerHeight', inner],
+          ['screen - innerHeight', deficit],
+          ['safe-area-inset-top', insetTop],
+          ['safe-area-inset-bottom', insetBottom],
+          ['navigator.standalone', String(window.navigator.standalone)],
+        ];
+
+        document.getElementById('out').innerHTML = rows
+          .map((r) => '<tr><td>' + r[0] + '</td><td><b>' + r[1] + '</b></td></tr>')
+          .join('');
+
+        document.getElementById('verdict').textContent =
+          deficit === 0
+            ? 'FIXED — page fills the screen. Use status bar style "default".'
+            : 'Still ' + deficit + 'px short. "default" is not the fix.';
+      }
+
+      render();
+      addEventListener('resize', render);
+      addEventListener('orientationchange', () => setTimeout(render, 300));
+    </script>
+  </body>
+</html>
