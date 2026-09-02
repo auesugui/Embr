@@ -60,7 +60,34 @@ export default function Root({ children }: PropsWithChildren) {
             `mobile-web-app-capable`, so both ship. */}
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+        {/* `default`, NOT `black-translucent`. Measured on an iPhone 15/16
+            (393x852, 59px top inset), launched from the home screen:
+
+              black-translucent   screen 852, innerHeight 793, inset-top 59
+              default             screen 852, innerHeight 793, inset-top 0
+                                  ...but positioned below the status bar
+                                  instead of at y=0.
+
+            Both give the page 793px. The difference is where those 793px sit.
+            `black-translucent` puts the view at y=0 so content paints under
+            the status bar — and the 59px iOS withholds lands at the BOTTOM,
+            outside the layout viewport. Nothing can be placed there: it isn't
+            padding to shrink, it's screen the page doesn't own. It showed as
+            dead space below the tab bar, and before the canvas was fixed, as
+            a light band in dark mode.
+
+            `default` positions the view below the status bar, so 59 + 793
+            lands exactly on the screen bottom. iOS draws the status bar itself
+            and tints it with theme-color, which the boot script already keeps
+            in step with the palette.
+
+            Consequence: `safe-area-inset-top` is 0 now, because nothing
+            overlaps the top any more. The `insets.top + spacing[n]` in
+            session, summary, and onboarding collapse to just the spacing,
+            which is correct — iOS reserved the status bar for us. Don't
+            "restore" black-translucent to get the inset back. */}
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content={APP_NAME} />
         <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />

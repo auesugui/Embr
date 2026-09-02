@@ -101,6 +101,21 @@ describe('app/+html.tsx', () => {
     expect(htmlShellSource).toContain('media="(prefers-color-scheme: dark)"');
   });
 
+  // Measured on an iPhone launched from the home screen: both styles give the
+  // page 793 of 852px, but `black-translucent` positions it at y=0, so the
+  // 59px iOS withholds lands at the BOTTOM, outside the layout viewport —
+  // unreachable dead space under the tab bar. `default` positions the page
+  // below the status bar instead, so it ends where the screen ends.
+  //
+  // This looks like a cosmetic meta value. It is a layout bug with a device to
+  // reproduce it on and nothing in CI that can catch it. Hence the assertion.
+  it('does not use black-translucent for the iOS status bar', () => {
+    expect(htmlShellSource).toContain(
+      '<meta name="apple-mobile-web-app-status-bar-style" content="default" />'
+    );
+    expect(htmlShellSource).not.toContain('content="black-translucent"');
+  });
+
   // Three hand-copied hexes is how they drift; the shell reads the constants.
   it('does not hardcode a palette hex of its own', () => {
     expect(htmlShellSource).not.toMatch(/#[0-9A-Fa-f]{6}/);
