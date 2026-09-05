@@ -17,11 +17,14 @@ import {
   hasRepTargets,
   isTimed,
 } from '@/lib/blocks';
+import { metricLabel } from '@/lib/metric';
 import { colors, radius, spacing, textStyles } from '@/theme';
-import type { BlockMode } from '@/types';
+import type { BlockMode, Metric } from '@/types';
 import { StepperButton } from './StepperButton';
 
 interface SchemeFieldsProps {
+  /** What the prescription measures on this movement. Absent means reps. */
+  metric?: Metric;
   mode: BlockMode;
   sets: number;
   reps: string;
@@ -38,6 +41,7 @@ interface SchemeFieldsProps {
 }
 
 export function SchemeFields({
+  metric = 'reps',
   mode,
   sets,
   reps,
@@ -121,16 +125,21 @@ export function SchemeFields({
         </View>
       )}
 
-      {/* Reps. Survives into a timed block, because the reps per round
-                are exactly what a circuit prescribes. */}
+      {/* The prescription. Survives into a timed block, because the reps per
+                round are exactly what a circuit prescribes. A held movement
+                prescribes seconds, and the label has to say which. */}
       {keepsReps && (
         <View style={styles.field}>
-          <Text style={styles.fieldLabel}>{timedDraft ? 'Reps per round' : 'Reps'}</Text>
+          <Text style={styles.fieldLabel}>
+            {timedDraft ? `${metricLabel(metric)} per round` : metricLabel(metric)}
+          </Text>
           <TextInput
             style={styles.repsInput}
             value={reps}
             onChangeText={onReps}
-            placeholder={timedDraft ? '5' : '8-12'}
+            placeholder={
+              metric === 'time' ? (timedDraft ? '30' : '30-60') : timedDraft ? '5' : '8-12'
+            }
             placeholderTextColor={colors.text.muted}
             returnKeyType="done"
           />

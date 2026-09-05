@@ -17,6 +17,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PRFlash, Settle } from '@/components/celebration';
 import { targetRepCount } from '@/lib/blocks';
+import { exerciseMetric, formatCompact } from '@/lib/metric';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, WeightUnit } from '@/types';
 
@@ -66,7 +67,9 @@ export function CircuitRounds({
                   onPress={() => onEditSet(index, round)}
                   style={styles.roundDoneChip}
                 >
-                  <Text style={styles.roundDoneChipText}>{set.reps}</Text>
+                  <Text style={styles.roundDoneChipText}>
+                    {formatCompact(set.reps ?? 0, exerciseMetric(exercise))}
+                  </Text>
                   {set.isPR && <Text style={styles.prBadge}>PR</Text>}
                 </Pressable>
               );
@@ -86,7 +89,14 @@ export function CircuitRounds({
               <Pressable style={styles.roundDoneButton} onPress={onLogRound}>
                 <Text style={styles.roundDoneButtonText}>Round done</Text>
                 <Text style={styles.roundDoneButtonMeta}>
-                  {entries.map(({ exercise }) => targetRepCount(exercise?.targetReps)).join(' · ')}
+                  {entries
+                    .map(({ exercise }) =>
+                      formatCompact(
+                        targetRepCount(exercise?.targetReps) ?? 0,
+                        exerciseMetric(exercise)
+                      )
+                    )
+                    .join(' · ')}
                 </Text>
               </Pressable>
             )}
@@ -101,6 +111,7 @@ export function CircuitRounds({
               const set = exercise?.sets[openRoundIndex];
               if (!exercise || !set) return null;
               const target = targetRepCount(exercise.targetReps);
+              const metric = exerciseMetric(exercise);
 
               return (
                 <View key={exercise.id} style={styles.circuitRow}>
@@ -115,7 +126,9 @@ export function CircuitRounds({
                           style={styles.circuitLogged}
                           onPress={() => onEditSet(index, openRoundIndex)}
                         >
-                          <Text style={styles.loggedReps}>{set.reps}</Text>
+                          <Text style={styles.loggedReps}>
+                            {formatCompact(set.reps ?? 0, metric)}
+                          </Text>
                           {set.weight ? (
                             <Text style={styles.loggedWeight}>
                               @ {set.weight} {units}
@@ -132,7 +145,9 @@ export function CircuitRounds({
                           style={styles.circuitTargetButton}
                           onPress={() => onQuickLog(index, openRoundIndex, target)}
                         >
-                          <Text style={styles.circuitTargetText}>{target}</Text>
+                          <Text style={styles.circuitTargetText}>
+                            {formatCompact(target, metric)}
+                          </Text>
                         </Pressable>
                       )}
                       <Pressable

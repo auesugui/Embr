@@ -22,6 +22,7 @@ import {
   resolveBlock,
   targetRepCount,
 } from '@/lib/blocks';
+import { exerciseMetric, quickLadder } from '@/lib/metric';
 import { hasRecordedWork, isPreStart, showAmrapScrim } from '@/lib/session-view';
 import {
   type BlockTimerState,
@@ -30,9 +31,6 @@ import {
   blockRemaining,
 } from '@/stores/workoutStore';
 import type { Exercise, WorkoutBlock } from '@/types';
-
-/** The generic quick-log ladder, used when a movement has no prescription. */
-const GENERIC_REPS = [5, 8, 10, 12];
 
 export interface SessionViewArgs {
   exercises: Exercise[];
@@ -108,11 +106,13 @@ export function deriveSessionView(args: SessionViewArgs) {
   // The single-movement quick ladder. A timed block leads with its own
   // prescription so the common tap is the prescribed one rather than whichever
   // generic number happens to sit closest.
-  const singleTarget = currentTimed ? targetRepCount(currentExercise?.targetReps) : null;
-  const quickReps =
-    singleTarget !== null && !GENERIC_REPS.includes(singleTarget)
-      ? [singleTarget, ...GENERIC_REPS.slice(0, 3)]
-      : GENERIC_REPS;
+  //
+  // A held movement gets a prescription too even in a plain set scheme: the
+  // ladder is seconds there, and 5/8/10/12 are not durations anyone holds.
+  const currentMetric = exerciseMetric(currentExercise);
+  const singleTarget =
+    currentTimed || currentMetric === 'time' ? targetRepCount(currentExercise?.targetReps) : null;
+  const quickReps = quickLadder(currentMetric, singleTarget);
 
   // The one-tap path only exists when every movement has a number to log. A
   // circuit member whose reps read "max" has no prescription to fire.
@@ -171,6 +171,7 @@ export function deriveSessionView(args: SessionViewArgs) {
     preStart,
     loggedRounds,
     openRoundIndex,
+    currentMetric,
     singleTarget,
     quickReps,
     roundFullyPrescribed,

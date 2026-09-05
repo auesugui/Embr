@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RevealRow } from '@/components/celebration';
 import { Flame } from '@/components/icons';
 import { SummaryExercises } from '@/components/workout/summary/SummaryExercises';
+import { uniformMetric } from '@/lib/metric';
 import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
 import {
   useBaselineStore,
@@ -166,8 +167,13 @@ export default function WorkoutSummaryScreen() {
           <View style={styles.statDivider} />
 
           <View style={styles.statItem}>
+            {/* A workout of nothing but holds counts seconds, not reps. A
+                mixed one sums both and keeps the older label — one word cannot
+                say "reps and seconds", and "Reps" is what the bulk of it is. */}
             <Text style={styles.statValue}>{summary.totalReps}</Text>
-            <Text style={styles.statLabel}>Reps</Text>
+            <Text style={styles.statLabel}>
+              {uniformMetric(summary.exercises) === 'time' ? 'Seconds' : 'Reps'}
+            </Text>
           </View>
         </RevealRow>
 

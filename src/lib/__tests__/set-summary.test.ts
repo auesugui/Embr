@@ -89,4 +89,37 @@ describe('summarizeSets', () => {
     const summary = summarizeSets([set({ weight: 0 }), set({ weight: 0 })], opts);
     expect(summary).toEqual({ headline: '2 rounds × 5 reps · 10 total' });
   });
+
+  describe('held movements', () => {
+    const timeOpts = { ...setOpts, metric: 'time' as const };
+
+    it('states uniform holds and their total in time', () => {
+      const summary = summarizeSets(
+        [set({ reps: 45 }), set({ reps: 45 }), set({ reps: 45 })],
+        timeOpts
+      );
+      expect(summary?.headline).toBe('3 sets × 45s · 2m 15s total');
+    });
+
+    it('keeps varied holds as durations, not as a rep count', () => {
+      const summary = summarizeSets(
+        [set({ reps: 30 }), set({ reps: 45 }), set({ reps: 60 })],
+        timeOpts
+      );
+      expect(summary?.headline).toBe('3 sets · 2m 15s');
+      expect(summary?.detail).toBe('30s · 45s · 1m');
+    });
+
+    it('does not multiply a lone hold by one', () => {
+      expect(summarizeSets([set({ reps: 90 })], timeOpts)?.headline).toBe('1m 30s');
+    });
+
+    it('reads a weighted hold as a load against a duration', () => {
+      const summary = summarizeSets(
+        [set({ reps: 45, weight: 25 }), set({ reps: 45, weight: 25 })],
+        timeOpts
+      );
+      expect(summary?.headline).toBe('2 sets × 25 lb × 45s · 1m 30s total');
+    });
+  });
 });

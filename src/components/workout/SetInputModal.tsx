@@ -19,6 +19,7 @@ import {
 import { SetFields } from '@/components/workout/set-input/SetFields';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { colors, radius, spacing, textStyles } from '@/theme';
+import type { Metric } from '@/types';
 import { haptics } from '@/utils/haptics';
 
 interface SetInputModalProps {
@@ -36,6 +37,8 @@ interface SetInputModalProps {
    * must not contradict the screen behind it.
    */
   unitLabel?: string;
+  /** What the counted field measures on this movement. Absent means reps. */
+  metric?: Metric;
   isEditing?: boolean;
 }
 
@@ -80,6 +83,7 @@ export function SetInputModal({
   setNumber,
   exerciseName,
   unitLabel = 'Set',
+  metric = 'reps',
   isEditing = false,
 }: SetInputModalProps) {
   const units = useSettingsStore((state) => state.units);
@@ -189,6 +193,7 @@ export function SetInputModal({
 
             <SetFields
               reps={reps}
+              metric={metric}
               weight={weightString}
               units={units}
               quickWeights={QUICK_WEIGHTS[units]}

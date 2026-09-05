@@ -4,7 +4,7 @@
 // Seeded database of common exercises with muscle groups and FP type mappings.
 // This is the source of truth for all exercises in the app.
 
-import type { StatType } from '@/types';
+import type { Metric, StatType } from '@/types';
 
 // -----------------------------------------------------------------------------
 // Muscle Group Types
@@ -82,6 +82,15 @@ export interface ExerciseDefinition {
   defaultReps: string; // e.g., "8-12", "5x5", "10-15"
   defaultRestSeconds: number;
   isCompound: boolean;
+  /**
+   * What one logged number on this movement measures. Absent means reps.
+   *
+   * Set it to `'time'` for a held position, where `defaultSets: 3` /
+   * `defaultReps: '30-60'` means three holds of thirty to sixty SECONDS. The
+   * app reads this to label the input and print the value in its own units;
+   * see `src/lib/metric.ts` for why the logged value stays a plain number.
+   */
+  metric?: Metric;
   /**
    * @deprecated INERT since ADR-0015. Nothing reads this.
    *
@@ -563,8 +572,11 @@ export const EXERCISE_DATABASE: ExerciseDefinition[] = [
     primaryMuscle: 'core',
     movementPattern: 'core',
     equipment: ['bodyweight'],
+    metric: 'time',
     defaultSets: 3,
-    defaultReps: '30-60s',
+    // Seconds, per `metric`. The trailing 's' the string used to carry is now
+    // the metric's job — leaving it here would print as "30-60s s".
+    defaultReps: '30-60',
     defaultRestSeconds: 45,
     isCompound: false,
     fpDistribution: { vigor: 1.0 },

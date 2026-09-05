@@ -37,6 +37,7 @@ import {
   isTimed,
   resolveBlock,
 } from '@/lib/blocks';
+import { exerciseMetric } from '@/lib/metric';
 import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { BlockMode } from '@/types';
@@ -270,6 +271,7 @@ export function EditExerciseSheet({
             )}
 
             <SchemeFields
+              metric={exerciseMetric({ id: exercise.exerciseId })}
               mode={modeDraft}
               sets={setsDraft}
               reps={repsDraft}

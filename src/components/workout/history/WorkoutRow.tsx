@@ -9,6 +9,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChevronDown, ChevronUp } from '@/components/icons';
 import { describeBlock, isTimed, resolveBlock } from '@/lib/blocks';
+import { exerciseMetric } from '@/lib/metric';
 import { summarizeSets } from '@/lib/set-summary';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, WorkoutBlock, WorkoutLog } from '@/types';
@@ -118,7 +119,14 @@ function ExerciseBreakdown({
   const unit = isTimed(resolveBlock(exercise, blocks).mode) ? 'Round' : 'Set';
   // One line instead of one row per set. See summarizeSets for when the
   // individual numbers survive the collapse and when they don't.
-  const summary = summarizeSets(exercise.sets, { units, unitLabel: unit });
+  //
+  // Old logs carry no metric of their own; `exerciseMetric` falls back to the
+  // movement, so a plank logged before that existed still reads in seconds.
+  const summary = summarizeSets(exercise.sets, {
+    units,
+    unitLabel: unit,
+    metric: exerciseMetric(exercise),
+  });
 
   return (
     <View style={styles.exerciseRow}>

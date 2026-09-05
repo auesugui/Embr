@@ -69,6 +69,9 @@ function buildExercises(day: TemplateDay): Exercise[] {
       // The prescription travels with the session. In a circuit it is the
       // thing you read mid-round, not something you looked up beforehand.
       targetReps: templateEx.reps,
+      // Carried so the log is self-describing: a hold still reads back in
+      // seconds if the movement is later renamed or dropped from the database.
+      ...(def?.metric ? { metric: def.metric } : {}),
       // A legacy `mode: 'amrap'` exercise has no block id of its own, so it is
       // given the synthesised one (see `buildBlocks`) rather than carrying the
       // deprecated field forward into new session records.

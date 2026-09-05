@@ -15,6 +15,7 @@ import {
   SetList,
 } from '@/components/workout/session';
 import { blockHintText, describeBlock, isOpenEnded } from '@/lib/blocks';
+import { exerciseMetric, formatPrescription, uniformMetric } from '@/lib/metric';
 import { useSettingsStore, useWeightHistoryStore, useWorkoutStore } from '@/stores';
 import { colors, spacing } from '@/theme';
 import { haptics } from '@/utils/haptics';
@@ -196,7 +197,12 @@ export default function WorkoutSessionScreen() {
 
   const scrimMovements: ScrimMovement[] = entries.map(({ exercise, index }) => ({
     key: exercise?.id ?? String(index),
-    reps: exercise?.targetReps ?? null,
+    // The row reads "5  Pull-ups", so the bare number is already the reps.
+    // A hold has to say its units or it reads as a rep count.
+    reps:
+      exercise?.targetReps && exerciseMetric(exercise) === 'time'
+        ? formatPrescription(exercise.targetReps, 'time')
+        : (exercise?.targetReps ?? null),
     name: exercise?.name ?? 'Exercise',
   }));
 
@@ -239,6 +245,7 @@ export default function WorkoutSessionScreen() {
       <View {...behindScrim}>
         <SessionHeader
           totalReps={totalReps}
+          totalMetric={uniformMetric(exercises)}
           position={currentExerciseIndex + 1}
           total={exercises.length}
           canGoBack={currentExerciseIndex > 0}
@@ -362,6 +369,8 @@ export default function WorkoutSessionScreen() {
         // the block's first movement told you you were editing the wrong thing.
         exerciseName={editingExercise?.name ?? currentExercise.name}
         unitLabel={currentTimed ? 'Round' : 'Set'}
+        // Of the exercise being edited, for the same reason as the name above.
+        metric={exerciseMetric(editingExercise ?? currentExercise)}
         isEditing={editingSet?.logged}
       />
     </View>
