@@ -10,11 +10,23 @@
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { metricLabel } from '@/lib/metric';
 import { colors, radius, spacing, textStyles } from '@/theme';
-import type { WeightUnit } from '@/types';
+import type { Metric, WeightUnit } from '@/types';
+
+/**
+ * Stepper deltas for the counted field. A hold moves in the units people
+ * actually adjust a hold by — ±1 second is a rounding error on a plank.
+ */
+const QUANTITY_STEPS: Record<Metric, { small: number; large: number }> = {
+  reps: { small: 1, large: 5 },
+  time: { small: 5, large: 15 },
+};
 
 interface SetFieldsProps {
   reps: string;
+  /** What the counted field measures. Absent means reps. */
+  metric?: Metric;
   weight: string;
   units: WeightUnit;
   /** Plate-math presets for the current unit. */
@@ -33,6 +45,7 @@ interface SetFieldsProps {
 
 export function SetFields({
   reps,
+  metric = 'reps',
   weight,
   units,
   quickWeights,
@@ -46,14 +59,15 @@ export function SetFields({
   onPickWeight,
 }: SetFieldsProps) {
   const selectedWeight = weight ? Number.parseInt(weight, 10) : null;
+  const steps = QUANTITY_STEPS[metric];
   return (
     <>
-      {/* Reps Input */}
+      {/* The counted field: reps, or seconds for a held movement. */}
       <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Reps</Text>
+        <Text style={styles.inputLabel}>{metricLabel(metric)}</Text>
         <View style={styles.inputRow}>
-          <StepperButton label="-5" onPress={() => onStepReps(-5)} />
-          <StepperButton label="-1" onPress={() => onStepReps(-1)} />
+          <StepperButton label={`-${steps.large}`} onPress={() => onStepReps(-steps.large)} />
+          <StepperButton label={`-${steps.small}`} onPress={() => onStepReps(-steps.small)} />
           <TextInput
             style={styles.input}
             value={reps}
@@ -62,8 +76,8 @@ export function SetFields({
             selectTextOnFocus
             inputAccessoryViewID={repsInputId}
           />
-          <StepperButton label="+1" onPress={() => onStepReps(1)} />
-          <StepperButton label="+5" onPress={() => onStepReps(5)} />
+          <StepperButton label={`+${steps.small}`} onPress={() => onStepReps(steps.small)} />
+          <StepperButton label={`+${steps.large}`} onPress={() => onStepReps(steps.large)} />
         </View>
       </View>
 

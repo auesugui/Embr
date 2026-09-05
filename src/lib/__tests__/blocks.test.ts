@@ -310,6 +310,23 @@ describe('describeScheme', () => {
     const blocks: WorkoutBlock[] = [{ id: 'b1', mode: 'amrap_rounds', durationSeconds: 1200 }];
     expect(describeScheme({ blockId: 'b1', sets: 1, reps: '5' }, blocks)).toBe('5 reps');
   });
+
+  it('prescribes a held movement in seconds', () => {
+    expect(describeScheme({ exerciseId: 'plank', sets: 3, reps: '30-60' })).toBe('3 sets × 30-60s');
+  });
+
+  it('prescribes a held movement in seconds inside a rounds block too', () => {
+    const blocks: WorkoutBlock[] = [{ id: 'b1', mode: 'amrap_rounds', durationSeconds: 1200 }];
+    expect(
+      describeScheme({ exerciseId: 'plank', blockId: 'b1', sets: 1, reps: '30' }, blocks)
+    ).toBe('30s');
+  });
+
+  it('leaves a counted movement reading exactly as it did', () => {
+    expect(describeScheme({ exerciseId: 'bodyweight_squat', sets: 4, reps: '6-10' })).toBe(
+      '4 sets × 6-10'
+    );
+  });
 });
 
 describe('roundLabel', () => {

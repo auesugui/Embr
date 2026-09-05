@@ -154,6 +154,14 @@ export interface WorkoutBlock {
   rounds?: number;
 }
 
+/**
+ * What a logged number measures: repetitions, or seconds held.
+ *
+ * Declared here rather than in `src/lib/metric.ts` so the stored shapes above
+ * don't have to import from lib; that module re-exports it as the public name.
+ */
+export type Metric = 'reps' | 'time';
+
 export interface Exercise {
   id: string;
   name: string;
@@ -180,6 +188,12 @@ export interface Exercise {
    * while the clock runs. Absent on every session logged before blocks existed.
    */
   targetReps?: string;
+  /**
+   * What one logged number on this movement measures. Absent means reps —
+   * every session logged before holds were modelled, and every movement that
+   * is genuinely counted. See `src/lib/metric.ts`.
+   */
+  metric?: Metric;
 }
 
 export interface WorkoutSession {

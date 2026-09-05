@@ -16,6 +16,7 @@ import {
   groupIntoBlocks,
   isTimed,
 } from '@/lib/blocks';
+import { exerciseMetric, formatTotal } from '@/lib/metric';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import type { Exercise, WorkoutBlock } from '@/types';
 
@@ -45,6 +46,10 @@ export function SummaryExercises({
       {groupIntoBlocks(exercises, blocks).map(({ block, entries }) => {
         const rounds = completedRounds(entries);
         const reps = blockReps(entries);
+        // A block's members share a metric in practice (you do not superset a
+        // plank with a rep movement inside one clock), so the first one speaks
+        // for the tally — which is a sum across them either way.
+        const metric = exerciseMetric(entries[0]?.exercise);
         const anyPR = entries.some(({ exercise }) => exercise.sets.some((s) => s.isPR));
         const timed = isTimed(block.mode);
         const finish = block.id ? blockTimes?.[block.id] : undefined;
@@ -58,7 +63,7 @@ export function SummaryExercises({
               <View style={styles.exerciseInfo}>
                 <Text style={styles.exerciseName}>{exercise.name}</Text>
                 <Text style={styles.exerciseSets}>
-                  {`${loggedSets.length} ${loggedSets.length === 1 ? 'set' : 'sets'} · ${reps} reps`}
+                  {`${loggedSets.length} ${loggedSets.length === 1 ? 'set' : 'sets'} · ${formatTotal(reps, metric)}`}
                 </Text>
               </View>
               {anyPR && (
@@ -80,7 +85,7 @@ export function SummaryExercises({
                 {/* A count-up block already states its round count in the
                         tally, so repeating "2 rounds for time" after "2 rounds"
                         just says rounds twice. Its result is the time. */}
-                {`${rounds} ${rounds === 1 ? 'round' : 'rounds'} · ${reps} reps · ${
+                {`${rounds} ${rounds === 1 ? 'round' : 'rounds'} · ${formatTotal(reps, metric)} · ${
                   block.mode === 'for_time'
                     ? finish !== undefined
                       ? `for time in ${formatClock(finish)}`

@@ -9,10 +9,17 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChevronLeft } from '@/components/icons';
+import { formatTotal } from '@/lib/metric';
 import { colors, roles, spacing, textStyles } from '@/theme';
+import type { Metric } from '@/types';
 
 interface SessionHeaderProps {
   totalReps: number;
+  /**
+   * What the running total counts, or null when the session mixes reps and
+   * holds — a sum across both names neither, so it goes out unlabelled.
+   */
+  totalMetric: Metric | null;
   /** 1-based position of the current exercise. */
   position: number;
   total: number;
@@ -24,6 +31,7 @@ interface SessionHeaderProps {
 
 export function SessionHeader({
   totalReps,
+  totalMetric,
   position,
   total,
   canGoBack,
@@ -46,7 +54,9 @@ export function SessionHeader({
       </Pressable>
 
       <View style={styles.headerCenter}>
-        <Text style={styles.totalReps}>Total: {totalReps} reps</Text>
+        <Text style={styles.totalReps}>
+          Total: {totalMetric ? formatTotal(totalReps, totalMetric) : totalReps}
+        </Text>
         <Text style={styles.exerciseCount}>
           {position} / {total}
         </Text>

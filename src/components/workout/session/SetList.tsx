@@ -8,6 +8,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PRFlash, Settle } from '@/components/celebration';
+import { exerciseMetric, formatCompact, formatQuantity } from '@/lib/metric';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, WeightUnit } from '@/types';
 
@@ -51,6 +52,9 @@ export function SetList({
   onAddRound,
 }: SetListProps) {
   const hasWeight = lastWeight !== null && lastWeight > 0;
+  // A hold logs seconds, not reps. Everything in this list — the ladder, the
+  // logged result — has to say so, or "45" reads as forty-five plank reps.
+  const metric = exerciseMetric(exercise);
 
   return (
     <View style={styles.setsContainer}>
@@ -79,7 +83,7 @@ export function SetList({
             <Settle from={0.96}>
               <PRFlash active={set.isPR} style={styles.prFlashWrapper}>
                 <Pressable style={styles.loggedSet} onPress={() => onEditSet(exerciseIndex, index)}>
-                  <Text style={styles.loggedReps}>{set.reps} reps</Text>
+                  <Text style={styles.loggedReps}>{formatQuantity(set.reps ?? 0, metric)}</Text>
                   {set.weight && (
                     <Text style={styles.loggedWeight}>
                       @ {set.weight} {units}
@@ -93,10 +97,10 @@ export function SetList({
           ) : (
             <View style={styles.logButtons}>
               {quickReps.map((reps) => {
-                // Inside a timed block the prescription leads and is
-                // highlighted — same one-tap rule as a circuit. A set scheme
-                // keeps the plain generic ladder it always had.
-                const isTarget = timed && reps === target;
+                // The prescription leads and is highlighted wherever there is
+                // one — same one-tap rule as a circuit. A plain set scheme of a
+                // counted movement has none, and keeps its generic ladder.
+                const isTarget = target !== null && reps === target;
                 return (
                   <Pressable
                     key={reps}
@@ -104,7 +108,7 @@ export function SetList({
                     onPress={() => onQuickLog(exerciseIndex, index, reps)}
                   >
                     <Text style={[styles.logButtonText, isTarget && styles.logButtonTextTarget]}>
-                      {reps}
+                      {formatCompact(reps, metric)}
                     </Text>
                   </Pressable>
                 );

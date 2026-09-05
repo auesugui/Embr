@@ -23,6 +23,7 @@
 // Nothing outside this file compares `mode` directly — this is the single place
 // that decides what "absent" and "legacy" mean.
 
+import { exerciseMetric, formatPrescription } from '@/lib/metric';
 import type { BlockMode, ExerciseMode, WorkoutBlock } from '@/types';
 
 // -----------------------------------------------------------------------------
@@ -376,14 +377,22 @@ export function describeBlock(block: ResolvedBlock): string {
  * the block header carries the clock, so the two lines do not repeat.
  */
 export function describeScheme(
-  target: { sets: number; reps: string } & BlockMember,
+  target: { sets: number; reps: string; exerciseId?: string } & BlockMember,
   blocks?: WorkoutBlock[]
 ): string {
   const block = resolveBlock(target, blocks);
+  // A held movement is prescribed in seconds, so "3 sets × 30-60" has to read
+  // "3 sets × 30-60s" or the number means the wrong thing. Looked up rather
+  // than carried on the row: a template exercise stores only its id.
+  const metric = target.exerciseId ? exerciseMetric({ id: target.exerciseId }) : ('reps' as const);
 
-  if (block.mode === 'sets') return `${target.sets} sets × ${target.reps}`;
+  if (block.mode === 'sets') {
+    return metric === 'time'
+      ? `${target.sets} sets × ${formatPrescription(target.reps, metric)}`
+      : `${target.sets} sets × ${target.reps}`;
+  }
   if (block.mode === 'amrap_reps') return describeBlock(block);
-  return `${target.reps} reps`;
+  return formatPrescription(target.reps, metric);
 }
 
 /**

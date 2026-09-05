@@ -19,8 +19,13 @@
 // keeps its numbers, because on a lifting session the per-set weights ARE the
 // record and aggregating them away would lose the training history this app
 // exists to hold.
+//
+// Every number here goes through `metric`, so a plank's rows collapse to
+// "3 sets × 45s · 2m 15s total" rather than claiming a hundred and thirty-five
+// repetitions. See `src/lib/metric.ts`.
 
-import type { LoggedSet, WeightUnit } from '@/types';
+import { formatCompact, formatQuantity, formatTotal } from '@/lib/metric';
+import type { LoggedSet, Metric, WeightUnit } from '@/types';
 
 export interface SetSummary {
   /** Always present: the aggregate line. */
@@ -29,17 +34,17 @@ export interface SetSummary {
   detail?: string;
 }
 
-/** How one logged entry reads on its own: `135 lb × 5` or `5 reps`. */
-function describeEntry(set: LoggedSet, units: WeightUnit): string {
+/** How one logged entry reads on its own: `135 lb × 5`, `5 reps`, or `45s`. */
+function describeEntry(set: LoggedSet, units: WeightUnit, metric: Metric): string {
   const reps = set.reps ?? 0;
-  if (!set.weight) return `${reps} reps`;
-  return `${set.weight} ${units} × ${reps}`;
+  if (!set.weight) return formatQuantity(reps, metric);
+  return `${set.weight} ${units} × ${formatCompact(reps, metric)}`;
 }
 
-/** The compact form used inside the detail list: `135×5` or `5`. */
-function compactEntry(set: LoggedSet): string {
+/** The compact form used inside the detail list: `135×5`, `5`, or `45s`. */
+function compactEntry(set: LoggedSet, metric: Metric): string {
   const reps = set.reps ?? 0;
-  return set.weight ? `${set.weight}×${reps}` : `${reps}`;
+  return set.weight ? `${set.weight}×${formatCompact(reps, metric)}` : formatCompact(reps, metric);
 }
 
 /**
@@ -51,12 +56,12 @@ function compactEntry(set: LoggedSet): string {
  */
 export function summarizeSets(
   sets: LoggedSet[],
-  options: { units: WeightUnit; unitLabel: 'Set' | 'Round' }
+  options: { units: WeightUnit; unitLabel: 'Set' | 'Round'; metric?: Metric }
 ): SetSummary | null {
   const logged = sets.filter((s) => s.logged);
   if (logged.length === 0) return null;
 
-  const { units, unitLabel } = options;
+  const { units, unitLabel, metric = 'reps' } = options;
   const count = logged.length;
   const totalReps = logged.reduce((sum, s) => sum + (s.reps ?? 0), 0);
   const noun = `${unitLabel.toLowerCase()}${count === 1 ? '' : 's'}`;
@@ -71,16 +76,20 @@ export function summarizeSets(
 
   if (uniform) {
     // One entry is already its own summary; multiplying by one reads worse.
-    if (count === 1) return { headline: `${describeEntry(first, units)}${repPR}` };
+    if (count === 1) return { headline: `${describeEntry(first, units, metric)}${repPR}` };
 
     const per = first.weight
-      ? `${first.weight} ${units} × ${first.reps ?? 0}`
-      : `${first.reps ?? 0} reps`;
-    return { headline: `${count} ${noun} × ${per} · ${totalReps} total${repPR}` };
+      ? `${first.weight} ${units} × ${formatCompact(first.reps ?? 0, metric)}`
+      : formatQuantity(first.reps ?? 0, metric);
+    // The total keeps the bare-number form it had for reps ("45 total") and
+    // states its units for a hold, where "135 total" would be a lie.
+    return {
+      headline: `${count} ${noun} × ${per} · ${formatCompact(totalReps, metric)} total${repPR}`,
+    };
   }
 
   return {
-    headline: `${count} ${noun} · ${totalReps} reps${repPR}`,
-    detail: logged.map(compactEntry).join(' · '),
+    headline: `${count} ${noun} · ${formatTotal(totalReps, metric)}${repPR}`,
+    detail: logged.map((s) => compactEntry(s, metric)).join(' · '),
   };
 }
