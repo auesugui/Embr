@@ -418,6 +418,56 @@ export function roundLabel(mode: BlockMode, index: number): string {
  * movements with the third unlogged is two rounds and a partial, which is
  * exactly how it is scored in the gym.
  */
+/**
+ * The one line of plain instruction under a block's clock.
+ *
+ * Each mode is bounded by a different thing, so each has to say a different
+ * thing — and what it says changes with the clock: before you start it is the
+ * prescription, while running it is how to log, and once finished it is what
+ * just happened.
+ */
+export function blockHintText(args: {
+  mode: BlockMode;
+  running: boolean;
+  paused: boolean;
+  finished: boolean;
+  /** Elapsed seconds, for the `for_time` result. */
+  elapsed: number;
+  rounds: number;
+  intervalSeconds: number;
+}): string {
+  if (args.paused) return 'Paused.';
+
+  switch (args.mode) {
+    case 'amrap_rounds':
+      return args.finished
+        ? 'Time — finish the round you’re in, then move on.'
+        : args.running
+          ? 'One tap banks the whole round.'
+          : 'As many rounds as possible in the window.';
+    case 'amrap_reps':
+      return args.finished
+        ? 'Time — finish the round you’re in, then move on.'
+        : args.running
+          ? 'Log each round as you finish it. No rest timer here.'
+          : 'As many reps as possible in the window.';
+    case 'for_time':
+      return args.finished
+        ? `Finished in ${formatClock(args.elapsed)}.`
+        : args.running
+          ? 'Clock is up. Hit Done the moment the last round lands.'
+          : `${args.rounds} rounds, as fast as you can.`;
+    case 'emom':
+      return args.finished
+        ? 'Done.'
+        : args.running
+          ? 'Work at the top of each minute. Rest whatever is left of it.'
+          : `${args.rounds} intervals of ${formatClock(args.intervalSeconds)}.`;
+    default:
+      return '';
+  }
+}
+
 export function completedRounds(
   entries: Array<{ exercise: { sets: Array<{ logged: boolean }> } }>
 ): number {
