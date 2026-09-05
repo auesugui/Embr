@@ -1,22 +1,31 @@
 // =============================================================================
-// SwipeToDelete — swipe a row left to reveal a destructive action
+// SwipeToDelete — swipe a card to bring a trash button into it
 // =============================================================================
 // Deleting a personal workout used to mean: tap the card, tap Edit, scroll to
 // the bottom, tap Delete Custom Template. Four screens deep for the one
 // operation you perform on a workout you no longer want.
 //
-// The swipe is an ADDITION, not a replacement. That editor button stays exactly
-// where it is, because a hidden gesture is not an accessible affordance: it has
-// no keyboard equivalent, no screen-reader path, and no discoverability beyond
-// the peek hint the first render gives you. If this is ever the only way to
-// delete something, that's a regression.
+// THE CARD DOESN'T MOVE. The usual iOS pattern slides the whole row left to
+// expose an action sitting behind it, which means the thing you're looking at
+// leaves its position and the list momentarily reads as broken alignment. Here
+// the swipe travels *inside* the card: the card stays exactly where it is and a
+// trash button slides in from under its right edge, clipped by the card's own
+// bounds. The gesture reveals; the button deletes. Nothing else is armed —
+// releasing a swipe never deletes anything by itself.
+//
+// The swipe is an ADDITION, not a replacement. The editor's delete button stays
+// exactly where it is, because a hidden gesture is not an accessible
+// affordance: no keyboard equivalent, no discoverability beyond the first time
+// someone's thumb finds it. If this is ever the only way to delete something,
+// that's a regression. (The trash button itself is always in the tree with a
+// label, so screen readers reach it without performing a gesture.)
 //
 // Deliberately built on Gesture.Pan rather than RNGH's Swipeable so the motion
 // comes from the app's own vocabulary — the same `settle` spring as a button
 // press (see PressableScale) — instead of a second, foreign set of physics.
 
 import { type ReactNode, useCallback, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
@@ -31,11 +40,11 @@ import { CELEBRATION } from '@/components/celebration/vocabulary';
 import { Trash } from '@/components/icons';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { radius, roles, spacing, textStyles } from '@/theme';
+import { radius, roles, spacing } from '@/theme';
 import { haptics } from '@/utils/haptics';
 
-/** How far the row slides to fully expose the action. */
-const ACTION_WIDTH = 96;
+/** Width of the trash button, and so how far the gesture travels. */
+const ACTION_WIDTH = 64;
 
 /** Past this much travel, letting go opens rather than springs back. */
 const OPEN_THRESHOLD = ACTION_WIDTH * 0.45;
@@ -51,21 +60,21 @@ const PAN_ACTIVATION_X = 12;
 
 /** Handed to the child so its press handler can stand down mid-swipe. */
 export interface SwipeGuard {
-  /** True while a swipe owns the interaction, or while the row sits open. */
+  /** True while a swipe owns the interaction, or while the button is out. */
   blocked: () => boolean;
 }
 
 interface SwipeToDeleteProps {
   /**
-   * The row. Given as a function so it can read the swipe guard — a plain
+   * The card. Given as a function so it can read the swipe guard — a plain
    * child cannot, and a child that navigates on press MUST check it.
    */
   children: (guard: SwipeGuard) => ReactNode;
-  /** Runs after the action is tapped. Confirmation belongs to the caller. */
+  /** Runs when the trash button is tapped. Confirmation belongs to the caller. */
   onDelete: () => void;
-  /** Screen-reader label for the revealed action. */
+  /** Screen-reader label for the trash button. */
   accessibilityLabel: string;
-  /** Row spacing, matched to the card it wraps so the action aligns with it. */
+  /** Row spacing. Owned here so the button's clip matches the card exactly. */
   marginBottom?: number;
 }
 
@@ -77,10 +86,11 @@ export function SwipeToDelete({
 }: SwipeToDeleteProps) {
   const reducedMotion = useSettingsStore((s) => s.reducedMotion);
 
-  const translateX = useSharedValue(0);
+  /** Gesture travel, 0 (hidden) to -ACTION_WIDTH (button fully in). */
+  const travel = useSharedValue(0);
   const isOpen = useSharedValue(false);
 
-  /** Open state, for the tap-to-close overlay. */
+  /** Button-is-out state, for the tap-to-close overlay. */
   const [locked, setLocked] = useState(false);
 
   /**
@@ -89,9 +99,9 @@ export function SwipeToDelete({
    * This is load-bearing, not defensive: on web the card is an RN Pressable,
    * and RN Web's press responder listens at the document, so it completes the
    * press on pointer-up no matter how far the pointer travelled or what the
-   * subtree's `pointer-events` say. Measured: swiping a workout left also
-   * STARTED that workout on release. The pan and the press are separate
-   * systems that cannot negotiate, so the card asks this before acting.
+   * subtree's `pointer-events` say. Measured: swiping a workout also STARTED
+   * that workout on release. The pan and the press are separate systems that
+   * cannot negotiate, so the card asks this before acting.
    *
    * It's a ref, not state, because `runOnJS` hops threads asynchronously and
    * can land after the press has already fired — a re-render is too late.
@@ -110,8 +120,8 @@ export function SwipeToDelete({
 
   const endSwipe = useCallback((stayOpen: boolean) => {
     setLocked(stayOpen);
-    // An open row keeps swallowing presses — the next tap should close it, not
-    // fire the card underneath a Delete button.
+    // While the button is out the card keeps ignoring presses — the next tap
+    // should put it away, not open the workout it's sitting on.
     if (stayOpen) return;
     setTimeout(() => {
       swiping.current = false;
@@ -119,7 +129,7 @@ export function SwipeToDelete({
   }, []);
 
   const close = useCallback(() => {
-    translateX.value = reducedMotion
+    travel.value = reducedMotion
       ? withTiming(0, { duration: 120 })
       : withSpring(0, CELEBRATION.settle);
     isOpen.value = false;
@@ -127,7 +137,7 @@ export function SwipeToDelete({
     setTimeout(() => {
       swiping.current = false;
     }, 50);
-  }, [translateX, isOpen, reducedMotion]);
+  }, [travel, isOpen, reducedMotion]);
 
   const pan = Gesture.Pan()
     .activeOffsetX([-PAN_ACTIVATION_X, PAN_ACTIVATION_X])
@@ -139,35 +149,54 @@ export function SwipeToDelete({
     })
     .onUpdate((e) => {
       const base = isOpen.value ? -ACTION_WIDTH : 0;
-      // Rightward past closed does nothing: there is no action on that side, and
-      // a row that drifts right just looks broken.
-      translateX.value = Math.min(0, Math.max(-ACTION_WIDTH * 1.15, base + e.translationX));
+      // Rightward past closed does nothing: there is no action on that side.
+      // The small overshoot allowance is what gives the button somewhere to
+      // spring back from rather than stopping dead against its stop.
+      travel.value = Math.min(0, Math.max(-ACTION_WIDTH * 1.15, base + e.translationX));
     })
     .onEnd((e) => {
       // A fast flick opens even if it never travelled past the threshold —
       // matching velocity beats matching distance for how a swipe feels.
       const flungOpen = e.velocityX < -600;
       const flungShut = e.velocityX > 600;
-      const shouldOpen = flungShut ? false : flungOpen || translateX.value < -OPEN_THRESHOLD;
+      const shouldOpen = flungShut ? false : flungOpen || travel.value < -OPEN_THRESHOLD;
       const to = shouldOpen ? -ACTION_WIDTH : 0;
       // Snap inline rather than through a shared helper: this runs on the UI
       // thread, and a JS-thread closure called from here is the classic way to
       // get a gesture that works in dev and drops frames in release.
-      translateX.value = reducedMotion
+      travel.value = reducedMotion
         ? withTiming(to, { duration: 120 })
         : withSpring(to, CELEBRATION.settle);
       isOpen.value = shouldOpen;
       runOnJS(endSwipe)(shouldOpen);
     });
 
-  const rowStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+  /**
+   * The button rides the gesture; the card does not.
+   *
+   * It starts parked one full width to the right of the card's inner edge —
+   * outside the clip — and arrives at 0. That's the whole trick: all the
+   * movement people read as "the row opening" happens inside the card's own
+   * bounds, so the card never leaves its place in the list.
+   */
+  const buttonStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: ACTION_WIDTH + travel.value }],
+    // Fades with travel so a half-open card reads as in-progress rather than as
+    // a button that's already armed.
+    opacity: interpolate(travel.value, [0, -ACTION_WIDTH * 0.5], [0, 1], 'clamp'),
   }));
 
-  // The action fades in with the travel so a half-open row reads as in-progress
-  // rather than as a button that is already armed.
-  const actionStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [0, -ACTION_WIDTH * 0.6], [0, 1], 'clamp'),
+  /**
+   * The card dims as the button comes in.
+   *
+   * Not decoration. The button necessarily covers the card's right edge — the
+   * stat values and the difficulty label — and without this, a half-covered
+   * card reads as broken text rather than as a card in a mode. It's also
+   * honest: presses are genuinely disabled while the button is out, and this
+   * is what "temporarily inert" looks like everywhere else in the app.
+   */
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(travel.value, [0, -ACTION_WIDTH], [1, 0.72], 'clamp'),
   }));
 
   const handleDelete = () => {
@@ -177,19 +206,9 @@ export function SwipeToDelete({
   };
 
   return (
-    <View style={[styles.container, { marginBottom }]}>
-      <Animated.View style={[styles.actionLayer, actionStyle]}>
-        <PressableScale
-          style={styles.deleteButton}
-          onPress={handleDelete}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-        >
-          <Trash size={18} color={roles.onAccent} strokeWidth={2} />
-          <Text style={styles.deleteText}>Delete</Text>
-        </PressableScale>
-      </Animated.View>
-
+    // Clips the button to the card's silhouette, which is what makes it read as
+    // part of the card rather than something parked behind the row.
+    <View style={[styles.clip, { marginBottom }]}>
       {/* touchAction is the difference between a swipeable card and a card you
           can't scroll past. GestureDetector defaults it to "none" on web, which
           hands every direction to the gesture: the page stops scrolling under
@@ -198,55 +217,67 @@ export function SwipeToDelete({
           workout. "pan-y" keeps vertical with the browser and leaves horizontal
           to us. */}
       <GestureDetector gesture={pan} touchAction="pan-y">
-        <Animated.View style={rowStyle}>
-          <View pointerEvents={locked ? 'none' : 'auto'}>
+        <View>
+          <Animated.View style={contentStyle} pointerEvents={locked ? 'none' : 'auto'}>
             {children({ blocked: () => swiping.current || locked })}
-          </View>
+          </Animated.View>
 
-          {/* Only mounted while the row is locked, so it never sits in front of
-              a closed card and eats its press. Tapping it closes the row —
-              the standard way out of an opened list row. */}
+          {/* Only mounted while the button is out, so it never sits in front of
+              a closed card and eats its press. Tapping it puts the button away
+              — the standard way out of an opened row. Rendered before the
+              button so it never covers it. */}
           {locked && (
             <Pressable
               style={StyleSheet.absoluteFill}
               onPress={close}
               accessibilityRole="button"
-              accessibilityLabel="Close delete action"
+              accessibilityLabel="Hide delete button"
             />
           )}
-        </Animated.View>
+
+          <Animated.View style={[styles.actionLayer, buttonStyle]}>
+            <PressableScale
+              style={styles.deleteButton}
+              onPress={handleDelete}
+              accessibilityRole="button"
+              accessibilityLabel={accessibilityLabel}
+            >
+              <Trash size={20} color={roles.onAccent} strokeWidth={2} />
+            </PressableScale>
+          </Animated.View>
+        </View>
       </GestureDetector>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  clip: {
     position: 'relative',
+    // Matches TemplateCard's radius so the button is cut by the same curve the
+    // card is drawn with.
+    borderRadius: radius.lg,
+    overflow: 'hidden',
   },
-  // Explicit edges rather than absoluteFillObject + alignSelf: the latter left
-  // the action sized to its content and pinned to the bottom of the card
-  // instead of running its full height.
+  // Inset by the card's hairline border so the fill sits inside the stroke
+  // rather than painting over it.
   actionLayer: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: 0,
+    top: 1,
+    bottom: 1,
+    right: 1,
     width: ACTION_WIDTH,
   },
   deleteButton: {
     flex: 1,
     backgroundColor: roles.error,
-    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing[1],
-  },
-  deleteText: {
-    ...textStyles.caption,
-    color: roles.onAccent,
-    fontWeight: '700',
+    // Square on the left where it meets the card's content, round on the right
+    // where it meets the card's own corner.
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+    borderTopRightRadius: radius.lg - 1,
+    borderBottomRightRadius: radius.lg - 1,
   },
 });
-
-export { ACTION_WIDTH as SWIPE_ACTION_WIDTH };

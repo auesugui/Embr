@@ -125,7 +125,9 @@ export default function HomeScreen() {
       {hasOwnWorkouts && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Workouts</Text>
-          <Text style={styles.sectionSubtitle}>Tap to start. Swipe a card left to delete it.</Text>
+          <Text style={styles.sectionSubtitle}>
+            Tap to start. Swipe a card left, then tap the trash.
+          </Text>
 
           {personalTemplates.map((template, i) => (
             <RevealRow key={template.id} index={Math.min(i, 5)}>
