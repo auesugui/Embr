@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft } from '@/components/icons';
 
 import { PRFlash, Settle } from '@/components/celebration';
+import { AmrapScrim, type ScrimMovement } from '@/components/workout/AmrapScrim';
 import { ExerciseDemo } from '@/components/workout/ExerciseDemo';
 import { RestTimerRing } from '@/components/workout/RestTimerRing';
 import { SetInputModal } from '@/components/workout/SetInputModal';
@@ -27,6 +28,7 @@ import {
   targetRepCount,
   usesRestTimer,
 } from '@/lib/blocks';
+import { hasRecordedWork, isPreStart, showAmrapScrim } from '@/lib/session-view';
 import {
   usePlayerStore,
   useSettingsStore,
@@ -55,6 +57,7 @@ export default function WorkoutSessionScreen() {
   const currentExerciseIndex = useWorkoutStore((state) => state.currentExerciseIndex);
   const restTimer = useWorkoutStore((state) => state.restTimer);
   const blockTimer = useWorkoutStore((state) => state.blockTimer);
+  const blockTimes = useWorkoutStore((state) => state.blockTimes);
   const blocks = useWorkoutStore((state) => state.blocks);
 
   // Store actions
@@ -89,6 +92,15 @@ export default function WorkoutSessionScreen() {
     setIndex: 0,
     visible: false,
   });
+
+  /**
+   * Whether the running-AMRAP scrim has been dismissed for the current window.
+   *
+   * Only "Log a partial round" sets it, and only once the window has closed —
+   * that's the one moment the detailed rows underneath are the right surface.
+   * Starting a block clears it, so the next window opens focused again.
+   */
+  const [scrimDismissed, setScrimDismissed] = useState(false);
 
   // Rest timer interval
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -170,6 +182,40 @@ export default function WorkoutSessionScreen() {
 
   const interval = clockIsOurs && currentBlock.mode === 'emom' ? blockInterval(blockTimer) : null;
   const roundsDone = completedRounds(entries.filter((e) => e.exercise));
+
+  // ---------------------------------------------------------------------------
+  // The running-AMRAP scrim
+  // ---------------------------------------------------------------------------
+  // Scoped to the open-ended modes on purpose. An AMRAP is the one shape where
+  // the screen has nothing to offer but the clock, the round count and one
+  // button: EMOM wants its interval, `for_time` wants its ladder, and `sets`
+  // wants the whole working surface. See AmrapScrim's header.
+  const scrimVisible = showAmrapScrim({
+    mode: currentBlock.mode,
+    clockIsOurs,
+    dismissed: scrimDismissed,
+  });
+
+  // "Finish" is for a workout that HAPPENED. Before the clock has been started
+  // there is nothing to finish — the way out of a workout you opened and
+  // changed your mind about is the back arrow or End, not a Finish that writes
+  // an empty session into history. Any logged set counts too, so a lifting
+  // session (which has no clock to start) is unaffected the moment work lands.
+  const canFinish = hasRecordedWork({
+    completedSets: getCompletedSets(),
+    activeBlockKey: blockTimer.blockKey,
+    finishedBlockCount: Object.keys(blockTimes).length,
+  });
+
+  /**
+   * An AMRAP that hasn't been started yet.
+   *
+   * Everything about logging a round belongs to a running clock, so before the
+   * clock exists this screen shows the prescription and Start — and nothing
+   * else. The reported problem was five competing CTAs on a screen whose only
+   * sensible next action was one of them.
+   */
+  const preStart = isPreStart({ mode: currentBlock.mode, clockIsOurs, roundsDone });
 
   // Rounds split into "banked" and "the one you are in". Banked rounds collapse
   // to a line each; only the open round needs its controls on screen. Twenty
@@ -460,6 +506,7 @@ export default function WorkoutSessionScreen() {
 
   const handleStartBlock = () => {
     haptics.success();
+    setScrimDismissed(false);
     startBlockTimer(currentKey, {
       mode: currentBlock.mode,
       // EMOM's total length is its interval plan, not a window someone typed.
@@ -555,8 +602,52 @@ export default function WorkoutSessionScreen() {
     );
   }
 
+  /**
+   * Hides the working surface from assistive tech while the scrim covers it.
+   *
+   * The scrim is opaque, so sighted users see one screen — but without this a
+   * screen reader walks straight through it into the very rows the scrim
+   * exists to put away, and reports two conflicting sets of controls.
+   */
+  const behindScrim = scrimVisible
+    ? ({
+        accessibilityElementsHidden: true,
+        importantForAccessibility: 'no-hide-descendants',
+        'aria-hidden': true,
+      } as const)
+    : {};
+
+  const scrimMovements: ScrimMovement[] = entries.map(({ exercise, index }) => ({
+    key: exercise?.id ?? String(index),
+    reps: exercise?.targetReps ?? null,
+    name: exercise?.name ?? 'Exercise',
+  }));
+
   return (
     <View style={styles.container}>
+      {/* The running AMRAP. Covers the working surface for exactly as long as
+          the window is open — see AmrapScrim for why it's a cover rather than a
+          thinned-out version of this screen. */}
+      {scrimVisible && (
+        <AmrapScrim
+          title={describeBlock(currentBlock)}
+          elapsed={elapsed}
+          duration={currentBlock.durationSeconds}
+          roundsDone={roundsDone}
+          movements={scrimMovements}
+          paused={clockPaused}
+          finished={clockFinished}
+          onRoundDone={roundFullyPrescribed ? handleLogRound : null}
+          onFinish={isLastGroup ? handleFinishWorkout : handleNextExercise}
+          finishLabel={isLastGroup ? 'Finish workout' : `Next: ${nextGroupLabel}`}
+          onTogglePause={handleToggleBlockPause}
+          onLogPartial={() => {
+            haptics.tap();
+            setScrimDismissed(true);
+          }}
+        />
+      )}
+
       {/* Rest Timer Overlay */}
       {restTimer.running && (
         <Pressable style={styles.restOverlay} onPress={handleSkipRest}>
@@ -606,7 +697,7 @@ export default function WorkoutSessionScreen() {
       )}
 
       {/* Session Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing[2] }]}>
+      <View {...behindScrim} style={[styles.header, { paddingTop: insets.top + spacing[2] }]}>
         <Pressable
           onPress={handlePreviousExercise}
           disabled={currentExerciseIndex === 0}
@@ -635,7 +726,11 @@ export default function WorkoutSessionScreen() {
       </View>
 
       {/* Current Exercise */}
-      <ScrollView style={styles.exerciseScroll} contentContainerStyle={styles.exerciseContent}>
+      <ScrollView
+        {...behindScrim}
+        style={styles.exerciseScroll}
+        contentContainerStyle={styles.exerciseContent}
+      >
         <View style={styles.exerciseCard}>
           {isCircuit ? (
             <>
@@ -695,7 +790,9 @@ export default function WorkoutSessionScreen() {
 
               <Text style={styles.amrapHint}>{blockHint()}</Text>
 
-              {isCircuit && (
+              {/* A tally reading "0 rounds complete" before you have started is
+                  a fact about nothing. It arrives with the first round. */}
+              {isCircuit && !preStart && (
                 <Text style={styles.roundTally}>
                   {roundsDone} {roundsDone === 1 ? 'round' : 'rounds'} complete
                 </Text>
@@ -749,7 +846,7 @@ export default function WorkoutSessionScreen() {
 
               Per-movement logging is still here, demoted, because a round that
               the clock cuts short is real and has to be recordable. */}
-          {isCircuit && (
+          {isCircuit && !preStart && (
             <View style={styles.setsContainer}>
               {/* Rounds already banked. One line each — twenty rounds must not
                   become sixty rows of scroll. Tap a rep count to correct it. */}
@@ -856,7 +953,7 @@ export default function WorkoutSessionScreen() {
           )}
 
           {/* Sets — the single-movement view. */}
-          {!isCircuit && (
+          {!isCircuit && !preStart && (
             <View style={styles.setsContainer}>
               {currentExercise.sets.map((set, index) => (
                 <View
@@ -949,15 +1046,29 @@ export default function WorkoutSessionScreen() {
       </ScrollView>
 
       {/* Navigation */}
-      <View style={[styles.navigation, { paddingBottom: insets.bottom + spacing[2] }]}>
-        <Pressable
-          style={[styles.navButton, isLastGroup && styles.finishButton]}
-          onPress={isLastGroup ? handleFinishWorkout : handleNextExercise}
-        >
-          <Text style={[styles.navButtonText, isLastGroup && styles.navButtonTextFinish]}>
-            {isLastGroup ? 'Finish Workout' : `Next: ${nextGroupLabel}`}
+      <View
+        {...behindScrim}
+        style={[styles.navigation, { paddingBottom: insets.bottom + spacing[2] }]}
+      >
+        {/* Finish only exists once the workout does. On an untouched timed
+            block there is nothing to write to history, so the way out is the
+            back arrow or End — not a Finish that banks an empty session. */}
+        {isLastGroup && !canFinish ? (
+          <Text style={styles.navHint}>
+            {currentTimed
+              ? 'Start the clock to begin, or go back to leave.'
+              : 'Log a set to begin, or go back to leave.'}
           </Text>
-        </Pressable>
+        ) : (
+          <Pressable
+            style={[styles.navButton, isLastGroup && styles.finishButton]}
+            onPress={isLastGroup ? handleFinishWorkout : handleNextExercise}
+          >
+            <Text style={[styles.navButtonText, isLastGroup && styles.navButtonTextFinish]}>
+              {isLastGroup ? 'Finish Workout' : `Next: ${nextGroupLabel}`}
+            </Text>
+          </Pressable>
+        )}
 
         {/* Block list. One tab per block, so a three-movement circuit is one
             destination rather than three that all show the same rounds. */}
@@ -1439,6 +1550,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.ui.border,
     backgroundColor: colors.background.primary,
+  },
+  navHint: {
+    ...textStyles.bodySmall,
+    color: roles.textMuted,
+    textAlign: 'center',
+    paddingVertical: spacing[4],
+    marginBottom: spacing[3],
   },
   navButton: {
     backgroundColor: colors.background.tertiary,
