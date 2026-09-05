@@ -21,8 +21,10 @@ const EXERCISE_IDS = new Set(EXERCISE_DATABASE.map((e) => e.id));
  *   Reusing `back_squat.jpg` would show a loaded barbell for an unloaded
  *   movement, which is worse than no picture. `ExerciseDemo` renders nothing
  *   when a demo is absent, so this degrades cleanly.
+ * - `hollow_rock`, `v_up` — added to the core list; no rendered diagram yet.
+ *   Both are dynamic movements a two-panel still reads poorly for anyway.
  */
-const KNOWN_MISSING = ['cable_crunch', 'bodyweight_squat'];
+const KNOWN_MISSING = ['cable_crunch', 'bodyweight_squat', 'hollow_rock', 'v_up'];
 
 describe('exercise demos', () => {
   it('has a file on disk for every exercise it claims to cover', () => {
