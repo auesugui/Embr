@@ -10,12 +10,14 @@ import { router } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CountUpText, RevealRow } from '@/components/celebration';
-import { PressableScale } from '@/components/ui';
+import { PressableScale, SwipeToDelete } from '@/components/ui';
 import { TemplateCard } from '@/components/workout/TemplateCard';
 import { WORKOUT_TEMPLATES } from '@/data';
 import { countClaimedInLast7Days } from '@/lib/history-stats';
+import { ownWorkoutRoute } from '@/lib/workout-routes';
 import { usePRStore, usePlayerStore, useTemplateStore, useWorkoutHistoryStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
+import { showAlert } from '@/utils/alert';
 import { haptics } from '@/utils/haptics';
 
 export default function HomeScreen() {
@@ -28,8 +30,50 @@ export default function HomeScreen() {
   const workoutsThisWeek = useWorkoutHistoryStore((s) => countClaimedInLast7Days(s.logs));
   const prCount = usePRStore((state) => state.totalPRCount);
 
+  const deleteTemplate = useTemplateStore((state) => state.deleteTemplate);
+  const hasOwnWorkouts = personalTemplates.length > 0;
+
   const handleTemplatePress = (templateId: string) => {
     router.push(`/workout/template/${templateId}`);
+  };
+
+  /**
+   * Tapping one of YOUR workouts starts it.
+   *
+   * The built-in templates below still open their detail page, because there
+   * you're deciding whether to adopt someone else's program. A workout you
+   * built is one you've already decided about — the only thing left to do with
+   * it is train, and routing that through a read-only description page was
+   * three taps to a thing you do every day.
+   *
+   * A multi-day program is the exception: which day to run is a real choice, so
+   * it still stops at the day picker.
+   */
+  const handleOwnWorkoutPress = (templateId: string, dayCount: number) => {
+    haptics.tap();
+    router.push(ownWorkoutRoute(templateId, dayCount) as Parameters<typeof router.push>[0]);
+  };
+
+  // Deleting a personal copy is irreversible and there is no undo anywhere in
+  // the app, so the swipe reveals the action and the dialog commits it. A
+  // one-gesture delete of a program you spent ten minutes building is not a
+  // convenience.
+  const handleDeleteWorkout = (templateId: string, name: string) => {
+    showAlert({
+      title: 'Delete this workout?',
+      message: `"${name}" will be removed from your workouts. Logged sessions stay in your history.`,
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            haptics.warning();
+            deleteTemplate(templateId);
+          },
+        },
+      ],
+    });
   };
 
   // Straight into the editor — the point of this button is that building a
@@ -69,17 +113,66 @@ export default function HomeScreen() {
         </View>
       </RevealRow>
 
-      {/* Build from scratch. Sits above History so the two "start something"
-          actions aren't separated by the read-only one. */}
+      {/* YOUR workouts, before anything that makes a new one.
+          The screen used to lead with New Workout, which put an authoring
+          action where the returning user's eye lands. Reading top-to-bottom it
+          promised "start training" and delivered an empty template editor, and
+          the workouts you'd already built sat below a wall of someone else's
+          programs. Once you own workouts, they ARE the home screen; building
+          another is the rarer thing and sits after them. With none yet, there's
+          nothing to lead with and the build button is the primary CTA again
+          (see below). */}
+      {hasOwnWorkouts && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>My Workouts</Text>
+          <Text style={styles.sectionSubtitle}>
+            Tap to start. Swipe a card left, then tap the trash.
+          </Text>
+
+          {personalTemplates.map((template, i) => (
+            <RevealRow key={template.id} index={Math.min(i, 5)}>
+              <SwipeToDelete
+                onDelete={() => handleDeleteWorkout(template.id, template.name)}
+                accessibilityLabel={`Delete ${template.name}`}
+              >
+                {({ blocked }) => (
+                  <TemplateCard
+                    flush
+                    template={template}
+                    onPress={() => {
+                      // A swipe ends in a pointer-up the card would otherwise
+                      // read as a tap, which would start the workout you were
+                      // trying to delete.
+                      if (blocked()) return;
+                      handleOwnWorkoutPress(template.id, template.days.length);
+                    }}
+                  />
+                )}
+              </SwipeToDelete>
+            </RevealRow>
+          ))}
+        </View>
+      )}
+
+      {/* Build from scratch. Primary when you own nothing (it's the only way
+          forward); a quieter secondary once you do, so it stops competing with
+          the workouts above it. Same action either way — only the weight
+          changes, because what changes is how likely you are to want it. */}
       <RevealRow index={2} style={styles.section}>
         <PressableScale
-          style={styles.primaryButton}
+          style={hasOwnWorkouts ? styles.secondaryButton : styles.primaryButton}
           onPress={handleNewWorkout}
           accessibilityRole="button"
-          accessibilityLabel="Create a new custom workout"
+          accessibilityLabel="Build a new custom workout"
         >
-          <Plus size={18} color={roles.onAccent} strokeWidth={2.5} />
-          <Text style={styles.primaryButtonText}>New Workout</Text>
+          <Plus
+            size={18}
+            color={hasOwnWorkouts ? roles.accentText : roles.onAccent}
+            strokeWidth={2.5}
+          />
+          <Text style={hasOwnWorkouts ? styles.secondaryButtonText : styles.primaryButtonText}>
+            {hasOwnWorkouts ? 'Build another workout' : 'New Workout'}
+          </Text>
         </PressableScale>
       </RevealRow>
 
@@ -95,24 +188,10 @@ export default function HomeScreen() {
         </PressableScale>
       </RevealRow>
 
-      {/* Templates Section */}
-      {personalTemplates.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>My Custom Templates</Text>
-          <Text style={styles.sectionSubtitle}>
-            Your personal copies. Tap to view, edit, or start a session.
-          </Text>
-
-          {personalTemplates.map((template, i) => (
-            <RevealRow key={template.id} index={Math.min(i, 5)}>
-              <TemplateCard template={template} onPress={() => handleTemplatePress(template.id)} />
-            </RevealRow>
-          ))}
-        </View>
-      )}
-
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Workout Templates</Text>
+        <Text style={styles.sectionTitle}>
+          {hasOwnWorkouts ? 'Browse Programs' : 'Workout Templates'}
+        </Text>
         <Text style={styles.sectionSubtitle}>
           Choose a program that fits your schedule. Each shows the muscle groups it targets.
         </Text>
@@ -232,6 +311,24 @@ const styles = StyleSheet.create({
     gap: spacing[2],
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Same shape, no fill. An outline reads as "available" rather than "do this
+  // next", which is exactly the demotion this button needs once the workouts
+  // above it are the point of the screen.
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: roles.border,
+    borderRadius: radius.lg,
+    paddingVertical: spacing[3],
+    flexDirection: 'row',
+    gap: spacing[2],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButtonText: {
+    ...textStyles.button,
+    color: roles.accentText,
   },
   primaryButtonText: {
     ...textStyles.button,

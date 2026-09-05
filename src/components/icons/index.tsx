@@ -1,7 +1,7 @@
 // =============================================================================
 // Embr icon set
 // =============================================================================
-// Seventeen icons, drawn on one 24×24 grid with one set of rules. This replaces
+// Eighteen icons, drawn on one 24×24 grid with one set of rules. This replaces
 // `@/components/icons`, which was the last third-party visual system left in
 // the app after ADR-0013 replaced the fonts, the palette and the art.
 //
@@ -244,6 +244,24 @@ export function RefreshCw({ size = 24, color = '#000', strokeWidth, style }: Ico
 // -----------------------------------------------------------------------------
 // Objects
 // -----------------------------------------------------------------------------
+
+/**
+ * Delete. Lid, body, two staves.
+ *
+ * The one destructive glyph in the set, so it is drawn slightly narrower than
+ * the lid line implies — a bin that reads as an object rather than a shouting
+ * X, which is the register the rest of the app is in.
+ */
+export function Trash({ size = 24, color = '#000', strokeWidth, style }: IconProps) {
+  return (
+    <Icon size={size} color={color} strokeWidth={strokeWidth} style={style}>
+      <Path d="M4.4 6.6h15.2" />
+      <Path d="M9.4 6.6V5.2a1.4 1.4 0 0 1 1.4-1.4h2.4a1.4 1.4 0 0 1 1.4 1.4v1.4" />
+      <Path d="M6.6 6.6l.9 12.1a2 2 0 0 0 2 1.9h5a2 2 0 0 0 2-1.9l.9-12.1" />
+      <Path d="M10.4 10.4v6.2M13.6 10.4v6.2" />
+    </Icon>
+  );
+}
 
 /** The workout log. The clip is the recognisable part, so it carries weight. */
 export function ClipboardList({ size = 24, color = '#000', strokeWidth, style }: IconProps) {
