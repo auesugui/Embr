@@ -39,7 +39,7 @@ interface RestTimerState {
  * `elapsed` is still stored so the UI has something to render before the first
  * tick lands, but it is never the source of truth.
  */
-interface BlockTimerState {
+export interface BlockTimerState {
   /** Which block the clock belongs to (see `blockKey`); null when none runs. */
   blockKey: string | null;
   mode: BlockMode;

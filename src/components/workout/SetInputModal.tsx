@@ -13,10 +13,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
+import { SetFields } from '@/components/workout/set-input/SetFields';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
@@ -66,42 +66,8 @@ const KeyboardAccessory = memo(({ inputId }: { inputId: string }) => (
 KeyboardAccessory.displayName = 'KeyboardAccessory';
 
 // Memoized stepper button to prevent unnecessary rerenders
-const StepperButton = memo(
-  ({
-    label,
-    onPress,
-  }: {
-    label: string;
-    onPress: () => void;
-  }) => (
-    <Pressable style={styles.stepperButton} onPress={onPress}>
-      <Text style={styles.stepperText}>{label}</Text>
-    </Pressable>
-  )
-);
-
-StepperButton.displayName = 'StepperButton';
 
 // Memoized quick weight button
-const QuickWeightButton = memo(
-  ({
-    weight,
-    selected,
-    onPress,
-  }: {
-    weight: number;
-    selected: boolean;
-    onPress: () => void;
-  }) => (
-    <Pressable style={[styles.quickButton, selected && styles.quickButtonActive]} onPress={onPress}>
-      <Text style={[styles.quickButtonText, selected && styles.quickButtonTextActive]}>
-        {weight}
-      </Text>
-    </Pressable>
-  )
-);
-
-QuickWeightButton.displayName = 'QuickWeightButton';
 
 export function SetInputModal({
   visible,
@@ -221,72 +187,20 @@ export function SetInputModal({
               </Text>
             </View>
 
-            {/* Reps Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Reps</Text>
-              <View style={styles.inputRow}>
-                <StepperButton label="-5" onPress={() => adjustReps(-5)} />
-                <StepperButton label="-1" onPress={() => adjustReps(-1)} />
-                <TextInput
-                  style={styles.input}
-                  value={reps}
-                  onChangeText={setReps}
-                  keyboardType="number-pad"
-                  selectTextOnFocus
-                  inputAccessoryViewID={REPS_INPUT_ID}
-                />
-                <StepperButton label="+1" onPress={() => adjustReps(1)} />
-                <StepperButton label="+5" onPress={() => adjustReps(5)} />
-              </View>
-            </View>
-
-            {/* Weight Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Weight ({units})</Text>
-              <View style={styles.inputRow}>
-                <StepperButton
-                  label={`-${increments.large}`}
-                  onPress={() => adjustWeight(-increments.large)}
-                />
-                <StepperButton
-                  label={`-${increments.small}`}
-                  onPress={() => adjustWeight(-increments.small)}
-                />
-                <TextInput
-                  style={styles.input}
-                  value={weight}
-                  onChangeText={setWeight}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  placeholderTextColor={colors.text.muted}
-                  selectTextOnFocus
-                  inputAccessoryViewID={WEIGHT_INPUT_ID}
-                />
-                <StepperButton
-                  label={`+${increments.small}`}
-                  onPress={() => adjustWeight(increments.small)}
-                />
-                <StepperButton
-                  label={`+${increments.large}`}
-                  onPress={() => adjustWeight(increments.large)}
-                />
-              </View>
-            </View>
-
-            {/* Quick Weight Buttons */}
-            <View style={styles.quickButtonsContainer}>
-              <Text style={styles.quickLabel}>Quick weight</Text>
-              <View style={styles.quickButtons}>
-                {QUICK_WEIGHTS[units].map((w) => (
-                  <QuickWeightButton
-                    key={w}
-                    weight={w}
-                    selected={selectedWeight === w}
-                    onPress={() => selectQuickWeight(w)}
-                  />
-                ))}
-              </View>
-            </View>
+            <SetFields
+              reps={reps}
+              weight={weightString}
+              units={units}
+              quickWeights={QUICK_WEIGHTS[units]}
+              increments={increments}
+              repsInputId={REPS_INPUT_ID}
+              weightInputId={WEIGHT_INPUT_ID}
+              onReps={setReps}
+              onWeight={setWeight}
+              onStepReps={adjustReps}
+              onStepWeight={adjustWeight}
+              onPickWeight={selectQuickWeight}
+            />
 
             {/* Actions - Always visible at bottom */}
             <View style={styles.actions}>
@@ -349,81 +263,6 @@ const styles = StyleSheet.create({
     ...textStyles.body,
     color: colors.text.secondary,
     maxWidth: '80%',
-  },
-  inputGroup: {
-    marginBottom: spacing[4],
-  },
-  inputLabel: {
-    ...textStyles.label,
-    color: colors.text.muted,
-    marginBottom: spacing[2],
-    textAlign: 'center',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[2],
-  },
-  stepperButton: {
-    backgroundColor: colors.background.tertiary,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
-    borderRadius: radius.md,
-    minWidth: 44,
-    alignItems: 'center',
-  },
-  stepperText: {
-    ...textStyles.body,
-    color: colors.text.primary,
-    fontWeight: '600',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: colors.background.tertiary,
-    borderRadius: radius.md,
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[4],
-    textAlign: 'center',
-    ...textStyles.number,
-    color: colors.text.primary,
-    minWidth: 80,
-    fontSize: 24,
-  },
-  quickButtonsContainer: {
-    marginBottom: spacing[4],
-  },
-  quickLabel: {
-    ...textStyles.caption,
-    color: colors.text.muted,
-    textAlign: 'center',
-    marginBottom: spacing[2],
-  },
-  quickButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing[2],
-    flexWrap: 'wrap',
-  },
-  quickButton: {
-    backgroundColor: colors.background.tertiary,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-    borderRadius: radius.md,
-    minWidth: 48,
-    alignItems: 'center',
-  },
-  quickButtonActive: {
-    backgroundColor: colors.reward.fp + '30',
-    borderWidth: 1,
-    borderColor: colors.reward.fp,
-  },
-  quickButtonText: {
-    ...textStyles.caption,
-    color: colors.text.secondary,
-  },
-  quickButtonTextActive: {
-    color: colors.reward.fp,
-    fontWeight: '600',
   },
   actions: {
     flexDirection: 'row',

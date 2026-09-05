@@ -7,8 +7,8 @@ import { useLayoutEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Copy, Pencil } from '@/components/icons';
-import { type WorkoutTemplateDefinition, getExerciseById, getTemplateById } from '@/data';
-import { describeScheme, isTimed, resolveBlock } from '@/lib/blocks';
+import { DayExerciseList } from '@/components/workout/template/DayExerciseList';
+import { type WorkoutTemplateDefinition, getTemplateById } from '@/data';
 import { estimateDayMinutes, estimateTemplateMinutes } from '@/lib/duration';
 import { useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
@@ -151,39 +151,7 @@ export default function TemplateDetailScreen() {
         </View>
       </View>
 
-      {/* Selected Day Details */}
-      {selectedDay && (
-        <View style={styles.section}>
-          <View style={styles.dayHeader}>
-            <Text style={styles.dayName}>{selectedDay.name}</Text>
-          </View>
-
-          {/* Exercise List */}
-          <View style={styles.exerciseList}>
-            {selectedDay.exercises.map((templateEx, index) => {
-              const exercise = getExerciseById(templateEx.exerciseId);
-              return (
-                <View key={`${templateEx.exerciseId}-${index}`} style={styles.exerciseRow}>
-                  <View style={styles.exerciseNumber}>
-                    <Text style={styles.exerciseNumberText}>{index + 1}</Text>
-                  </View>
-                  <View style={styles.exerciseInfo}>
-                    <Text style={styles.exerciseName}>{exercise?.name ?? 'Unknown'}</Text>
-                    <Text style={styles.exerciseDetails}>
-                      {describeScheme(templateEx, selectedDay.blocks)}
-                    </Text>
-                  </View>
-                  <Text style={styles.restTime}>
-                    {isTimed(resolveBlock(templateEx, selectedDay.blocks).mode)
-                      ? 'no rest'
-                      : `${Math.floor(templateEx.restSeconds / 60)}m`}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      )}
+      {selectedDay && <DayExerciseList day={selectedDay} />}
 
       {/* Start Button */}
       <View style={styles.startSection}>
@@ -321,9 +289,6 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: spacing[3],
   },
-  radarContainer: {
-    alignItems: 'center',
-  },
   dayTabs: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -347,58 +312,6 @@ const styles = StyleSheet.create({
   dayTabTextActive: {
     color: colors.background.primary,
     fontWeight: '600',
-  },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing[3],
-  },
-  dayName: {
-    ...textStyles.h3,
-    color: colors.text.primary,
-  },
-  miniRadar: {},
-  exerciseList: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-  },
-  exerciseRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: colors.ui.border,
-  },
-  exerciseNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.background.tertiary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing[3],
-  },
-  exerciseNumberText: {
-    ...textStyles.caption,
-    color: colors.text.secondary,
-    fontWeight: '600',
-  },
-  exerciseInfo: {
-    flex: 1,
-  },
-  exerciseName: {
-    ...textStyles.body,
-    color: colors.text.primary,
-  },
-  exerciseDetails: {
-    ...textStyles.caption,
-    color: colors.text.muted,
-  },
-  restTime: {
-    ...textStyles.bodySmall,
-    color: colors.text.secondary,
   },
   startSection: {
     marginTop: spacing[4],
