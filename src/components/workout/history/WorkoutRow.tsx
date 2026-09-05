@@ -9,8 +9,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChevronDown, ChevronUp } from '@/components/icons';
 import { describeBlock, isTimed, resolveBlock } from '@/lib/blocks';
+import { summarizeSets } from '@/lib/set-summary';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
-import type { Exercise, LoggedSet, WorkoutBlock, WorkoutLog } from '@/types';
+import type { Exercise, WorkoutBlock, WorkoutLog } from '@/types';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -113,9 +114,11 @@ function ExerciseBreakdown({
   blocks: WorkoutBlock[] | undefined;
   units: 'lb' | 'kg';
 }) {
-  const loggedSets = exercise.sets.filter((s) => s.logged);
   // Timed work was logged as rounds against a clock, not as planned sets.
   const unit = isTimed(resolveBlock(exercise, blocks).mode) ? 'Round' : 'Set';
+  // One line instead of one row per set. See summarizeSets for when the
+  // individual numbers survive the collapse and when they don't.
+  const summary = summarizeSets(exercise.sets, { units, unitLabel: unit });
 
   return (
     <View style={styles.exerciseRow}>
@@ -127,53 +130,15 @@ function ExerciseBreakdown({
           </View>
         )}
       </View>
-      {loggedSets.length === 0 ? (
+      {summary === null ? (
         <Text style={styles.exerciseDetail}>{`No ${unit.toLowerCase()}s logged`}</Text>
       ) : (
         <View style={styles.setList}>
-          {loggedSets.map((set, index) => (
-            // Sets are positional display data with no stable id (two sets can
-            // share identical weight/reps, so content keys would collide), and
-            // this list is static — never reordered — so index keys are safe.
-            // biome-ignore lint/suspicious/noArrayIndexKey: static set list, see above
-            <SetLine key={index} set={set} index={index + 1} units={units} label={unit} />
-          ))}
+          <Text style={styles.setSummary}>{summary.headline}</Text>
+          {/* Only present when the entries differed — see summarizeSets. */}
+          {summary.detail && <Text style={styles.setDetailList}>{summary.detail}</Text>}
         </View>
       )}
-    </View>
-  );
-}
-
-function SetLine({
-  set,
-  index,
-  units,
-  label = 'Set',
-}: {
-  set: LoggedSet;
-  index: number;
-  units: 'lb' | 'kg';
-  /** 'Set' for a normal scheme, 'Round' inside an AMRAP block. */
-  label?: string;
-}) {
-  const reps = set.reps;
-  const weight = set.weight;
-  let detail: string;
-  if (reps == null && weight == null) {
-    detail = '—';
-  } else if (weight == null || weight === 0) {
-    detail = `${reps ?? 0} reps`;
-  } else {
-    detail = `${weight} ${units} × ${reps ?? 0}`;
-  }
-
-  return (
-    <View style={styles.setLine}>
-      <Text style={styles.setIndex}>
-        {label} {index}
-      </Text>
-      <Text style={styles.setDetail}>{detail}</Text>
-      {set.isRepPR && <Text style={styles.prFlag}>rep PR</Text>}
     </View>
   );
 }
@@ -256,24 +221,19 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.text.muted,
   },
-  setList: {
-    marginLeft: spacing[1],
+  setSummary: {
+    ...textStyles.bodySmall,
+    color: colors.text.primary,
   },
-  setLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[3],
-    paddingVertical: 2,
-  },
-  setIndex: {
+  // The individual numbers, when they differed. Muted and tabular: it is a
+  // reference line you scan, not one you read.
+  setDetailList: {
     ...textStyles.caption,
     color: colors.text.muted,
-    minWidth: 48,
+    marginTop: 2,
   },
-  setDetail: {
-    ...textStyles.bodySmall,
-    color: colors.text.secondary,
-    fontVariant: ['tabular-nums'],
+  setList: {
+    marginLeft: spacing[1],
   },
   prTag: {
     backgroundColor: colors.reward.pr + '22',
@@ -285,9 +245,5 @@ const styles = StyleSheet.create({
     ...textStyles.captionSmall,
     color: colors.reward.pr,
     fontWeight: '700',
-  },
-  prFlag: {
-    ...textStyles.captionSmall,
-    color: colors.reward.pr,
   },
 });
