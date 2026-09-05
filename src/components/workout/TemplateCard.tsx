@@ -8,16 +8,28 @@ import { StyleSheet, Text, View } from 'react-native';
 interface TemplateCardProps {
   template: WorkoutTemplateDefinition;
   onPress: () => void;
+  /**
+   * Drop the card's own bottom margin.
+   *
+   * Set when something else owns the row spacing — SwipeToDelete does, so that
+   * the revealed action measures exactly one card tall instead of a card plus
+   * the gap under it.
+   */
+  flush?: boolean;
 }
 
-export function TemplateCard({ template, onPress }: TemplateCardProps) {
+export function TemplateCard({ template, onPress, flush = false }: TemplateCardProps) {
   const handlePress = () => {
     haptics.tap();
     onPress();
   };
 
   return (
-    <PressableScale style={styles.card} activeScale={0.985} onPress={handlePress}>
+    <PressableScale
+      style={flush ? [styles.card, styles.cardFlush] : styles.card}
+      activeScale={0.985}
+      onPress={handlePress}
+    >
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <View style={styles.nameWrap}>
@@ -70,6 +82,9 @@ const styles = StyleSheet.create({
     borderColor: roles.border,
     padding: spacing[4],
     marginBottom: spacing[3],
+  },
+  cardFlush: {
+    marginBottom: 0,
   },
   header: {
     marginBottom: spacing[3],

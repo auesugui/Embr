@@ -7,6 +7,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { TopInsetReset } from '@/components/ui';
@@ -132,74 +133,79 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      {/* iOS still reports a 59px top inset in standalone even though the
+    // Required for GestureDetector (the swipe-to-delete rows on home). Wraps
+    // only the post-hydration tree: the shell above must stay a bare View or
+    // the A8 gate's byte-identical first paint stops being byte-identical.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        {/* iOS still reports a 59px top inset in standalone even though the
           status bar style is `default`, which already puts the page below the
           status bar. Everything downstream — including React Navigation's
           header — would pad for an overlap that isn't there. Zeroed once here
           rather than at every call site. See TopInsetReset. */}
-      <TopInsetReset>
-        <StatusBar style={ACTIVE_THEME === 'dark' ? 'light' : 'dark'} />
-        <Stack
-          screenOptions={{
-            headerStyle: {
-              backgroundColor: roles.surface,
-            },
-            headerTintColor: roles.textPrimary,
-            headerTitleStyle: {
-              fontFamily: textStyles.h4.fontFamily,
-              fontWeight: '600',
-            },
-            contentStyle: {
-              backgroundColor: roles.surface,
-            },
-            // Push transitions: keep the platform slide (it's what a native app
-            // does and what thumbs expect), but shorten it. The default reads
-            // sluggish on web, where there's no gesture driving it.
-            animation: 'slide_from_right',
-            animationDuration: 260,
-          }}
-        >
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          {/* First run: one question, no chrome. `onboarding/type` (pick a pet)
+        <TopInsetReset>
+          <StatusBar style={ACTIVE_THEME === 'dark' ? 'light' : 'dark'} />
+          <Stack
+            screenOptions={{
+              headerStyle: {
+                backgroundColor: roles.surface,
+              },
+              headerTintColor: roles.textPrimary,
+              headerTitleStyle: {
+                fontFamily: textStyles.h4.fontFamily,
+                fontWeight: '600',
+              },
+              contentStyle: {
+                backgroundColor: roles.surface,
+              },
+              // Push transitions: keep the platform slide (it's what a native app
+              // does and what thumbs expect), but shorten it. The default reads
+              // sluggish on web, where there's no gesture driving it.
+              animation: 'slide_from_right',
+              animationDuration: 260,
+            }}
+          >
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            {/* First run: one question, no chrome. `onboarding/type` (pick a pet)
             and `onboarding/template` were registered alongside this from the
             IronQuest wizard and never had files behind them — they died with
             the game layer (ADR-0014) and are gone now. */}
-          <Stack.Screen name="onboarding/name" options={{ headerShown: false }} />
-          {/* A2: explicit human titles so headers never show raw route paths.
+            <Stack.Screen name="onboarding/name" options={{ headerShown: false }} />
+            {/* A2: explicit human titles so headers never show raw route paths.
             Titles live in ROUTE_TITLES (single source of truth, regression-
             tested in src/__tests__/routeTitles.unit.test.ts). */}
-          <Stack.Screen
-            name="workout/session"
-            options={{
-              headerShown: true,
-              title: ROUTE_TITLES['workout/session'],
-              presentation: 'fullScreenModal',
-              // Starting a workout is a mode change, not a drill-down. Rising
-              // from the bottom says "you're in a session now" the way sliding
-              // sideways doesn't.
-              animation: 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="workout/loadout"
-            options={{ title: ROUTE_TITLES['workout/loadout'] }}
-          />
-          <Stack.Screen
-            name="workout/summary"
-            options={{ title: ROUTE_TITLES['workout/summary'] }}
-          />
-          <Stack.Screen
-            name="workout/template/[id]"
-            options={{ title: ROUTE_TITLES['workout/template/[id]'] }}
-          />
-          <Stack.Screen
-            name="workout/template-edit/[id]"
-            options={{ title: ROUTE_TITLES['workout/template-edit/[id]'] }}
-          />
-        </Stack>
-      </TopInsetReset>
-    </SafeAreaProvider>
+            <Stack.Screen
+              name="workout/session"
+              options={{
+                headerShown: true,
+                title: ROUTE_TITLES['workout/session'],
+                presentation: 'fullScreenModal',
+                // Starting a workout is a mode change, not a drill-down. Rising
+                // from the bottom says "you're in a session now" the way sliding
+                // sideways doesn't.
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="workout/loadout"
+              options={{ title: ROUTE_TITLES['workout/loadout'] }}
+            />
+            <Stack.Screen
+              name="workout/summary"
+              options={{ title: ROUTE_TITLES['workout/summary'] }}
+            />
+            <Stack.Screen
+              name="workout/template/[id]"
+              options={{ title: ROUTE_TITLES['workout/template/[id]'] }}
+            />
+            <Stack.Screen
+              name="workout/template-edit/[id]"
+              options={{ title: ROUTE_TITLES['workout/template-edit/[id]'] }}
+            />
+          </Stack>
+        </TopInsetReset>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
