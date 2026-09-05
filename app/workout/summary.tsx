@@ -14,14 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RevealRow } from '@/components/celebration';
 import { Flame } from '@/components/icons';
-import {
-  blockReps,
-  completedRounds,
-  describeBlock,
-  formatClock,
-  groupIntoBlocks,
-  isTimed,
-} from '@/lib/blocks';
+import { SummaryExercises } from '@/components/workout/summary/SummaryExercises';
 import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
 import {
   useBaselineStore,
@@ -178,69 +171,12 @@ export default function WorkoutSummaryScreen() {
           </View>
         </RevealRow>
 
-        {/* Exercise Summary */}
-        <RevealRow index={3} style={styles.exercisesCard}>
-          <Text style={styles.exercisesTitle}>Exercises Completed</Text>
-
-          {/* Grouped by block, so a circuit is one entry with its rounds and
-              its clock stated once. Listing each movement separately repeated
-              "AMRAP · 20 min" on every line for something done as one thing. */}
-          {groupIntoBlocks(summary.exercises, log?.blocks).map(({ block, entries }) => {
-            const rounds = completedRounds(entries);
-            const reps = blockReps(entries);
-            const anyPR = entries.some(({ exercise }) => exercise.sets.some((s) => s.isPR));
-            const timed = isTimed(block.mode);
-            const finish = block.id ? log?.blockTimes?.[block.id] : undefined;
-
-            // A lone exercise keeps exactly the line it always had.
-            if (entries.length === 1 && !timed) {
-              const [{ exercise }] = entries;
-              const loggedSets = exercise.sets.filter((s) => s.logged);
-              return (
-                <View key={exercise.id} style={styles.exerciseRow}>
-                  <View style={styles.exerciseInfo}>
-                    <Text style={styles.exerciseName}>{exercise.name}</Text>
-                    <Text style={styles.exerciseSets}>
-                      {`${loggedSets.length} ${loggedSets.length === 1 ? 'set' : 'sets'} · ${reps} reps`}
-                    </Text>
-                  </View>
-                  {anyPR && (
-                    <View style={styles.prTag}>
-                      <Text style={styles.prTagText}>PR</Text>
-                    </View>
-                  )}
-                </View>
-              );
-            }
-
-            return (
-              <View key={block.id ?? entries[0].exercise.id} style={styles.exerciseRow}>
-                <View style={styles.exerciseInfo}>
-                  <Text style={styles.exerciseName}>
-                    {entries.map(({ exercise }) => exercise.name).join(' · ')}
-                  </Text>
-                  <Text style={styles.exerciseSets}>
-                    {/* A count-up block already states its round count in the
-                        tally, so repeating "2 rounds for time" after "2 rounds"
-                        just says rounds twice. Its result is the time. */}
-                    {`${rounds} ${rounds === 1 ? 'round' : 'rounds'} · ${reps} reps · ${
-                      block.mode === 'for_time'
-                        ? finish !== undefined
-                          ? `for time in ${formatClock(finish)}`
-                          : 'for time'
-                        : describeBlock(block)
-                    }`}
-                  </Text>
-                </View>
-                {anyPR && (
-                  <View style={styles.prTag}>
-                    <Text style={styles.prTagText}>PR</Text>
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </RevealRow>
+        <SummaryExercises
+          exercises={summary.exercises}
+          blocks={log.blocks}
+          blockTimes={log.blockTimes}
+          revealIndex={3}
+        />
       </ScrollView>
 
       {/* Footer: save first, then a deliberate next action (UX spec — no
@@ -316,57 +252,6 @@ const styles = StyleSheet.create({
     color: roles.textPrimary,
     textAlign: 'center',
   },
-  fpCard: {
-    backgroundColor: colors.reward.fp + '20',
-    borderRadius: radius.xl,
-    padding: spacing[6],
-    alignItems: 'center',
-    marginBottom: spacing[4],
-    borderWidth: 2,
-    borderColor: colors.reward.fp,
-  },
-  fpLabel: {
-    ...textStyles.label,
-    color: colors.text.secondary,
-    marginBottom: spacing[2],
-  },
-  fpValue: {
-    ...textStyles.hero,
-    color: colors.reward.fp,
-  },
-  fpUnit: {
-    ...textStyles.body,
-    color: colors.reward.fp,
-  },
-  breakdownCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    marginBottom: spacing[4],
-  },
-  breakdownTitle: {
-    ...textStyles.h3,
-    color: colors.text.primary,
-    marginBottom: spacing[3],
-  },
-  breakdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing[2],
-  },
-  breakdownLabel: {
-    ...textStyles.body,
-    color: colors.text.secondary,
-  },
-  breakdownValue: {
-    ...textStyles.body,
-    color: colors.text.primary,
-  },
-  breakdownValueHighlight: {
-    ...textStyles.body,
-    color: colors.reward.fp,
-    fontWeight: '600',
-  },
   statsCard: {
     flexDirection: 'row',
     backgroundColor: colors.background.secondary,
@@ -392,48 +277,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ui.border,
     marginHorizontal: spacing[2],
   },
-  exercisesCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    marginBottom: spacing[4],
-  },
-  exercisesTitle: {
-    ...textStyles.h3,
-    color: colors.text.primary,
-    marginBottom: spacing[3],
-  },
-  exerciseRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: colors.ui.border,
-  },
-  exerciseInfo: {
-    flex: 1,
-  },
-  exerciseName: {
-    ...textStyles.body,
-    color: colors.text.primary,
-  },
-  exerciseSets: {
-    ...textStyles.caption,
-    color: colors.text.muted,
-    marginTop: spacing[1],
-  },
-  prTag: {
-    backgroundColor: colors.reward.pr + '20',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    borderRadius: radius.sm,
-  },
-  prTagText: {
-    ...textStyles.caption,
-    color: colors.reward.pr,
-    fontWeight: '600',
-  },
   footer: {
     paddingHorizontal: spacing[4],
     paddingTop: spacing[2],
@@ -454,38 +297,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[3],
   },
-  // `finishButton` carries no flex of its own. In the tracker build it's the
-  // lone child of the post-claim row, so flex:1 keeps it full-width — matching
-  // the pre-claim state instead of shrinking to the text.
   postClaimSolo: {
     flex: 1,
-  },
-  denButton: {
-    flex: 2,
-    backgroundColor: colors.reward.fp,
-    borderRadius: radius.lg,
-    paddingVertical: spacing[4],
-    alignItems: 'center',
-  },
-  doneButton: {
-    flex: 1,
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    paddingVertical: spacing[4],
-    alignItems: 'center',
-  },
-  doneButtonText: {
-    ...textStyles.buttonLarge,
-    color: colors.text.primary,
-  },
-  radarCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    marginBottom: spacing[4],
-  },
-  radarWrapper: {
-    alignItems: 'center',
   },
   streakCard: {
     backgroundColor: roles.surfaceRaised,

@@ -1,10 +1,8 @@
-// =============================================================================
-// IronQuest Workout Loadout Screen
-// =============================================================================
-// Pre-session staging: pick an intensity (Normal / Deload in Phase 1),
-// preview the exercise list, then begin the session.
-
-import { Check } from '@/components/icons';
+import {
+  IntensityPicker,
+  intentLabel,
+  isIntentEnabled,
+} from '@/components/workout/loadout/IntensityPicker';
 import {
   type TemplateDay,
   type WorkoutTemplateDefinition,
@@ -32,47 +30,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 // Phase 1 intents: Normal + Deload only.
 // Tempo / Pause / Drop Set / Rest-Pause arrive in Phase 2.
 // -----------------------------------------------------------------------------
-
-interface IntentOption {
-  value: SessionIntent;
-  label: string;
-  /** Gamified copy — mentions the FP each intent earns. */
-  description: string;
-  /** Tracker copy — same training meaning, no FP economy. */
-  trackerDescription: string;
-  enabled: boolean;
-}
-
-const INTENT_OPTIONS: IntentOption[] = [
-  {
-    value: 'normal',
-    label: 'Normal',
-    description: 'Standard training. Earns base + volume + PR bonuses.',
-    trackerDescription: 'Standard training at your working weights.',
-    enabled: true,
-  },
-  {
-    value: 'deload',
-    label: 'Deload',
-    description: 'Recovery session. Flat 80 FP total, no volume scaling.',
-    trackerDescription: 'Recovery session. Lighter loads, lower volume.',
-    enabled: true,
-  },
-  {
-    value: 'tempo',
-    label: 'Tempo (Phase 2)',
-    description: '3–4 sec slow eccentrics. +15 FP per exercise.',
-    trackerDescription: '3–4 sec slow eccentrics.',
-    enabled: false,
-  },
-  {
-    value: 'pause',
-    label: 'Pause Reps (Phase 2)',
-    description: '1–3 sec hold at hardest point. +15 FP per exercise.',
-    trackerDescription: '1–3 sec hold at the hardest point.',
-    enabled: false,
-  },
-];
 
 // -----------------------------------------------------------------------------
 // Convert template exercises to workout Exercise[] (matches the original
@@ -193,8 +150,7 @@ export default function WorkoutLoadoutScreen() {
   }
 
   const handleSelectIntent = (value: SessionIntent) => {
-    const option = INTENT_OPTIONS.find((o) => o.value === value);
-    if (!option?.enabled) return;
+    if (!isIntentEnabled(value)) return;
     haptics.selection();
     setIntent(value);
   };
@@ -268,52 +224,7 @@ export default function WorkoutLoadoutScreen() {
         </View>
       </View>
 
-      {/* Intensity */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Intensity</Text>
-        <Text style={styles.sectionHint}>
-          Pick a default modifier for this session. Phase 1 ships Normal and Deload.
-        </Text>
-        <View style={styles.intentGrid}>
-          {INTENT_OPTIONS.map((option) => {
-            const selected = intent === option.value;
-            return (
-              <Pressable
-                key={option.value}
-                style={[
-                  styles.intentCard,
-                  selected && styles.intentCardActive,
-                  !option.enabled && styles.intentCardDisabled,
-                ]}
-                onPress={() => handleSelectIntent(option.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected, disabled: !option.enabled }}
-              >
-                <View style={styles.intentHeader}>
-                  <Text
-                    style={[
-                      styles.intentLabel,
-                      selected && styles.intentLabelActive,
-                      !option.enabled && styles.intentLabelDisabled,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                  {selected && <Check size={16} color={roles.accent} strokeWidth={2.5} />}
-                </View>
-                <Text
-                  style={[
-                    styles.intentDescription,
-                    !option.enabled && styles.intentDescriptionDisabled,
-                  ]}
-                >
-                  {option.trackerDescription}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
+      <IntensityPicker intent={intent} onSelect={handleSelectIntent} />
 
       {/* Start the session */}
       <View style={styles.startSection}>
@@ -325,9 +236,7 @@ export default function WorkoutLoadoutScreen() {
           <Text style={styles.startButtonText}>Start {day.shortName} Workout</Text>
         </Pressable>
         <Text style={styles.startHint}>
-          {isEmptyDay
-            ? 'This day has no exercises yet.'
-            : `Intent: ${INTENT_OPTIONS.find((o) => o.value === intent)?.label}`}
+          {isEmptyDay ? 'This day has no exercises yet.' : `Intent: ${intentLabel(intent)}`}
         </Text>
       </View>
     </ScrollView>
@@ -389,17 +298,11 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: spacing[2],
   },
-  sectionHint: {
-    ...textStyles.bodySmall,
-    color: colors.text.muted,
-    marginBottom: spacing[3],
-  },
   exerciseList: {
     backgroundColor: colors.background.secondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
   },
-  // A block heading states the clock once, above its members.
   blockHeading: {
     ...textStyles.label,
     color: roles.accentText,
@@ -407,7 +310,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing[1],
     marginTop: spacing[2],
   },
-  // Members are inset so the block reads as one unit.
   exerciseRowInBlock: {
     borderLeftWidth: 2,
     borderLeftColor: roles.accent,
@@ -448,69 +350,6 @@ const styles = StyleSheet.create({
   restTime: {
     ...textStyles.bodySmall,
     color: colors.text.secondary,
-  },
-  intentGrid: {
-    gap: spacing[2],
-  },
-  intentCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  intentCardActive: {
-    borderColor: colors.reward.fp,
-    backgroundColor: colors.background.tertiary,
-  },
-  intentCardDisabled: {
-    opacity: 0.4,
-  },
-  intentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing[1],
-  },
-  intentLabel: {
-    ...textStyles.labelLarge,
-    color: colors.text.primary,
-  },
-  intentLabelActive: {
-    color: colors.reward.fp,
-  },
-  intentLabelDisabled: {
-    color: colors.text.muted,
-  },
-  intentDescription: {
-    ...textStyles.bodySmall,
-    color: colors.text.secondary,
-  },
-  intentDescriptionDisabled: {
-    color: colors.text.muted,
-  },
-  forecastCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-  },
-  forecastLabel: {
-    ...textStyles.label,
-    color: colors.text.secondary,
-    marginBottom: spacing[1],
-  },
-  forecastValue: {
-    ...textStyles.numberLarge,
-    color: colors.reward.fp,
-    marginBottom: spacing[2],
-  },
-  forecastUnit: {
-    ...textStyles.body,
-    color: colors.reward.fp,
-  },
-  forecastNote: {
-    ...textStyles.caption,
-    color: colors.text.muted,
   },
   startSection: {
     marginTop: spacing[2],
