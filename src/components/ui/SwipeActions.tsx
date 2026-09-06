@@ -242,7 +242,10 @@ export function SwipeActions({
    * like everywhere else in the app.
    */
   const contentStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(Math.abs(travel.value), [0, revealWidth], [1, 0.72], 'clamp'),
+    // Light. One button covers a fraction of the card, so the earlier 0.72 —
+    // calibrated for two — read as the card being switched off rather than as
+    // its right or left end being temporarily behind something.
+    opacity: interpolate(Math.abs(travel.value), [0, revealWidth], [1, 0.88], 'clamp'),
   }));
 
   const runAction = (action: SwipeAction) => {

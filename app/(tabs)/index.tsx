@@ -94,6 +94,7 @@ export default function HomeScreen() {
   const editAction = (template: { id: string; name: string }): SwipeAction => ({
     key: 'edit',
     icon: Pencil,
+    label: 'Edit',
     accessibilityLabel: `Edit ${template.name}`,
     onPress: () => handleEditWorkout(template.id),
   });
@@ -101,6 +102,7 @@ export default function HomeScreen() {
   const deleteAction = (template: { id: string; name: string }): SwipeAction => ({
     key: 'delete',
     icon: Trash,
+    label: 'Delete',
     accessibilityLabel: `Delete ${template.name}`,
     onPress: () => handleDeleteWorkout(template.id, template.name),
     tone: 'danger',

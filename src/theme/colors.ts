@@ -109,6 +109,14 @@ export const lightRoles = {
   accentMuted: ember[200],
   onAccent: sand[0], // text/icons on an accent fill
 
+  // A filled control that isn't the accent and isn't destructive — the swipe
+  // row's Edit button is the case this exists for. Warm mid-gray rather than
+  // near-black: it has to read unmistakably as a button against both the card
+  // and the page behind it, without out-weighing the destructive action it
+  // shares a row with.
+  neutralFill: sand[600],
+  onNeutralFill: sand[0],
+
   // Status
   ...status,
 
@@ -138,6 +146,11 @@ export const darkRoles = {
   accentSubtle: '#2E211A',
   accentMuted: '#3D2B21',
   onAccent: sand[900],
+
+  // Same mid-gray: on the dark card it reads as a step up rather than down,
+  // which is what a control sitting on a surface should do in either palette.
+  neutralFill: sand[600],
+  onNeutralFill: sand[0],
 
   ...statusDark,
 
