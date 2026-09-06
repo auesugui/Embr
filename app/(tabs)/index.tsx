@@ -158,9 +158,15 @@ export default function HomeScreen() {
       {hasOwnWorkouts && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Workouts</Text>
-          <Text style={styles.sectionSubtitle}>
-            Tap to start. Swipe left to delete, right to edit.
-          </Text>
+          {/* Deliberately says neither "left" nor "right".
+              "Swipe left" is genuinely ambiguous: it reads as the finger's
+              direction to some people and as the side the button lands on to
+              others, and those are opposite readings of the same sentence.
+              Naming one meant the copy contradicted the gesture for anyone
+              holding the other. The buttons carry their own words, so the
+              mapping is taught on the first reveal by the thing that does it —
+              which no hint can do better. */}
+          <Text style={styles.sectionSubtitle}>Tap to start. Swipe a card to edit or delete.</Text>
 
           {personalTemplates.map((template, i) => (
             <RevealRow key={template.id} index={Math.min(i, 5)}>
