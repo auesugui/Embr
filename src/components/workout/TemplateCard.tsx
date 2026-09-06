@@ -11,7 +11,7 @@ interface TemplateCardProps {
   /**
    * Drop the card's own bottom margin.
    *
-   * Set when something else owns the row spacing — SwipeToDelete does, so that
+   * Set when something else owns the row spacing — SwipeActions does, so that
    * the revealed action measures exactly one card tall instead of a card plus
    * the gap under it.
    */

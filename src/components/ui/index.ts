@@ -1,3 +1,4 @@
 export { PressableScale } from './PressableScale';
-export { SwipeToDelete } from './SwipeToDelete';
+export type { SwipeAction } from './SwipeActionButton';
+export { SwipeActions, type SwipeGuard } from './SwipeActions';
 export { TopInsetReset } from './TopInsetReset';
