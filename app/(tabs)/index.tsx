@@ -84,12 +84,12 @@ export default function HomeScreen() {
   };
 
   /**
-   * One swipe, an action at each end of the card.
+   * A direction each: swipe left to edit, right to delete.
    *
-   * Delete stays against the right edge, where it has been since the swipe
-   * shipped — moving it would silently redefine a gesture people already have
-   * in their thumbs. Edit takes the opposite edge rather than crowding in
-   * beside it, so the two are never mistaken for each other under a thumb.
+   * Delete keeps the right edge it has had since the swipe shipped, but it now
+   * takes its own gesture to reach. That's the point of splitting them — the
+   * destructive action is never one thumb-width from the one you meant, and
+   * neither can be hit by mistake while reaching for the other.
    */
   const editAction = (template: { id: string; name: string }): SwipeAction => ({
     key: 'edit',
@@ -156,7 +156,7 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Workouts</Text>
           <Text style={styles.sectionSubtitle}>
-            Tap to start. Swipe a card left to edit or delete.
+            Tap to start. Swipe left to edit, right to delete.
           </Text>
 
           {personalTemplates.map((template, i) => (

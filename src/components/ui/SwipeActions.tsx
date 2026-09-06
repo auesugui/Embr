@@ -1,32 +1,32 @@
 // =============================================================================
-// SwipeActions — swipe a card to bring its actions into it
+// SwipeActions — swipe a card either way to bring an action into it
 // =============================================================================
 // Editing or deleting a personal workout used to mean: tap the card, tap Edit,
 // then find the operation you wanted — and for delete, scroll to the bottom of
 // the editor. Several screens deep for the two things you routinely do to a
 // workout you already made.
 //
-// THE CARD DOESN'T MOVE. The usual iOS pattern slides the whole row left to
-// expose actions sitting behind it, which means the thing you're looking at
-// leaves its position and the list momentarily reads as broken alignment. Here
-// the swipe travels *inside* the card: the card stays exactly where it is and
-// the buttons slide in from under its right edge, clipped by the card's own
-// bounds. The gesture reveals; the buttons act. Nothing is armed by the swipe
+// ONE DIRECTION, ONE ACTION. Swiping left brings in the left-edge strip;
+// swiping right brings in the right-edge one. Never both: two buttons out at
+// once are two identically-sized targets under a thumb, and the one you did
+// not mean is the destructive one. Separating them by direction means reaching
+// delete takes a deliberate, different gesture from reaching edit.
+//
+// THE CARD DOESN'T MOVE. The usual iOS pattern slides the whole row to expose
+// an action sitting behind it, which means the thing you're looking at leaves
+// its position and the list momentarily reads as broken alignment. Here the
+// swipe travels *inside* the card: the card stays exactly where it is and a
+// button slides in from under one of its edges, clipped by the card's own
+// bounds. The gesture reveals; the button acts. Nothing is armed by the swipe
 // — releasing one never edits or deletes anything by itself.
 //
-// ORDER IS LOAD-BEARING. Actions are laid out left to right in array order,
-// so the LAST one sits against the card's right edge. Delete was there when
-// this component only deleted, and it stays there: a gesture that already
-// means something must not quietly come to mean something else. Edit is new
-// territory, further into the swipe.
-//
 // The swipe is an ADDITION, not a replacement. The editor's own delete button
-// stays exactly where it is, and the card still opens its detail screen on
-// tap, because a hidden gesture is not an accessible affordance: no keyboard
-// equivalent, no discoverability beyond the first time someone's thumb finds
-// it. If this is ever the only way to reach an operation, that's a regression.
-// (The buttons themselves are always in the tree with labels, so screen
-// readers reach them without performing a gesture.)
+// stays exactly where it is, and the card still opens on tap, because a hidden
+// gesture is not an accessible affordance: no keyboard equivalent, no
+// discoverability beyond the first time someone's thumb finds it. If this is
+// ever the only way to reach an operation, that's a regression. (The buttons
+// themselves are always in the tree with labels, so screen readers reach them
+// without performing a gesture.)
 //
 // Deliberately built on Gesture.Pan rather than RNGH's Swipeable so the motion
 // comes from the app's own vocabulary — the same `settle` spring as a button
@@ -83,11 +83,11 @@ interface SwipeActionsProps {
    */
   children: (guard: SwipeGuard) => ReactNode;
   /**
-   * Buttons pinned to the card's LEFT edge, revealed by the same left swipe.
+   * Buttons pinned to the card's LEFT edge, revealed by swiping LEFT.
    * Confirmation, if an action needs it, belongs to the caller.
    */
   leftActions?: SwipeAction[];
-  /** Buttons pinned to the card's RIGHT edge. */
+  /** Buttons pinned to the card's RIGHT edge, revealed by swiping RIGHT. */
   rightActions?: SwipeAction[];
   /** Row spacing. Owned here so the buttons' clip matches the card exactly. */
   marginBottom?: number;
@@ -102,17 +102,23 @@ export function SwipeActions({
   const reducedMotion = useSettingsStore((s) => s.reducedMotion);
 
   /**
-   * How far the gesture travels.
+   * How far a swipe travels to fully open one side.
    *
-   * The two edges are revealed by the SAME swipe and arrive together, so the
-   * travel is whichever side is wider — not their sum. A swipe that had to
-   * cross both strips would be twice as long for no extra information.
+   * One side at a time, so this is whichever strip is wider — not their sum.
    */
   const revealWidth = ACTION_WIDTH * Math.max(leftActions.length, rightActions.length);
 
-  /** Gesture travel, 0 (hidden) to -revealWidth (buttons fully in). */
+  const hasLeft = leftActions.length > 0;
+  const hasRight = rightActions.length > 0;
+
+  /**
+   * Signed gesture travel: negative while swiping left, positive right, and
+   * settling at -revealWidth, 0, or +revealWidth.
+   */
   const travel = useSharedValue(0);
-  const isOpen = useSharedValue(false);
+
+  /** Which side is open: -1 left, 0 neither, 1 right. */
+  const openSide = useSharedValue(0);
 
   /** Buttons-are-out state, for the tap-to-close overlay. */
   const [locked, setLocked] = useState(false);
@@ -156,12 +162,12 @@ export function SwipeActions({
     travel.value = reducedMotion
       ? withTiming(0, { duration: 120 })
       : withSpring(0, CELEBRATION.settle);
-    isOpen.value = false;
+    openSide.value = 0;
     setLocked(false);
     setTimeout(() => {
       swiping.current = false;
     }, 50);
-  }, [travel, isOpen, reducedMotion]);
+  }, [travel, openSide, reducedMotion]);
 
   const pan = Gesture.Pan()
     .activeOffsetX([-PAN_ACTIVATION_X, PAN_ACTIVATION_X])
@@ -172,65 +178,71 @@ export function SwipeActions({
       runOnJS(beginSwipe)();
     })
     .onUpdate((e) => {
-      const base = isOpen.value ? -revealWidth : 0;
-      // Rightward past closed does nothing: there is no action on that side.
-      // The small overshoot allowance is what gives the buttons somewhere to
+      const base = openSide.value * revealWidth;
+      // A direction with no actions behind it doesn't move. The small overshoot
+      // allowance on the live sides is what gives the buttons somewhere to
       // spring back from rather than stopping dead against their stop.
-      travel.value = Math.min(0, Math.max(-revealWidth * 1.15, base + e.translationX));
+      const min = hasLeft ? -revealWidth * 1.15 : 0;
+      const max = hasRight ? revealWidth * 1.15 : 0;
+      travel.value = Math.min(max, Math.max(min, base + e.translationX));
     })
     .onEnd((e) => {
       // A fast flick opens even if it never travelled past the threshold —
-      // matching velocity beats matching distance for how a swipe feels.
-      const flungOpen = e.velocityX < -600;
-      const flungShut = e.velocityX > 600;
-      const shouldOpen = flungShut
-        ? false
-        : flungOpen || travel.value < -revealWidth * OPEN_FRACTION;
-      const to = shouldOpen ? -revealWidth : 0;
+      // matching velocity beats matching distance for how a swipe feels. A
+      // flick the OTHER way shuts, whichever side is showing.
+      const flungLeft = e.velocityX < -600;
+      const flungRight = e.velocityX > 600;
+      const threshold = revealWidth * OPEN_FRACTION;
+      const t = travel.value;
+
+      let side = 0;
+      if (t < 0 && !flungRight && (flungLeft || t < -threshold)) side = -1;
+      else if (t > 0 && !flungLeft && (flungRight || t > threshold)) side = 1;
+
+      const to = side * revealWidth;
       // Snap inline rather than through a shared helper: this runs on the UI
       // thread, and a JS-thread closure called from here is the classic way to
       // get a gesture that works in dev and drops frames in release.
       travel.value = reducedMotion
         ? withTiming(to, { duration: 120 })
         : withSpring(to, CELEBRATION.settle);
-      isOpen.value = shouldOpen;
-      runOnJS(endSwipe)(shouldOpen);
+      openSide.value = side;
+      runOnJS(endSwipe)(side !== 0);
     });
 
   /**
    * The buttons ride the gesture; the card does not.
    *
    * Each strip starts parked one full reveal OUTSIDE its own edge of the card
-   * — the right strip off to the right, the left strip off to the left — and
-   * both arrive at 0 together. That's the whole trick: all the movement people
-   * read as "the row opening" happens inside the card's own bounds, so the
-   * card never leaves its place in the list.
+   * and arrives at 0 as its swipe runs. That's the whole trick: all the
+   * movement people read as "the row opening" happens inside the card's own
+   * bounds, so the card never leaves its place in the list.
    */
-  const rightStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: revealWidth + travel.value }],
+  const leftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -revealWidth - travel.value }],
     // Fades with travel so a half-open card reads as in-progress rather than as
-    // buttons that are already armed.
+    // a button that's already armed. Clamped to this side's direction, so the
+    // other swipe never ghosts it in.
     opacity: interpolate(travel.value, [0, -revealWidth * 0.5], [0, 1], 'clamp'),
   }));
 
-  /** Mirror of the above: enters from the left, so it moves the other way. */
-  const leftStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -revealWidth - travel.value }],
-    opacity: interpolate(travel.value, [0, -revealWidth * 0.5], [0, 1], 'clamp'),
+  const rightStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: revealWidth - travel.value }],
+    opacity: interpolate(travel.value, [0, revealWidth * 0.5], [0, 1], 'clamp'),
   }));
 
   /**
-   * The card dims as the buttons come in.
+   * The card dims as a button comes in.
    *
-   * Not decoration. They necessarily cover both ends of the card — the stat
-   * values and difficulty label on the right, the start of the name on the
-   * left — and without this, a half-covered card reads as broken text rather
-   * than as a card in a mode. It's also honest:
-   * presses are genuinely disabled while the buttons are out, and this is what
-   * "temporarily inert" looks like everywhere else in the app.
+   * Not decoration. A button necessarily covers one end of the card — the
+   * stat values and difficulty label on the right, the start of the name on
+   * the left — and without this, a half-covered card reads as broken text
+   * rather than as a card in a mode. It's also honest: presses are genuinely
+   * disabled while a button is out, and this is what "temporarily inert" looks
+   * like everywhere else in the app.
    */
   const contentStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(travel.value, [0, -revealWidth], [1, 0.72], 'clamp'),
+    opacity: interpolate(Math.abs(travel.value), [0, revealWidth], [1, 0.72], 'clamp'),
   }));
 
   const runAction = (action: SwipeAction) => {
