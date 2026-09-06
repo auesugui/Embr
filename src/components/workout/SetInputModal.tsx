@@ -7,7 +7,6 @@ import {
   Button,
   InputAccessoryView,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -15,8 +14,10 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SetFields } from '@/components/workout/set-input/SetFields';
+import { useKeyboardInset } from '@/hooks';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import type { Metric } from '@/types';
@@ -87,6 +88,9 @@ export function SetInputModal({
   isEditing = false,
 }: SetInputModalProps) {
   const units = useSettingsStore((state) => state.units);
+  // PWA: KeyboardAvoidingView does nothing in a browser. See useKeyboardInset.
+  const keyboardInset = useKeyboardInset();
+  const insets = useSafeAreaInsets();
   const [reps, setReps] = useState(initialReps.toString());
   const [weight, setWeight] = useState(initialWeight?.toString() ?? '');
   const increments = STEPPER_INCREMENTS[units];
@@ -167,7 +171,7 @@ export function SetInputModal({
           handler fires after the TextInput takes focus and Keyboard.dismiss()
           blurs it, so the field can't be typed into. Keeping tap-to-close
           behind the sheet leaves the inputs with no press handler above them. */}
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { paddingBottom: keyboardInset }]}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={handleClose}
@@ -175,62 +179,63 @@ export function SetInputModal({
           accessibilityLabel="Close set input"
         />
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        {/* With the keyboard up it already fills the bottom of the screen, so
+            the home-indicator inset would be padding against nothing. */}
+        <View
+          style={[
+            styles.modal,
+            { paddingBottom: keyboardInset > 0 ? spacing[5] : insets.bottom + spacing[5] },
+          ]}
         >
-          <View style={styles.modal}>
-            {/* Header */}
-            <View style={styles.header}>
-              <Text style={styles.title}>
-                {isEditing ? 'Edit' : 'Log'} {unitLabel} {setNumber}
-              </Text>
-              <Text style={styles.exerciseName} numberOfLines={1}>
-                {exerciseName}
-              </Text>
-            </View>
-
-            <SetFields
-              reps={reps}
-              metric={metric}
-              weight={weightString}
-              units={units}
-              quickWeights={QUICK_WEIGHTS[units]}
-              increments={increments}
-              repsInputId={REPS_INPUT_ID}
-              weightInputId={WEIGHT_INPUT_ID}
-              onReps={setReps}
-              onWeight={setWeight}
-              onStepReps={adjustReps}
-              onStepWeight={adjustWeight}
-              onPickWeight={selectQuickWeight}
-            />
-
-            {/* Actions - Always visible at bottom */}
-            <View style={styles.actions}>
-              {isEditing && onClear && (
-                <Pressable style={styles.clearButton} onPress={handleClear}>
-                  <Text style={styles.clearButtonText}>Clear</Text>
-                </Pressable>
-              )}
-              <Pressable style={styles.cancelButton} onPress={handleClose}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable style={styles.saveButton} onPress={handleSave}>
-                <Text style={styles.saveButtonText}>{isEditing ? 'Update' : 'Log Set'}</Text>
-              </Pressable>
-            </View>
-
-            {/* iOS Input Accessory Views - rendered once, not recreated */}
-            {Platform.OS === 'ios' && (
-              <>
-                <KeyboardAccessory inputId={REPS_INPUT_ID} />
-                <KeyboardAccessory inputId={WEIGHT_INPUT_ID} />
-              </>
-            )}
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>
+              {isEditing ? 'Edit' : 'Log'} {unitLabel} {setNumber}
+            </Text>
+            <Text style={styles.exerciseName} numberOfLines={1}>
+              {exerciseName}
+            </Text>
           </View>
-        </KeyboardAvoidingView>
+
+          <SetFields
+            reps={reps}
+            metric={metric}
+            weight={weightString}
+            units={units}
+            quickWeights={QUICK_WEIGHTS[units]}
+            increments={increments}
+            repsInputId={REPS_INPUT_ID}
+            weightInputId={WEIGHT_INPUT_ID}
+            onReps={setReps}
+            onWeight={setWeight}
+            onStepReps={adjustReps}
+            onStepWeight={adjustWeight}
+            onPickWeight={selectQuickWeight}
+          />
+
+          {/* Actions - Always visible at bottom */}
+          <View style={styles.actions}>
+            {isEditing && onClear && (
+              <Pressable style={styles.clearButton} onPress={handleClear}>
+                <Text style={styles.clearButtonText}>Clear</Text>
+              </Pressable>
+            )}
+            <Pressable style={styles.cancelButton} onPress={handleClose}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.saveButton} onPress={handleSave}>
+              <Text style={styles.saveButtonText}>{isEditing ? 'Update' : 'Log Set'}</Text>
+            </Pressable>
+          </View>
+
+          {/* iOS Input Accessory Views - rendered once, not recreated */}
+          {Platform.OS === 'ios' && (
+            <>
+              <KeyboardAccessory inputId={REPS_INPUT_ID} />
+              <KeyboardAccessory inputId={WEIGHT_INPUT_ID} />
+            </>
+          )}
+        </View>
       </View>
     </Modal>
   );
@@ -242,15 +247,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
-  keyboardView: {
-    justifyContent: 'flex-end',
-  },
   modal: {
     backgroundColor: colors.background.secondary,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     padding: spacing[5],
-    paddingBottom: spacing[6],
+    // RN defaults flexShrink to 0; without this the sheet keeps its full
+    // content height and pushes its own top off the screen when the keyboard
+    // leaves it less room than it wants.
+    flexShrink: 1,
   },
   header: {
     alignItems: 'center',
