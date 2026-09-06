@@ -10,18 +10,12 @@
 // keystroke.
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RefreshCw } from '@/components/icons';
 import { getExerciseById } from '@/data';
+import { useKeyboardInset } from '@/hooks';
 import {
   AMRAP_REPS_LABEL,
   BLOCK_MODES,
@@ -78,6 +72,10 @@ export function EditExerciseSheet({
   onRemove,
   updateSetRepScheme,
 }: EditExerciseSheetProps) {
+  // PWA: KeyboardAvoidingView does nothing in a browser. See useKeyboardInset.
+  const keyboardInset = useKeyboardInset();
+  const insets = useSafeAreaInsets();
+
   // Resolve the current exercise reactively from the store so swaps reflect.
   const day = useTemplateStore((state) => {
     if (!target) return undefined;
@@ -195,24 +193,30 @@ export function EditExerciseSheet({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardView}
+      <Pressable style={[styles.overlay, { paddingBottom: keyboardInset }]} onPress={onClose}>
+        <Pressable
+          style={[
+            styles.sheet,
+            // With the keyboard up it already fills the bottom of the screen,
+            // so the home-indicator inset would be padding against nothing.
+            { paddingBottom: keyboardInset > 0 ? spacing[5] : insets.bottom + spacing[5] },
+          ]}
+          onPress={(e) => {
+            e.stopPropagation();
+          }}
         >
-          <Pressable
-            style={styles.sheet}
-            onPress={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            <View style={styles.header}>
-              <Text style={styles.title}>Edit Exercise</Text>
-              <Text style={styles.exerciseName} numberOfLines={1}>
-                {exerciseName}
-              </Text>
-            </View>
+          <View style={styles.header}>
+            <Text style={styles.title}>Edit Exercise</Text>
+            <Text style={styles.exerciseName} numberOfLines={1}>
+              {exerciseName}
+            </Text>
+          </View>
 
+          {/* Header and actions stay pinned; everything between them scrolls.
+              This sheet is taller than the room a keyboard leaves, so without
+              somewhere to give it just overflows upward and Save goes off the
+              top instead of under the keyboard — a different bug, not a fix. */}
+          <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
             <Pressable style={styles.swapButton} onPress={onSwap}>
               <RefreshCw size={15} color={roles.accentText} />
               <Text style={styles.swapButtonText}>Swap Exercise</Text>
@@ -286,14 +290,14 @@ export function EditExerciseSheet({
               onInterval={setIntervalDraft}
               onRounds={setRoundsDraft}
             />
+          </ScrollView>
 
-            <SheetActions
-              onRemove={() => onRemove(target.dayId, target.index)}
-              onCancel={onClose}
-              onSave={commit}
-            />
-          </Pressable>
-        </KeyboardAvoidingView>
+          <SheetActions
+            onRemove={() => onRemove(target.dayId, target.index)}
+            onCancel={onClose}
+            onSave={commit}
+          />
+        </Pressable>
       </Pressable>
     </Modal>
   );
@@ -305,14 +309,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
-  keyboardView: {
-    justifyContent: 'flex-end',
+  body: {
+    flexShrink: 1,
   },
   sheet: {
     backgroundColor: colors.background.secondary,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     padding: spacing[5],
+    maxHeight: '92%',
+    // RN defaults flexShrink to 0; without this the sheet keeps its full
+    // content height and pushes its own top off the screen when the keyboard
+    // leaves it less room than it wants.
+    flexShrink: 1,
   },
   header: {
     alignItems: 'center',

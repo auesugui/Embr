@@ -15,18 +15,11 @@
 
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { APP_NAME } from '@/config';
+import { useKeyboardInset } from '@/hooks';
 import { needsOnboarding, usePlayerStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
@@ -40,6 +33,7 @@ export default function OnboardingNameScreen() {
   const profile = usePlayerStore((state) => state.profile);
   const updateProfile = usePlayerStore((state) => state.updateProfile);
   const insets = useSafeAreaInsets();
+  const keyboardInset = useKeyboardInset();
 
   // Seeded from the stored name only when editing. On first run the field
   // starts empty even for an install carrying the old default, because that
@@ -75,10 +69,10 @@ export default function OnboardingNameScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    // PWA: KeyboardAvoidingView does nothing in a browser, and this screen
+    // autoFocuses — so the keyboard is up before you've read anything, sitting
+    // over the one button on the page. See useKeyboardInset.
+    <View style={[styles.container, { paddingBottom: keyboardInset }]}>
       <View style={[styles.content, { paddingTop: insets.top + spacing[8] }]}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>{isEdit ? 'Your name' : `Welcome to ${APP_NAME}`}</Text>
@@ -106,7 +100,14 @@ export default function OnboardingNameScreen() {
         />
       </View>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing[4] }]}>
+      {/* With the keyboard up it already fills the bottom of the screen, so
+          the home-indicator inset would be padding against nothing. */}
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: keyboardInset > 0 ? spacing[4] : insets.bottom + spacing[4] },
+        ]}
+      >
         <Pressable
           style={[styles.button, !canSubmit && styles.buttonDisabled]}
           onPress={handleSubmit}
@@ -117,7 +118,7 @@ export default function OnboardingNameScreen() {
           <Text style={styles.buttonText}>{isEdit ? 'Save' : 'Start training'}</Text>
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

@@ -7,9 +7,7 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,9 +15,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChevronRight } from '@/components/icons';
 import { type ExerciseDefinition, searchExercises } from '@/data';
+import { useKeyboardInset } from '@/hooks';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
 
@@ -66,6 +66,10 @@ export function ExercisePickerModal({
   excludeIds = [],
 }: ExercisePickerModalProps) {
   const [query, setQuery] = useState('');
+  // The sheet has to get out of the keyboard's way itself: this is a PWA, and
+  // KeyboardAvoidingView does nothing in a browser. See useKeyboardInset.
+  const keyboardInset = useKeyboardInset();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) setQuery('');
@@ -95,7 +99,12 @@ export function ExercisePickerModal({
           TextInput can take focus, so the field can never be typed into. Keeping
           the tap-to-close target behind the sheet means the sheet's own subtree
           has no press handler above it and inputs behave normally. */}
-      <View style={styles.overlay}>
+      {/* Padding the OVERLAY rather than offsetting the sheet is what makes the
+          list shrink instead of sliding off the top: the sheet's `maxHeight` is
+          a percentage of this box, so a keyboard-sized pad shortens the space
+          the sheet is allowed to fill, and the sheet's own layout does the
+          rest. */}
+      <View style={[styles.overlay, { paddingBottom: keyboardInset }]}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
@@ -103,38 +112,40 @@ export function ExercisePickerModal({
           accessibilityLabel="Close exercise picker"
         />
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardView}
+        {/* With the keyboard up it already fills the bottom of the screen, so
+            the home-indicator inset would be padding against nothing. */}
+        <View
+          style={[
+            styles.modal,
+            { paddingBottom: keyboardInset > 0 ? spacing[4] : insets.bottom + spacing[4] },
+          ]}
         >
-          <View style={styles.modal}>
-            <View style={styles.header}>
-              <Text style={styles.title}>{title}</Text>
-              <Pressable hitSlop={12} onPress={onClose}>
-                <Text style={styles.closeButton}>Cancel</Text>
-              </Pressable>
-            </View>
-
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search exercises or muscle group…"
-              placeholderTextColor={colors.text.muted}
-              value={query}
-              onChangeText={setQuery}
-              autoCorrect={false}
-            />
-
-            <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
-              {results.length === 0 ? (
-                <Text style={styles.emptyText}>No exercises match “{query}”.</Text>
-              ) : (
-                results.map((exercise) => (
-                  <MemoRow key={exercise.id} exercise={exercise} onSelect={handleSelect} />
-                ))
-              )}
-            </ScrollView>
+          <View style={styles.header}>
+            <Text style={styles.title}>{title}</Text>
+            <Pressable hitSlop={12} onPress={onClose}>
+              <Text style={styles.closeButton}>Cancel</Text>
+            </Pressable>
           </View>
-        </KeyboardAvoidingView>
+
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search exercises or muscle group…"
+            placeholderTextColor={colors.text.muted}
+            value={query}
+            onChangeText={setQuery}
+            autoCorrect={false}
+          />
+
+          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+            {results.length === 0 ? (
+              <Text style={styles.emptyText}>No exercises match “{query}”.</Text>
+            ) : (
+              results.map((exercise) => (
+                <MemoRow key={exercise.id} exercise={exercise} onSelect={handleSelect} />
+              ))
+            )}
+          </ScrollView>
+        </View>
       </View>
     </Modal>
   );
@@ -146,15 +157,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
-  keyboardView: {
-    justifyContent: 'flex-end',
-  },
   modal: {
     backgroundColor: colors.background.secondary,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     padding: spacing[4],
     maxHeight: '85%',
+    // RN defaults flexShrink to 0. Without this the sheet insists on its
+    // content's full height and overflows its own maxHeight rather than
+    // letting the list scroll.
+    flexShrink: 1,
   },
   header: {
     flexDirection: 'row',
@@ -179,8 +191,12 @@ const styles = StyleSheet.create({
     ...textStyles.body,
     marginBottom: spacing[2],
   },
+  // No fixed height: the list takes whatever the sheet has left after the
+  // header and the field, which is the only number that stays right as the
+  // keyboard opens and closes. A hard 400 was why the results kept demanding
+  // room the sheet no longer had.
   list: {
-    maxHeight: 400,
+    flexShrink: 1,
   },
   row: {
     flexDirection: 'row',
