@@ -5,12 +5,12 @@
 // It gets breathing room, the display face, and the one emotional beat the
 // tracker has — the streak. Density belongs on session/history, not here.
 
-import { ChevronRight, Flame, Plus } from '@/components/icons';
+import { ChevronRight, Flame, Pencil, Plus, Trash } from '@/components/icons';
 import { router } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CountUpText, RevealRow } from '@/components/celebration';
-import { PressableScale, SwipeToDelete } from '@/components/ui';
+import { PressableScale, type SwipeAction, SwipeActions } from '@/components/ui';
 import { TemplateCard } from '@/components/workout/TemplateCard';
 import { WORKOUT_TEMPLATES } from '@/data';
 import { countClaimedInLast7Days } from '@/lib/history-stats';
@@ -76,6 +76,36 @@ export default function HomeScreen() {
     });
   };
 
+  // Editing is the other thing you do to a workout you already built: add a
+  // movement, change a rep target. No confirmation — it's a screen, not a
+  // commitment, and everything on it is itself undoable.
+  const handleEditWorkout = (templateId: string) => {
+    router.push(`/workout/template-edit/${templateId}`);
+  };
+
+  /**
+   * One swipe, an action at each end of the card.
+   *
+   * Delete stays against the right edge, where it has been since the swipe
+   * shipped — moving it would silently redefine a gesture people already have
+   * in their thumbs. Edit takes the opposite edge rather than crowding in
+   * beside it, so the two are never mistaken for each other under a thumb.
+   */
+  const editAction = (template: { id: string; name: string }): SwipeAction => ({
+    key: 'edit',
+    icon: Pencil,
+    accessibilityLabel: `Edit ${template.name}`,
+    onPress: () => handleEditWorkout(template.id),
+  });
+
+  const deleteAction = (template: { id: string; name: string }): SwipeAction => ({
+    key: 'delete',
+    icon: Trash,
+    accessibilityLabel: `Delete ${template.name}`,
+    onPress: () => handleDeleteWorkout(template.id, template.name),
+    tone: 'danger',
+  });
+
   // Straight into the editor — the point of this button is that building a
   // workout from scratch doesn't route through somebody else's template.
   const handleNewWorkout = () => {
@@ -126,14 +156,14 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Workouts</Text>
           <Text style={styles.sectionSubtitle}>
-            Tap to start. Swipe a card left, then tap the trash.
+            Tap to start. Swipe a card left to edit or delete.
           </Text>
 
           {personalTemplates.map((template, i) => (
             <RevealRow key={template.id} index={Math.min(i, 5)}>
-              <SwipeToDelete
-                onDelete={() => handleDeleteWorkout(template.id, template.name)}
-                accessibilityLabel={`Delete ${template.name}`}
+              <SwipeActions
+                leftActions={[editAction(template)]}
+                rightActions={[deleteAction(template)]}
               >
                 {({ blocked }) => (
                   <TemplateCard
@@ -148,7 +178,7 @@ export default function HomeScreen() {
                     }}
                   />
                 )}
-              </SwipeToDelete>
+              </SwipeActions>
             </RevealRow>
           ))}
         </View>
