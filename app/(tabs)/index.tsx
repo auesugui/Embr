@@ -84,12 +84,13 @@ export default function HomeScreen() {
   };
 
   /**
-   * A direction each: swipe left to edit, right to delete.
+   * A direction each: drag left to delete, right to edit.
    *
-   * Delete keeps the right edge it has had since the swipe shipped, but it now
-   * takes its own gesture to reach. That's the point of splitting them — the
-   * destructive action is never one thumb-width from the one you meant, and
-   * neither can be hit by mistake while reaching for the other.
+   * Delete is on the trailing side because that is where every list on the
+   * platform puts its destructive action — swiping a row left expecting Delete
+   * is muscle memory people arrive with, and an earlier pass had it inverted.
+   * Edit takes the leading side, so neither can be hit while reaching for the
+   * other.
    */
   const editAction = (template: { id: string; name: string }): SwipeAction => ({
     key: 'edit',
@@ -158,14 +159,14 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Workouts</Text>
           <Text style={styles.sectionSubtitle}>
-            Tap to start. Swipe left to edit, right to delete.
+            Tap to start. Swipe left to delete, right to edit.
           </Text>
 
           {personalTemplates.map((template, i) => (
             <RevealRow key={template.id} index={Math.min(i, 5)}>
               <SwipeActions
-                leftActions={[editAction(template)]}
-                rightActions={[deleteAction(template)]}
+                leadingActions={[editAction(template)]}
+                trailingActions={[deleteAction(template)]}
               >
                 {({ blocked }) => (
                   <TemplateCard

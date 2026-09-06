@@ -6,11 +6,19 @@
 // the editor. Several screens deep for the two things you routinely do to a
 // workout you already made.
 //
-// ONE DIRECTION, ONE ACTION. Swiping left brings in the left-edge strip;
-// swiping right brings in the right-edge one. Never both: two buttons out at
-// once are two identically-sized targets under a thumb, and the one you did
-// not mean is the destructive one. Separating them by direction means reaching
-// delete takes a deliberate, different gesture from reaching edit.
+// ONE DIRECTION, ONE ACTION. Never both at once: two buttons out together are
+// two identically-sized targets under a thumb, and the one you did not mean is
+// the destructive one. Separating them by direction means reaching delete takes
+// a deliberate, different gesture from reaching edit.
+//
+// LEADING AND TRAILING, NOT LEFT AND RIGHT. The naming is UIKit's because the
+// behaviour is: dragging LEFT brings in the TRAILING strip from the card's
+// right edge, dragging RIGHT brings in the LEADING strip from its left. Two
+// things fall out of that and both matter. The button follows your finger
+// rather than arriving from the direction you swiped away from — and every
+// list on the platform puts its destructive action on the trailing side, so
+// a drag left reaching delete is the muscle memory people already have. An
+// earlier pass had this inverted on both counts.
 //
 // THE CARD DOESN'T MOVE. The usual iOS pattern slides the whole row to expose
 // an action sitting behind it, which means the thing you're looking at leaves
@@ -83,20 +91,25 @@ interface SwipeActionsProps {
    */
   children: (guard: SwipeGuard) => ReactNode;
   /**
-   * Buttons pinned to the card's LEFT edge, revealed by swiping LEFT.
+   * Buttons at the card's LEFT edge, revealed by dragging RIGHT. The benign
+   * side, by platform convention.
+   *
    * Confirmation, if an action needs it, belongs to the caller.
    */
-  leftActions?: SwipeAction[];
-  /** Buttons pinned to the card's RIGHT edge, revealed by swiping RIGHT. */
-  rightActions?: SwipeAction[];
+  leadingActions?: SwipeAction[];
+  /**
+   * Buttons at the card's RIGHT edge, revealed by dragging LEFT. Where a
+   * destructive action goes — that is the gesture people arrive expecting it.
+   */
+  trailingActions?: SwipeAction[];
   /** Row spacing. Owned here so the buttons' clip matches the card exactly. */
   marginBottom?: number;
 }
 
 export function SwipeActions({
   children,
-  leftActions = [],
-  rightActions = [],
+  leadingActions = [],
+  trailingActions = [],
   marginBottom = spacing[3],
 }: SwipeActionsProps) {
   const reducedMotion = useSettingsStore((s) => s.reducedMotion);
@@ -106,18 +119,18 @@ export function SwipeActions({
    *
    * One side at a time, so this is whichever strip is wider — not their sum.
    */
-  const revealWidth = ACTION_WIDTH * Math.max(leftActions.length, rightActions.length);
+  const revealWidth = ACTION_WIDTH * Math.max(leadingActions.length, trailingActions.length);
 
-  const hasLeft = leftActions.length > 0;
-  const hasRight = rightActions.length > 0;
+  const hasLeading = leadingActions.length > 0;
+  const hasTrailing = trailingActions.length > 0;
 
   /**
-   * Signed gesture travel: negative while swiping left, positive right, and
+   * Signed gesture travel: negative while dragging left, positive right, and
    * settling at -revealWidth, 0, or +revealWidth.
    */
   const travel = useSharedValue(0);
 
-  /** Which side is open: -1 left, 0 neither, 1 right. */
+  /** Which strip is open: -1 trailing, 0 neither, 1 leading. */
   const openSide = useSharedValue(0);
 
   /** Buttons-are-out state, for the tap-to-close overlay. */
@@ -179,11 +192,12 @@ export function SwipeActions({
     })
     .onUpdate((e) => {
       const base = openSide.value * revealWidth;
-      // A direction with no actions behind it doesn't move. The small overshoot
-      // allowance on the live sides is what gives the buttons somewhere to
-      // spring back from rather than stopping dead against their stop.
-      const min = hasLeft ? -revealWidth * 1.15 : 0;
-      const max = hasRight ? revealWidth * 1.15 : 0;
+      // The small overshoot allowance on the live sides is what gives the
+      // buttons somewhere to spring back from rather than stopping dead.
+      // Dragging left opens the trailing strip, right the leading one. A
+      // direction with no actions behind it doesn't move.
+      const min = hasTrailing ? -revealWidth * 1.15 : 0;
+      const max = hasLeading ? revealWidth * 1.15 : 0;
       travel.value = Math.min(max, Math.max(min, base + e.translationX));
     })
     .onEnd((e) => {
@@ -218,17 +232,19 @@ export function SwipeActions({
    * movement people read as "the row opening" happens inside the card's own
    * bounds, so the card never leaves its place in the list.
    */
-  const leftStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -revealWidth - travel.value }],
+  const leadingStyle = useAnimatedStyle(() => ({
+    // Parked one reveal off the card's LEFT edge, arriving at 0 as the drag
+    // goes right — so it travels with the finger, not against it.
+    transform: [{ translateX: -revealWidth + travel.value }],
     // Fades with travel so a half-open card reads as in-progress rather than as
-    // a button that's already armed. Clamped to this side's direction, so the
-    // other swipe never ghosts it in.
-    opacity: interpolate(travel.value, [0, -revealWidth * 0.5], [0, 1], 'clamp'),
+    // a button that's already armed. Clamped to this strip's own direction, so
+    // the opposite drag never ghosts it in.
+    opacity: interpolate(travel.value, [0, revealWidth * 0.5], [0, 1], 'clamp'),
   }));
 
-  const rightStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: revealWidth - travel.value }],
-    opacity: interpolate(travel.value, [0, revealWidth * 0.5], [0, 1], 'clamp'),
+  const trailingStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: revealWidth + travel.value }],
+    opacity: interpolate(travel.value, [0, -revealWidth * 0.5], [0, 1], 'clamp'),
   }));
 
   /**
@@ -287,9 +303,9 @@ export function SwipeActions({
             />
           )}
 
-          {leftActions.length > 0 && (
-            <Animated.View style={[styles.actionLayer, styles.leftLayer, leftStyle]}>
-              {leftActions.map((action, index) => (
+          {hasLeading && (
+            <Animated.View style={[styles.actionLayer, styles.leadingLayer, leadingStyle]}>
+              {leadingActions.map((action, index) => (
                 <SwipeActionButton
                   key={action.key}
                   action={action}
@@ -301,14 +317,14 @@ export function SwipeActions({
             </Animated.View>
           )}
 
-          {rightActions.length > 0 && (
-            <Animated.View style={[styles.actionLayer, styles.rightLayer, rightStyle]}>
-              {rightActions.map((action, index) => (
+          {hasTrailing && (
+            <Animated.View style={[styles.actionLayer, styles.trailingLayer, trailingStyle]}>
+              {trailingActions.map((action, index) => (
                 <SwipeActionButton
                   key={action.key}
                   action={action}
                   onRun={runAction}
-                  corner={index === rightActions.length - 1 ? 'right' : 'none'}
+                  corner={index === trailingActions.length - 1 ? 'right' : 'none'}
                 />
               ))}
             </Animated.View>
@@ -335,10 +351,10 @@ const styles = StyleSheet.create({
     bottom: 1,
     flexDirection: 'row',
   },
-  leftLayer: {
+  leadingLayer: {
     left: 1,
   },
-  rightLayer: {
+  trailingLayer: {
     right: 1,
   },
 });
