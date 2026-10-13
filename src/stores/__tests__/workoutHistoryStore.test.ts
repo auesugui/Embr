@@ -279,4 +279,51 @@ describe('Workout History Store', () => {
       expect(state.logs).toEqual([]);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // mergeLogs — additive, for workouts brought in from a file
+  // ---------------------------------------------------------------------------
+
+  describe('mergeLogs', () => {
+    const importedLog = (id: string) => ({
+      id,
+      timestamp: '2026-10-10T12:00:00.000Z',
+      exercises: [makeExercise()],
+      durationSeconds: 1980,
+      streakDays: 0,
+      sessionIntent: 'normal' as const,
+      claimedAt: null,
+    });
+
+    it('adds the workouts, persists them, and reports how many were added', () => {
+      const id = useWorkoutHistoryStore.getState().createLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+        sessionIntent: 'normal',
+      });
+
+      const added = useWorkoutHistoryStore.getState().mergeLogs([importedLog('imported-1')]);
+
+      expect(added).toBe(1);
+      const logs = useWorkoutHistoryStore.getState().logs;
+      expect(logs.map((log) => log.id)).toContain(id);
+      expect(logs.map((log) => log.id)).toContain('imported-1');
+      expect(logs.find((log) => log.id === 'imported-1')?.claimedAt).not.toBeNull();
+      expect(require('@/utils/storage').appStorage.setJSON).toHaveBeenLastCalledWith(
+        'workout_history.full_state',
+        { logs }
+      );
+    });
+
+    it('adds nothing when every workout is already here', () => {
+      useWorkoutHistoryStore.getState().mergeLogs([importedLog('imported-1')]);
+      const before = useWorkoutHistoryStore.getState().logs;
+
+      const added = useWorkoutHistoryStore.getState().mergeLogs([importedLog('imported-1')]);
+
+      expect(added).toBe(0);
+      expect(useWorkoutHistoryStore.getState().logs).toBe(before);
+    });
+  });
 });

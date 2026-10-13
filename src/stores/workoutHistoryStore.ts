@@ -17,6 +17,7 @@
 // this store, so the claimed log — and its `claimedAt` guard — is restored
 // before any re-claim can happen.
 
+import { mergeWorkoutLogs } from '@/lib/workout-merge';
 import type { Exercise, SessionIntent, WorkoutBlock, WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
@@ -60,6 +61,11 @@ interface WorkoutHistoryActions {
    * an unknown id) — callers must treat null as "already saved" and no-op.
    */
   saveWorkout: (id: string) => WorkoutLog | null;
+  /**
+   * Add workouts from a file. Logs whose id this history already holds are
+   * skipped and every existing log is left as it is. Returns how many were added.
+   */
+  mergeLogs: (incoming: WorkoutLog[]) => number;
   /** Hydrate from AsyncStorage. */
   hydrate: () => Promise<void>;
   /** Reset to initial state (dev/test only). */
@@ -141,6 +147,15 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
     });
 
     return claimedLog;
+  },
+
+  mergeLogs: (incoming) => {
+    const { logs, added } = mergeWorkoutLogs(get().logs, incoming, new Date().toISOString());
+    if (added === 0) return 0;
+
+    set({ logs });
+    persistLogs(logs).catch(console.warn);
+    return added;
   },
 
   hydrate: async () => {

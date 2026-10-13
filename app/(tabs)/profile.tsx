@@ -15,13 +15,14 @@ import {
   restoreBackup,
 } from '@/lib/backup';
 import { downloadTextFile, isFileIOSupported, pickTextFile, reloadApp } from '@/lib/backup-file';
+import { parseWorkoutImport } from '@/lib/workout-import';
 import { showAlert } from '@/utils/alert';
 
 import { User } from '@/components/icons';
 import { BackupSection } from '@/components/profile/BackupSection';
 import { SettingsSection } from '@/components/profile/SettingsSection';
 import { APP_NAME } from '@/config';
-import { usePlayerStore, useSettingsStore } from '@/stores';
+import { usePlayerStore, useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
 export default function ProfileScreen() {
@@ -144,6 +145,61 @@ export default function ProfileScreen() {
     }
   };
 
+  // Unlike Restore, which replaces every stored key, this only adds workouts
+  // this device does not already have. The count is confirmed before anything
+  // is written.
+  const handleAddWorkouts = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const text = await pickTextFile();
+      if (text === null) return; // picker dismissed
+
+      const { logs, skipped } = parseWorkoutImport(text);
+      const known = new Set(useWorkoutHistoryStore.getState().logs.map((log) => log.id));
+      const fresh = logs.filter((log) => !known.has(log.id)).length;
+      if (fresh === 0) {
+        showAlert({
+          title: 'Nothing new',
+          message: 'Every workout in that file is already on this device.',
+          buttons: [{ text: 'OK' }],
+        });
+        return;
+      }
+
+      const skippedNote =
+        skipped > 0
+          ? ` ${skipped} unreadable ${skipped === 1 ? 'entry' : 'entries'} will be skipped.`
+          : '';
+      showAlert({
+        title: `Add ${fresh} ${fresh === 1 ? 'workout' : 'workouts'}?`,
+        message: `They join your history. Workouts already here are left alone.${skippedNote}`,
+        buttons: [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add',
+            onPress: () => {
+              const added = useWorkoutHistoryStore.getState().mergeLogs(logs);
+              showAlert({
+                title: 'Workouts added',
+                message: `Added ${added} ${added === 1 ? 'workout' : 'workouts'} to your history.`,
+                buttons: [{ text: 'OK' }],
+              });
+            },
+          },
+        ],
+      });
+    } catch (error) {
+      showAlert({
+        title: 'Could not add workouts',
+        message: error instanceof BackupParseError ? error.message : "Couldn't read that file.",
+        buttons: [{ text: 'OK' }],
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Profile Header */}
@@ -207,6 +263,7 @@ export default function ProfileScreen() {
         busy={busy}
         onExport={handleExport}
         onRestore={handleImport}
+        onAddWorkouts={handleAddWorkouts}
       />
 
       {/* App Info */}

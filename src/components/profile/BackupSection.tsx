@@ -9,7 +9,7 @@
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Download, Upload } from '@/components/icons';
+import { Download, Plus, Upload } from '@/components/icons';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
 interface BackupSectionProps {
@@ -18,9 +18,16 @@ interface BackupSectionProps {
   busy: boolean;
   onExport: () => void;
   onRestore: () => void;
+  onAddWorkouts: () => void;
 }
 
-export function BackupSection({ supported, busy, onExport, onRestore }: BackupSectionProps) {
+export function BackupSection({
+  supported,
+  busy,
+  onExport,
+  onRestore,
+  onAddWorkouts,
+}: BackupSectionProps) {
   // File IO is unavailable on some web targets; the whole section hides there
   // rather than offering buttons that cannot work.
   if (!supported) return null;
@@ -55,6 +62,19 @@ export function BackupSection({ supported, busy, onExport, onRestore }: BackupSe
       >
         <Text style={styles.settingLabel}>Restore from backup</Text>
         <Upload size={18} color={roles.textMuted} />
+      </Pressable>
+
+      <View style={styles.settingSpacer} />
+
+      <Pressable
+        style={[styles.settingRow, busy && styles.settingRowBusy]}
+        onPress={onAddWorkouts}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel="Add workouts from a backup file"
+      >
+        <Text style={styles.settingLabel}>Add workouts from a file</Text>
+        <Plus size={18} color={roles.textMuted} />
       </Pressable>
     </View>
   );
