@@ -71,9 +71,9 @@ export function BackupSection({
         onPress={onAddWorkouts}
         disabled={busy}
         accessibilityRole="button"
-        accessibilityLabel="Add workouts from a backup file"
+        accessibilityLabel="Merge workouts from a backup file"
       >
-        <Text style={styles.settingLabel}>Add workouts from a file</Text>
+        <Text style={styles.settingLabel}>Merge workouts from a backup file</Text>
         <Plus size={18} color={roles.textMuted} />
       </Pressable>
     </View>

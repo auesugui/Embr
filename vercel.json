@@ -5,5 +5,11 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "github": {
     "silent": false
-  }
+  },
+  "headers": [
+    {
+      "source": "/ocr/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
+    }
+  ]
 }

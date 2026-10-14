@@ -67,7 +67,8 @@ export function WorkoutRow({
           <View style={styles.miniStats}>
             <MiniStat label="Duration" value={formatDuration(log.durationSeconds)} />
             <MiniStat label="Exercises" value={`${exerciseCount}`} />
-            <MiniStat label="Streak" value={`${log.streakDays}d`} />
+            {/* A photo of a card carries no streak, so an imported workout shows it as unknown. */}
+            <MiniStat label="Streak" value={log.importedFrom ? '—' : `${log.streakDays}d`} />
           </View>
         </View>
 

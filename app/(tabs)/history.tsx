@@ -13,10 +13,12 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ClipboardList } from '@/components/icons';
+import { ClipboardList, Plus } from '@/components/icons';
 import { WorkoutRow } from '@/components/workout/history/WorkoutRow';
+import { isFileIOSupported } from '@/lib/backup-file';
+import { pickPhotos } from '@/lib/card-import/pick-photos';
 import { getClaimedLogs } from '@/lib/history-stats';
-import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
+import { useCardImportStore, useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 
 import { RevealRow } from '@/components/celebration';
@@ -32,6 +34,27 @@ export default function HistoryScreen() {
   const claimed = getClaimedLogs(logs);
 
   const handleToggle = (id: string) => setExpandedId((current) => (current === id ? null : id));
+
+  // Photos go to the review screen, which reads them on the device. Nothing is
+  // saved until the person confirms it there.
+  const handleAddFromPhotos = async () => {
+    const photos = await pickPhotos();
+    if (photos.length === 0) return;
+    useCardImportStore.getState().setPhotos(photos);
+    router.push('/workout/import-photos');
+  };
+
+  const addFromPhotos = isFileIOSupported ? (
+    <Pressable
+      style={styles.addButton}
+      onPress={handleAddFromPhotos}
+      accessibilityRole="button"
+      accessibilityLabel="Add workouts from photos"
+    >
+      <Plus size={16} color={roles.accentText} />
+      <Text style={styles.addButtonText}>Add from photos</Text>
+    </Pressable>
+  ) : null;
 
   // ---- Loading (store hydrating from AsyncStorage) ----
   if (!hydrated) {
@@ -55,6 +78,7 @@ export default function HistoryScreen() {
           <Pressable style={styles.emptyButton} onPress={() => router.replace('/(tabs)')}>
             <Text style={styles.emptyButtonText}>Start one from Workouts</Text>
           </Pressable>
+          {addFromPhotos}
         </View>
       </View>
     );
@@ -63,6 +87,7 @@ export default function HistoryScreen() {
   // ---- History list ----
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {addFromPhotos}
       <Text style={styles.summaryLine}>
         {claimed.length} workout{claimed.length === 1 ? '' : 's'} logged
       </Text>
@@ -142,5 +167,22 @@ const styles = StyleSheet.create({
     ...textStyles.bodySmall,
     color: colors.text.muted,
     marginBottom: spacing[3],
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing[2],
+    marginBottom: spacing[3],
+    marginTop: spacing[2],
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[3],
+    borderWidth: 1,
+    borderColor: roles.accent,
+    borderRadius: radius.full,
+  },
+  addButtonText: {
+    ...textStyles.label,
+    color: roles.accentText,
   },
 });

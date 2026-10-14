@@ -188,6 +188,10 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="workout/import-photos"
+              options={{ title: ROUTE_TITLES['workout/import-photos'] }}
+            />
+            <Stack.Screen
               name="workout/loadout"
               options={{ title: ROUTE_TITLES['workout/loadout'] }}
             />
