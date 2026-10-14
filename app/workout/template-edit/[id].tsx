@@ -13,7 +13,9 @@ import {
 } from '@/components/workout/template-edit/EditExerciseSheet';
 import { TemplateEditHeader } from '@/components/workout/template-edit/TemplateEditHeader';
 import { TemplateExerciseRow } from '@/components/workout/template-edit/TemplateExerciseRow';
-import { useTemplateStore } from '@/stores';
+import { isFileIOSupported } from '@/lib/backup-file';
+import { pickPhotos } from '@/lib/card-import/pick-photos';
+import { useCardImportStore, useTemplateStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
@@ -114,6 +116,18 @@ export default function TemplateEditScreen() {
     router.back();
   };
 
+  // The photo goes to the review screen, which copies the card into this day once the
+  // person has checked it. Nothing changes until then.
+  const handleImportPhotos = async () => {
+    if (!selectedDay) return;
+    const photos = await pickPhotos();
+    if (photos.length === 0) return;
+    useCardImportStore.getState().setPhotos(photos);
+    router.push(
+      `/workout/import-photos?templateId=${encodeURIComponent(template.id)}&dayId=${encodeURIComponent(selectedDay.id)}`
+    );
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Edit Template' }} />
@@ -182,6 +196,16 @@ export default function TemplateEditScreen() {
           <Pressable style={styles.addButton} onPress={handleAddExercise}>
             <Text style={styles.addButtonText}>＋ Add Exercise</Text>
           </Pressable>
+          {isFileIOSupported ? (
+            <Pressable
+              style={styles.addButton}
+              onPress={handleImportPhotos}
+              accessibilityRole="button"
+              accessibilityLabel="Import a workout from photos into this day"
+            >
+              <Text style={styles.addButtonText}>Import from photos</Text>
+            </Pressable>
+          ) : null}
         </View>
       )}
 

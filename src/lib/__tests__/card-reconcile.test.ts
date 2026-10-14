@@ -212,34 +212,49 @@ describe('saveProblems', () => {
     expect(saveProblems(clean())).toEqual([]);
   });
 
-  it('asks for a date and blocks saving without one', () => {
-    expect(saveProblems({ card: card({ date: null }), disagreements: [] })).toEqual([
-      'Set the date.',
+  it('does not ask for a date, since a copy has none', () => {
+    expect(saveProblems({ card: card({ date: null }), disagreements: [] })).toEqual([]);
+  });
+
+  it('keeps at least one movement', () => {
+    expect(saveProblems({ card: card({ rows: [] }), disagreements: [] })).toEqual([
+      'Keep at least one movement.',
     ]);
   });
 
-  it('blocks saving while any value is still flagged', () => {
+  it('blocks saving while a movement name, sets or reps is still flagged', () => {
     const flagged: Reading = {
       card: card(),
       disagreements: [
-        { path: 'rows.0.weightLb', first: '60', second: '20' },
-        { path: 'date', first: '2026-10-13', second: '2026-10-18' },
+        { path: 'rows.0.reps', first: '10', second: '12' },
+        { path: 'rows.2.sets', first: '3', second: '2' },
       ],
     };
 
     expect(saveProblems(flagged)).toEqual(['2 values need checking.']);
   });
+
+  it('blocks saving while a movement the readings disagree on is still flagged', () => {
+    const flagged: Reading = {
+      card: card(),
+      disagreements: [{ path: 'rows.1', first: 'Hanging Leg Raise', second: 'not found' }],
+    };
+
+    expect(saveProblems(flagged)).toEqual(['1 value needs checking.']);
+  });
 });
 
-describe('saveProblems and flags the save does not use', () => {
-  it('does not hold up a save for a disagreement on the card totals or the title', () => {
+describe('saveProblems and flags the copy does not use', () => {
+  it('does not hold up a copy for a disagreement on a weight, the date, the duration, the totals or the title', () => {
     const flagged: Reading = {
       card: card(),
       disagreements: [
+        { path: 'rows.0.weightLb', first: '60', second: '20' },
+        { path: 'date', first: '2026-10-13', second: '2026-10-18' },
+        { path: 'durationMin', first: '57', second: '75' },
         { path: 'totalSets', first: '9', second: '8' },
         { path: 'volumeLb', first: '4890', second: '4880' },
         { path: 'title', first: 'Dumbbell PPL', second: 'Dumbbell PPI' },
-        { path: 'rows.2.sets', first: '3', second: '2' },
       ],
     };
 

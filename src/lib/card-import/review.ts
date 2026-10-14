@@ -98,12 +98,13 @@ export function removeRow(reading: Reading, index: number): Reading {
 }
 
 /**
- * What still stands between this reading and a saved workout. An empty list means
- * it can be saved.
+ * What still stands between this reading and a copy in the workout being built. An
+ * empty list means it can be copied. Each movement also has to be matched to an
+ * exercise or skipped. The review screen checks that, because it depends on the
+ * library rather than on the reading.
  */
 export function saveProblems(reading: Reading): string[] {
   const problems: string[] = [];
-  if (!reading.card.date) problems.push('Set the date.');
   if (reading.card.rows.length === 0) problems.push('Keep at least one movement.');
   const blocking = reading.disagreements.filter((flag) => isStoredField(flag.path)).length;
   if (blocking > 0) {
@@ -113,12 +114,10 @@ export function saveProblems(reading: Reading): string[] {
 }
 
 /**
- * Fields a saved workout is built from: the date, the duration, and each movement's
- * name, weight and reps. A disagreement on anything else (the card's own totals,
- * the title) is still shown, but it does not hold up the save.
+ * Fields a copied workout is built from: each movement's name, sets and reps. A copy
+ * has no date and no weights, so a disagreement on those, or on the card's own totals
+ * and title, is still shown but does not hold up the copy.
  */
 export function isStoredField(path: string): boolean {
-  return (
-    path === 'date' || path === 'durationMin' || /^rows\.\d+(\.(name|weightLb|reps))?$/.test(path)
-  );
+  return /^rows\.\d+(\.(name|sets|reps))?$/.test(path);
 }

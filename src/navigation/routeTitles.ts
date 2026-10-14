@@ -17,7 +17,7 @@
 // build: this map isn't flag-aware, so the gamified copy showed up on a screen
 // that had nothing to do with the game layer (ADR-0013).
 export const ROUTE_TITLES = {
-  'workout/import-photos': 'Review workouts',
+  'workout/import-photos': 'Review workout',
   'workout/loadout': 'Start Workout',
   'workout/summary': 'Workout Summary',
   'workout/session': 'Workout',

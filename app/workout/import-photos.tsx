@@ -1,32 +1,49 @@
 // =============================================================================
-// Review workouts — check what was read from the photos, then save
+// Review workout — check a card, then copy its movements into the day being built
 // =============================================================================
-// Reached from History with the photos already chosen. Each photo is read on the
-// device, and each card appears as soon as it is read. Nothing is saved until every
-// card is clean: no flagged values, no missing date, no unreadable photo.
+// Reached from the workout builder with one photo chosen. The card is read on the
+// device. Each movement is then matched to an exercise in the library, and only a clear
+// match is made for you. The rest are chosen or skipped here. Nothing is copied until
+// every movement is settled and every value a copy uses is clean.
 //
-// Saving goes through the same merge as backup import, so a workout already in
-// history is skipped rather than doubled.
+// A copy keeps each movement's name, sets and reps. A template holds no weights, so the
+// weight read from the card is shown for reference only.
 
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { ExercisePickerModal } from '@/components/workout/ExercisePickerModal';
 import { ReviewCardView } from '@/components/workout/photo-import/ReviewCardView';
-import { cardToLog } from '@/lib/card-import/card-to-log';
+import type { MovementMatch } from '@/components/workout/photo-import/ReviewRow';
+import { getExerciseById } from '@/data';
+import { matchExercise } from '@/lib/card-import/match-exercise';
+import type { ParsedRow } from '@/lib/card-import/parse-card';
 import { readPhotos } from '@/lib/card-import/read-photos';
 import type { Reading } from '@/lib/card-import/reconcile';
 import { clearFlag, removeRow, saveProblems, setField } from '@/lib/card-import/review';
-import { useCardImportStore, useSettingsStore, useWorkoutHistoryStore } from '@/stores';
+import { useCardImportStore, useTemplateStore } from '@/stores';
+import { BLANK_TEMPLATE_NAME, type ImportedExercise } from '@/stores/templateStore';
 import { radius, roles, spacing, textStyles } from '@/theme';
-import { showAlert } from '@/utils/alert';
+
+/** What a movement becomes: a library exercise, or nothing (skipped). */
+type Choice = { exerciseId: string } | 'skip';
 
 export default function ImportPhotosScreen() {
+  const { templateId = '', dayId = '' } = useLocalSearchParams<{
+    templateId?: string;
+    dayId?: string;
+  }>();
+  const template = useTemplateStore((s) => s.templates.find((t) => t.id === templateId));
+  const day = template?.days.find((d) => d.id === dayId);
+  const importExercises = useTemplateStore((s) => s.importExercises);
+  const renameTemplate = useTemplateStore((s) => s.renameTemplate);
+
   const cards = useCardImportStore((s) => s.cards);
   const reading = useCardImportStore((s) => s.reading);
   const photoCount = useCardImportStore((s) => s.photos.length);
-  const units = useSettingsStore((s) => s.units);
-  const [saving, setSaving] = useState(false);
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
+  const [choosingRowId, setChoosingRowId] = useState<string | null>(null);
 
   // Starts reading once per batch. claimReading refuses a second start, so a
   // re-render or a re-mount cannot read the same photos twice.
@@ -42,61 +59,125 @@ export default function ImportPhotosScreen() {
   }, []);
 
   const store = useCardImportStore.getState;
-  const editCard = (key: string, update: (reading: Reading) => Reading) =>
+  const editCard = (key: string, update: (current: Reading) => Reading) =>
     store().updateCard(key, (card) =>
       card.reading ? { ...card, reading: update(card.reading) } : card
     );
 
-  const readings = cards.flatMap((card) => (card.reading ? [card.reading] : []));
+  // One workout goes into one day, so only a single card is copied.
+  const onlyCard = cards.length === 1 ? cards[0].reading : null;
+  const rows = onlyCard?.card.rows ?? [];
+  // Movements the day already has are not copied again.
+  const inDay = new Set(day?.exercises.map((ex) => ex.exerciseId) ?? []);
+
+  // The library exercise a movement becomes: the person's choice if they made one,
+  // otherwise the clear match, otherwise none.
+  const resolve = (row: ParsedRow): { exerciseId: string | undefined; skipped: boolean } => {
+    const choice = choices[row.id];
+    if (choice === 'skip') return { exerciseId: undefined, skipped: true };
+    if (choice) return { exerciseId: choice.exerciseId, skipped: false };
+    return { exerciseId: matchExercise(row.name), skipped: false };
+  };
+
+  const matchFor = (row: ParsedRow): MovementMatch => {
+    const { exerciseId, skipped } = resolve(row);
+    if (skipped) return { kind: 'skipped' };
+    if (!exerciseId) return { kind: 'unmatched' };
+    const exerciseName = getExerciseById(exerciseId)?.name ?? exerciseId;
+    return inDay.has(exerciseId)
+      ? { kind: 'present', exerciseName }
+      : { kind: 'matched', exerciseName };
+  };
+
+  const toggleSkip = (rowId: string) =>
+    setChoices((current) =>
+      current[rowId] === 'skip'
+        ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== rowId))
+        : { ...current, [rowId]: 'skip' as const }
+    );
+
+  const unsettled = rows.filter((row) => {
+    const { exerciseId, skipped } = resolve(row);
+    return !skipped && !exerciseId;
+  }).length;
+
+  const additions: ImportedExercise[] = [];
+  const queued = new Set<string>();
+  for (const row of rows) {
+    const { exerciseId, skipped } = resolve(row);
+    if (skipped || !exerciseId || inDay.has(exerciseId) || queued.has(exerciseId)) continue;
+    queued.add(exerciseId);
+    additions.push({ exerciseId, sets: row.sets, reps: String(row.reps) });
+  }
+
   const allClear =
     !reading &&
-    cards.length > 0 &&
-    cards.every((card) => card.reading !== null && saveProblems(card.reading).length === 0);
+    onlyCard !== null &&
+    saveProblems(onlyCard).length === 0 &&
+    unsettled === 0 &&
+    additions.length > 0 &&
+    template !== undefined &&
+    day !== undefined;
 
   const leave = () => {
     useCardImportStore.getState().reset();
     if (router.canGoBack()) router.back();
-    else router.replace('/(tabs)/history');
+    else router.replace('/(tabs)');
   };
 
   const handleSave = () => {
-    if (!allClear || saving) return;
-    setSaving(true);
-    const importedAt = new Date().toISOString();
-    const logs = readings.map((item) => cardToLog(item.card, { units, importedAt }));
-    const added = useWorkoutHistoryStore.getState().mergeLogs(logs);
-    const already = logs.length - added;
-    showAlert({
-      title: added === 1 ? 'Workout added' : 'Workouts added',
-      message: `${added} added${already > 0 ? `, ${already} already in your history` : ''}.`,
-      buttons: [{ text: 'OK', onPress: leave }],
-    });
+    if (!allClear || !template || !day || !onlyCard) return;
+    importExercises(template.id, day.id, additions);
+    const { title, subtitle } = onlyCard.card;
+    // A blank workout takes the card's name. A name the person has already given is kept.
+    if (title && template.name === BLANK_TEMPLATE_NAME) {
+      renameTemplate(template.id, subtitle ? `${title}: ${subtitle}` : title);
+    }
+    leave();
   };
 
-  if (photoCount === 0) {
+  if (!template || !day) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>No photos chosen.</Text>
+        <Text style={styles.emptyText}>That workout is no longer here.</Text>
         <Pressable style={styles.button} onPress={leave} accessibilityRole="button">
-          <Text style={styles.buttonText}>Back to history</Text>
+          <Text style={styles.buttonText}>Back</Text>
         </Pressable>
       </View>
     );
   }
 
+  if (photoCount === 0) {
+    return (
+      <View style={styles.empty}>
+        <Text style={styles.emptyText}>No photo chosen.</Text>
+        <Pressable style={styles.button} onPress={leave} accessibilityRole="button">
+          <Text style={styles.buttonText}>Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const count = additions.length;
   const summary = reading
     ? `Reading photo ${cards.length + 1} of ${photoCount}…`
     : allClear
-      ? `${cards.length} ${cards.length === 1 ? 'workout' : 'workouts'} ready to save.`
-      : 'Check the highlighted values before saving.';
+      ? `${count} ${count === 1 ? 'movement' : 'movements'} ready to add to ${day.name}.`
+      : 'Check the card below before adding it.';
 
   const note = reading
     ? 'Still reading photos.'
     : cards.some((card) => card.reading === null)
       ? 'Remove the photo that could not be read.'
-      : allClear
-        ? ''
-        : 'Resolve the highlighted values first.';
+      : cards.length > 1
+        ? 'Remove the extra cards. One workout goes into one day.'
+        : unsettled > 0
+          ? `${unsettled} ${unsettled === 1 ? 'movement needs' : 'movements need'} an exercise, or a skip.`
+          : additions.length === 0 && onlyCard !== null
+            ? 'Every movement is skipped or already in this workout. Nothing to add.'
+            : allClear
+              ? ''
+              : 'Resolve the highlighted values first.';
 
   return (
     <View style={styles.screen}>
@@ -108,10 +189,13 @@ export default function ImportPhotosScreen() {
             <ReviewCardView
               key={card.key}
               reading={card.reading}
+              matchFor={matchFor}
               onEdit={(path, text) => editCard(card.key, (r) => setField(r, path, text))}
               onKeep={(path) => editCard(card.key, (r) => clearFlag(r, path))}
               onRemoveRow={(index) => editCard(card.key, (r) => removeRow(r, index))}
               onRemoveCard={() => store().removeCard(card.key)}
+              onChoose={(rowId) => setChoosingRowId(rowId)}
+              onToggleSkip={toggleSkip}
             />
           ) : (
             <View key={card.key} style={styles.failed}>
@@ -137,17 +221,27 @@ export default function ImportPhotosScreen() {
           </Pressable>
           <Pressable
             onPress={handleSave}
-            disabled={!allClear || saving}
+            disabled={!allClear}
             accessibilityRole="button"
-            accessibilityState={{ disabled: !allClear || saving }}
-            style={[styles.button, (!allClear || saving) && styles.buttonDisabled]}
+            accessibilityState={{ disabled: !allClear }}
+            style={[styles.button, !allClear && styles.buttonDisabled]}
           >
             <Text style={styles.buttonText}>
-              Save {readings.length} {readings.length === 1 ? 'workout' : 'workouts'}
+              Add {count} {count === 1 ? 'exercise' : 'exercises'}
             </Text>
           </Pressable>
         </View>
       </View>
+
+      <ExercisePickerModal
+        visible={choosingRowId !== null}
+        title="Choose Exercise"
+        onClose={() => setChoosingRowId(null)}
+        onSelect={(exerciseId) => {
+          if (choosingRowId === null) return;
+          setChoices((current) => ({ ...current, [choosingRowId]: { exerciseId } }));
+        }}
+      />
     </View>
   );
 }

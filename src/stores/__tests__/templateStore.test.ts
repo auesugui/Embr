@@ -6,7 +6,7 @@
 // recalculation is asserted against the REAL engine functions — this is the
 // regression net for the "shadow calculator" guard.
 
-import { WORKOUT_TEMPLATES, getTemplateById } from '@/data';
+import { WORKOUT_TEMPLATES, getExerciseById, getTemplateById } from '@/data';
 import { appStorage } from '@/utils/storage';
 import { useTemplateStore } from '../templateStore';
 
@@ -27,6 +27,95 @@ describe('Template Store', () => {
   beforeEach(() => {
     useTemplateStore.getState().reset();
     jest.clearAllMocks();
+  });
+
+  describe('importExercises', () => {
+    const newDay = () => {
+      const id = useTemplateStore.getState().createBlankTemplate();
+      const dayId = useTemplateStore.getState().getTemplate(id)!.days[0].id;
+      return { id, dayId };
+    };
+    const dayExercises = (id: string) =>
+      useTemplateStore.getState().getTemplate(id)!.days[0].exercises;
+
+    it('copies each movement into the day with the sets and reps it was given', () => {
+      const { id, dayId } = newDay();
+
+      const result = useTemplateStore.getState().importExercises(id, dayId, [
+        { exerciseId: 'hanging_leg_raise', sets: 3, reps: '10' },
+        { exerciseId: 'db_bent_over_row', sets: 4, reps: '8' },
+      ]);
+
+      expect(result).toEqual({ added: 2, skipped: 0 });
+      expect(dayExercises(id).map((ex) => [ex.exerciseId, ex.sets, ex.reps])).toEqual([
+        ['hanging_leg_raise', 3, '10'],
+        ['db_bent_over_row', 4, '8'],
+      ]);
+    });
+
+    it('takes the rest the library gives each movement', () => {
+      const { id, dayId } = newDay();
+
+      useTemplateStore
+        .getState()
+        .importExercises(id, dayId, [{ exerciseId: 'hanging_leg_raise', sets: 3, reps: '10' }]);
+
+      expect(dayExercises(id)[0].restSeconds).toBe(
+        getExerciseById('hanging_leg_raise')!.defaultRestSeconds
+      );
+    });
+
+    it('skips a movement the day already has, so importing the same card twice adds nothing', () => {
+      const { id, dayId } = newDay();
+      const entries = [{ exerciseId: 'hanging_leg_raise', sets: 3, reps: '10' }];
+      useTemplateStore.getState().importExercises(id, dayId, entries);
+
+      const again = useTemplateStore.getState().importExercises(id, dayId, entries);
+
+      expect(again).toEqual({ added: 0, skipped: 1 });
+      expect(dayExercises(id)).toHaveLength(1);
+    });
+
+    it('copies a movement once when the same entry appears twice in one import', () => {
+      const { id, dayId } = newDay();
+
+      const result = useTemplateStore.getState().importExercises(id, dayId, [
+        { exerciseId: 'hanging_leg_raise', sets: 3, reps: '10' },
+        { exerciseId: 'hanging_leg_raise', sets: 3, reps: '10' },
+      ]);
+
+      expect(result).toEqual({ added: 1, skipped: 1 });
+      expect(dayExercises(id)).toHaveLength(1);
+    });
+
+    it('saves the copy once, with the rest of the template', () => {
+      const { id, dayId } = newDay();
+      jest.clearAllMocks();
+
+      useTemplateStore
+        .getState()
+        .importExercises(id, dayId, [{ exerciseId: 'hanging_leg_raise', sets: 3, reps: '10' }]);
+
+      expect(appStorage.setJSON).toHaveBeenCalledTimes(1);
+      expect(appStorage.setJSON).toHaveBeenCalledWith(
+        'personal_templates.full_state',
+        expect.objectContaining({ templates: expect.any(Array) })
+      );
+    });
+
+    it('does nothing for a built-in template, which is never edited in place', () => {
+      const before = getTemplateById(BUILT_IN_ID)!.days[0].exercises.length;
+
+      const result = useTemplateStore
+        .getState()
+        .importExercises(BUILT_IN_ID, `${BUILT_IN_ID}__day0`, [
+          { exerciseId: 'hanging_leg_raise', sets: 3, reps: '10' },
+        ]);
+
+      expect(result).toEqual({ added: 0, skipped: 1 });
+      expect(getTemplateById(BUILT_IN_ID)!.days[0].exercises).toHaveLength(before);
+      expect(appStorage.setJSON).not.toHaveBeenCalled();
+    });
   });
 
   describe('createBlankTemplate', () => {

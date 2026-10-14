@@ -120,9 +120,8 @@ describe('parseCard', () => {
 });
 
 describe('cardWarnings', () => {
-  it('flags a missing date and a missing movement list', () => {
+  it('flags a missing movement list, and not a missing date, since a copy has no date', () => {
     expect(cardWarnings(parseCard(['EXERCISE SETS BEST SET']))).toEqual([
-      'No date found on this card.',
       'No movements found on this card.',
     ]);
   });

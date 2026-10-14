@@ -60,6 +60,19 @@ interface BlockPatch {
   rounds?: number;
 }
 
+/** One movement to copy into a day. A template has no weights, so none are carried. */
+export interface ImportedExercise {
+  exerciseId: string;
+  sets: number;
+  reps: string;
+}
+
+/** What an import did: movements added, and entries skipped because the day already had them. */
+export interface ImportResult {
+  added: number;
+  skipped: number;
+}
+
 interface TemplateActions {
   /** Create an empty single-day personal template from scratch. Returns the new id. */
   createBlankTemplate: () => string;
@@ -69,6 +82,12 @@ interface TemplateActions {
   renameTemplate: (id: string, name: string) => void;
   /** Append an exercise (by exerciseId) to a day, using the exercise's defaults. */
   addExercise: (templateId: string, dayId: string, exerciseId: string) => void;
+  /**
+   * Copy movements into a day in one save. Each keeps the sets and reps it was given and
+   * takes the library's rest. A movement the day already has is skipped, so importing the
+   * same card twice adds nothing.
+   */
+  importExercises: (templateId: string, dayId: string, entries: ImportedExercise[]) => ImportResult;
   /** Remove the exercise at `exerciseIndex` from a day. */
   removeExercise: (templateId: string, dayId: string, exerciseIndex: number) => void;
   /** Swap the exerciseId at `exerciseIndex` (keeps sets/reps/rest). */
@@ -157,6 +176,9 @@ const recalcDistributions = (t: WorkoutTemplateDefinition): WorkoutTemplateDefin
 /** Marks ids for templates built from scratch rather than copied. */
 const BLANK_ORIGIN = 'custom';
 
+/** The name a blank template starts with, until the person names it. */
+export const BLANK_TEMPLATE_NAME = 'New Workout';
+
 /** Collision-resistant id for a personal copy. Never matches a built-in id. */
 const generateTemplateId = (sourceId: string): string => {
   const suffix = Math.random().toString(36).slice(2, 8);
@@ -202,7 +224,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
     const blank: WorkoutTemplateDefinition = {
       id: newId,
-      name: 'New Workout',
+      name: BLANK_TEMPLATE_NAME,
       description: '',
       // `category` and `difficulty` are required by the type and drive nothing
       // for a personal copy beyond the card's badge. Neutral defaults.
@@ -300,6 +322,38 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       persistState(nextState).catch(console.warn);
       return nextState;
     });
+  },
+
+  importExercises: (templateId, dayId, entries) => {
+    const template = get().templates.find((t) => t.id === templateId);
+    const day = template?.days.find((d) => d.id === dayId);
+    if (!template || !day) return { added: 0, skipped: entries.length };
+
+    const present = new Set(day.exercises.map((ex) => ex.exerciseId));
+    const additions: TemplateExercise[] = [];
+    for (const entry of entries) {
+      if (present.has(entry.exerciseId)) continue;
+      present.add(entry.exerciseId);
+      additions.push({ ...exerciseFromId(entry.exerciseId), sets: entry.sets, reps: entry.reps });
+    }
+    if (additions.length === 0) return { added: 0, skipped: entries.length };
+
+    const now = Date.now();
+    set((state) => {
+      if (!state.templates.some((t) => t.id === templateId)) return state;
+      const templates = state.templates.map((t) => {
+        if (t.id !== templateId) return t;
+        const days = t.days.map((d) =>
+          d.id === dayId ? { ...d, exercises: [...d.exercises, ...additions] } : d
+        );
+        return recalcDistributions({ ...t, days, updatedAt: now });
+      });
+      const nextState = { templates };
+      persistState(nextState).catch(console.warn);
+      return nextState;
+    });
+
+    return { added: additions.length, skipped: entries.length - additions.length };
   },
 
   removeExercise: (templateId, dayId, exerciseIndex) => {
