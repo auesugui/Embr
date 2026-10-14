@@ -24,7 +24,19 @@ const EXERCISE_IDS = new Set(EXERCISE_DATABASE.map((e) => e.id));
  * - `hollow_rock`, `v_up` — added to the core list; no rendered diagram yet.
  *   Both are dynamic movements a two-panel still reads poorly for anyway.
  */
-const KNOWN_MISSING = ['cable_crunch', 'bodyweight_squat', 'hollow_rock', 'v_up'];
+const KNOWN_MISSING = [
+  'cable_crunch',
+  'bodyweight_squat',
+  'hollow_rock',
+  'v_up',
+  // The kettlebell movements from the Boostcamp cards. No diagrams yet.
+  'kettlebell_bent_over_row',
+  'kettlebell_clean_and_press',
+  'kettlebell_halo',
+  'kettlebell_snatch',
+  'kettlebell_swing',
+  'single_arm_kettlebell_swing',
+];
 
 describe('exercise demos', () => {
   it('has a file on disk for every exercise it claims to cover', () => {

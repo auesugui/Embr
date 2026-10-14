@@ -22,8 +22,16 @@ describe('matchExercise', () => {
     expect(matchExercise('Shrug (Dumbbell)')).toBe('db_shrugs');
   });
 
+  it('matches the kettlebell movements on the Boostcamp cards', () => {
+    expect(matchExercise('Kettlebell Swing')).toBe('kettlebell_swing');
+    expect(matchExercise('Single Arm Kettlebell Swing')).toBe('single_arm_kettlebell_swing');
+    expect(matchExercise('Kettlebell Halo')).toBe('kettlebell_halo');
+    expect(matchExercise('Snatch (Kettlebell)')).toBe('kettlebell_snatch');
+    expect(matchExercise('Kettlebell Clean and Press')).toBe('kettlebell_clean_and_press');
+    expect(matchExercise('Bent Over Row (Kettlebell)')).toBe('kettlebell_bent_over_row');
+  });
+
   it('leaves a movement with no clear match for the person to choose', () => {
-    expect(matchExercise('Kettlebell Swing')).toBeUndefined();
     expect(matchExercise('Chest Press (Dumbbell)')).toBeUndefined();
     expect(matchExercise('Incline Chest Fly (Dumbbell)')).toBeUndefined();
   });
