@@ -1,14 +1,16 @@
 // =============================================================================
 // ReviewCardView — one card on the review screen
 // =============================================================================
-// The card as read, with its movements editable and every disagreement flagged.
-// The footer repeats what the card itself says about the workout, so the person can
-// check the read against the photo at a glance.
+// The card as read, with its movements editable and every disagreement flagged. Each
+// movement shows the library exercise it will be copied as. The footer repeats what the
+// card itself says about the workout, so the person can check the read against the
+// photo at a glance.
 
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FieldFlag } from '@/components/workout/photo-import/ReviewFlags';
-import { ReviewRow } from '@/components/workout/photo-import/ReviewRow';
+import { type MovementMatch, ReviewRow } from '@/components/workout/photo-import/ReviewRow';
+import type { ParsedRow } from '@/lib/card-import/parse-card';
 import { cardWarnings } from '@/lib/card-import/parse-card';
 import type { Reading } from '@/lib/card-import/reconcile';
 import { formatCardDate } from '@/lib/card-import/review';
@@ -16,18 +18,24 @@ import { radius, roles, spacing, textStyles } from '@/theme';
 
 interface ReviewCardViewProps {
   reading: Reading;
+  matchFor: (row: ParsedRow) => MovementMatch;
   onEdit: (path: string, text: string) => void;
   onKeep: (path: string) => void;
   onRemoveRow: (index: number) => void;
   onRemoveCard: () => void;
+  onChoose: (rowId: string) => void;
+  onToggleSkip: (rowId: string) => void;
 }
 
 export function ReviewCardView({
   reading,
+  matchFor,
   onEdit,
   onKeep,
   onRemoveRow,
   onRemoveCard,
+  onChoose,
+  onToggleSkip,
 }: ReviewCardViewProps) {
   const { card, disagreements } = reading;
   const flagsFor = (prefix: string) =>
@@ -48,17 +56,7 @@ export function ReviewCardView({
 
       <View style={styles.dateLine}>
         {card.subtitle ? <Text style={styles.subtitle}>{card.subtitle}</Text> : null}
-        {card.date ? (
-          <Text style={styles.date}>{formatCardDate(card.date)}</Text>
-        ) : (
-          <TextInput
-            style={styles.dateInput}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={roles.textTertiary}
-            onChangeText={(text) => onEdit('date', text)}
-            accessibilityLabel="Workout date"
-          />
-        )}
+        {card.date ? <Text style={styles.date}>{formatCardDate(card.date)}</Text> : null}
       </View>
       {headerFlags.map((flag) => (
         <FieldFlag key={flag.path} flag={flag} onChoose={(v) => onEdit(flag.path, v)} />
@@ -70,9 +68,12 @@ export function ReviewCardView({
           index={index}
           row={row}
           flags={flagsFor(`rows.${index}`)}
+          match={matchFor(row)}
           onEdit={onEdit}
           onKeep={onKeep}
           onRemove={onRemoveRow}
+          onChoose={() => onChoose(row.id)}
+          onToggleSkip={() => onToggleSkip(row.id)}
         />
       ))}
 
@@ -119,16 +120,6 @@ const styles = StyleSheet.create({
   date: {
     ...textStyles.bodySmall,
     color: roles.textSecondary,
-  },
-  dateInput: {
-    ...textStyles.bodySmall,
-    color: roles.textPrimary,
-    borderWidth: 1,
-    borderColor: roles.accent,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    minWidth: 140,
   },
   footer: {
     ...textStyles.caption,

@@ -102,10 +102,12 @@ export function parseCard(rawLines: string[]): ParsedCard {
   return card;
 }
 
-/** Problems with a card on its own. None of them block a read; the review screen shows them. */
+/**
+ * Problems with a card's movements and sets. None of them block a read; the review screen
+ * shows them. A missing date is not a problem: a copied workout has none.
+ */
 export function cardWarnings(card: ParsedCard): string[] {
   const warnings: string[] = [];
-  if (!card.date) warnings.push('No date found on this card.');
   if (card.rows.length === 0) warnings.push('No movements found on this card.');
   const sets = card.rows.reduce((sum, row) => sum + row.sets, 0);
   if (card.totalSets !== null && sets !== card.totalSets) {
