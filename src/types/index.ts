@@ -250,6 +250,11 @@ export interface WorkoutLog {
    * recomputed from the set rows after the fact.
    */
   blockTimes?: Record<string, number>;
+  /**
+   * Where the workout came from, when it was not logged in the app. A photo of a
+   * workout card carries no streak, so history shows the streak as unknown.
+   */
+  importedFrom?: 'photo';
 }
 
 export interface PRRecord {

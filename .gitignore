@@ -69,3 +69,6 @@ expo-env.d.ts
 
 # Exercise demo source PNGs (~130MB) — local only; shipped JPEGs live in public/
 docs/03-workout-tracker/exercise-demo-refs/
+
+# OCR engine copied from node_modules by scripts/copy-ocr-assets.js (generated)
+public/ocr/
