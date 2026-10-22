@@ -111,6 +111,14 @@ describe('volume and top weight', () => {
     expect(formatWeight(22.5, 'kg')).toBe('22.5 kg');
     expect(formatWeight(22.125, 'kg')).toBe('22.125 kg');
     expect(formatWeight(1234.567, 'lb')).toBe('1,234.567 lb');
-    expect(formatWeight(0.1 + 0.2, 'kg')).toBe('0.3 kg');
+    expect(formatWeight(22.1250001, 'kg')).toBe('22.1250001 kg');
+  });
+
+  it('strips float noise from fractional volume sums', () => {
+    const exercise = makeExercise({
+      sets: [makeSet({ weight: 0.1, reps: 1 }), makeSet({ weight: 0.2, reps: 1 })],
+    });
+
+    expect(exerciseVolume(exercise)).toBe(0.3);
   });
 });
