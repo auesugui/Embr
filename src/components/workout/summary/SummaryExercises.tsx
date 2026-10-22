@@ -17,7 +17,7 @@ import {
   isTimed,
 } from '@/lib/blocks';
 import { exerciseMetric, formatTotal } from '@/lib/metric';
-import { exerciseVolume, formatWeight, topWeight } from '@/lib/workout-summary';
+import { formatWeight, topWeight, totalVolume } from '@/lib/workout-summary';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import type { Exercise, WeightUnit, WorkoutBlock } from '@/types';
 
@@ -57,7 +57,7 @@ export function SummaryExercises({
         const timed = isTimed(block.mode);
         const finish = block.id ? blockTimes?.[block.id] : undefined;
 
-        const volume = entries.reduce((sum, { exercise }) => sum + exerciseVolume(exercise), 0);
+        const volume = totalVolume(entries.map(({ exercise }) => exercise));
         const volumeTag = volume > 0 && (
           <View style={styles.volume}>
             <Text style={styles.volumeValue}>{formatWeight(volume, units)}</Text>

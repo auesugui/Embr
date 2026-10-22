@@ -34,6 +34,11 @@ export function exerciseVolume(exercise: Exercise): number {
   );
 }
 
+/** Volume across exercises: a whole workout or one block. */
+export function totalVolume(exercises: Exercise[]): number {
+  return stripFloatNoise(exercises.reduce((sum, e) => sum + exerciseVolume(e), 0));
+}
+
 /** Summing fractional loads leaves noise like 0.1 + 0.2 = 0.30000000000000004. */
 function stripFloatNoise(value: number): number {
   return Math.round(value * 1e6) / 1e6;
@@ -59,6 +64,6 @@ export function calculateWorkoutSummary(exercises: Exercise[], duration: number)
     duration,
     totalReps: loggedSets.reduce((sum, s) => sum + (s.reps ?? 0), 0),
     totalSets: loggedSets.length,
-    totalVolume: stripFloatNoise(exercises.reduce((sum, e) => sum + exerciseVolume(e), 0)),
+    totalVolume: totalVolume(exercises),
   };
 }

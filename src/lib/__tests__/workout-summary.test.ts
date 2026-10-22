@@ -13,6 +13,7 @@ import {
   exerciseVolume,
   formatWeight,
   topWeight,
+  totalVolume,
 } from '../workout-summary';
 
 const makeSet = (overrides: Partial<LoggedSet> = {}): LoggedSet => ({
@@ -120,5 +121,15 @@ describe('volume and top weight', () => {
     });
 
     expect(exerciseVolume(exercise)).toBe(0.3);
+  });
+
+  it('strips float noise from volume summed across exercises, as a block row does', () => {
+    const block = [
+      makeExercise({ sets: [makeSet({ weight: 0.1, reps: 1 })] }),
+      makeExercise({ id: 'ex-2', sets: [makeSet({ weight: 0.2, reps: 1 })] }),
+    ];
+
+    expect(totalVolume(block)).toBe(0.3);
+    expect(calculateWorkoutSummary(block, 60).totalVolume).toBe(0.3);
   });
 });
