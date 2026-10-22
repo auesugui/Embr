@@ -17,8 +17,9 @@ import {
   isTimed,
 } from '@/lib/blocks';
 import { exerciseMetric, formatTotal } from '@/lib/metric';
+import { exerciseVolume, formatWeight, topWeight } from '@/lib/workout-summary';
 import { colors, radius, spacing, textStyles } from '@/theme';
-import type { Exercise, WorkoutBlock } from '@/types';
+import type { Exercise, WeightUnit, WorkoutBlock } from '@/types';
 
 interface SummaryExercisesProps {
   exercises: Exercise[];
@@ -26,6 +27,7 @@ interface SummaryExercisesProps {
   blocks: WorkoutBlock[] | undefined;
   /** Recorded finish times for `for_time` blocks, keyed by block key. */
   blockTimes: Record<string, number> | undefined;
+  units: WeightUnit;
   /** Position in the screen's staggered reveal. */
   revealIndex: number;
 }
@@ -34,6 +36,7 @@ export function SummaryExercises({
   exercises,
   blocks,
   blockTimes,
+  units,
   revealIndex,
 }: SummaryExercisesProps) {
   return (
@@ -54,18 +57,33 @@ export function SummaryExercises({
         const timed = isTimed(block.mode);
         const finish = block.id ? blockTimes?.[block.id] : undefined;
 
-        // A lone exercise keeps exactly the line it always had.
+        const volume = entries.reduce((sum, { exercise }) => sum + exerciseVolume(exercise), 0);
+        const volumeTag = volume > 0 && (
+          <View style={styles.volume}>
+            <Text style={styles.volumeValue}>{formatWeight(volume, units)}</Text>
+            <Text style={styles.volumeLabel}>volume</Text>
+          </View>
+        );
+
         if (entries.length === 1 && !timed) {
           const [{ exercise }] = entries;
           const loggedSets = exercise.sets.filter((s) => s.logged);
+          const top = topWeight(exercise);
+          const load =
+            metric === 'time'
+              ? ''
+              : top > 0
+                ? ` · top ${formatWeight(top, units)}`
+                : ' · bodyweight';
           return (
             <View key={exercise.id} style={styles.exerciseRow}>
               <View style={styles.exerciseInfo}>
                 <Text style={styles.exerciseName}>{exercise.name}</Text>
                 <Text style={styles.exerciseSets}>
-                  {`${loggedSets.length} ${loggedSets.length === 1 ? 'set' : 'sets'} · ${formatTotal(reps, metric)}`}
+                  {`${loggedSets.length} ${loggedSets.length === 1 ? 'set' : 'sets'} · ${formatTotal(reps, metric)}${load}`}
                 </Text>
               </View>
+              {volumeTag}
               {anyPR && (
                 <View style={styles.prTag}>
                   <Text style={styles.prTagText}>PR</Text>
@@ -94,6 +112,7 @@ export function SummaryExercises({
                 }`}
               </Text>
             </View>
+            {volumeTag}
             {anyPR && (
               <View style={styles.prTag}>
                 <Text style={styles.prTagText}>PR</Text>
@@ -122,6 +141,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: spacing[3],
     paddingVertical: spacing[2],
     borderBottomWidth: 1,
     borderBottomColor: colors.ui.border,
@@ -137,6 +157,18 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.text.muted,
     marginTop: spacing[1],
+  },
+  volume: {
+    alignItems: 'flex-end',
+  },
+  volumeValue: {
+    ...textStyles.label,
+    color: colors.text.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  volumeLabel: {
+    ...textStyles.caption,
+    color: colors.text.muted,
   },
   prTag: {
     backgroundColor: colors.reward.pr + '20',

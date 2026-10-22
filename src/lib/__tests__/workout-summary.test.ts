@@ -8,7 +8,12 @@
 
 import type { Exercise, LoggedSet } from '@/types';
 import { describe, expect, it } from '@jest/globals';
-import { calculateWorkoutSummary } from '../workout-summary';
+import {
+  calculateWorkoutSummary,
+  exerciseVolume,
+  formatWeight,
+  topWeight,
+} from '../workout-summary';
 
 const makeSet = (overrides: Partial<LoggedSet> = {}): LoggedSet => ({
   reps: 10,
@@ -57,5 +62,51 @@ describe('calculateWorkoutSummary — display aggregates', () => {
 
     expect(summary.totalSets).toBe(0);
     expect(summary.totalReps).toBe(0);
+    expect(summary.totalVolume).toBe(0);
+  });
+});
+
+describe('volume and top weight', () => {
+  it('sums weight × reps over logged sets only', () => {
+    const exercise = makeExercise({
+      sets: [
+        makeSet({ weight: 50, reps: 12 }),
+        makeSet({ weight: 50, reps: 10, logged: false }),
+        makeSet({ weight: 45, reps: 10 }),
+      ],
+    });
+
+    expect(exerciseVolume(exercise)).toBe(1050);
+    expect(topWeight(exercise)).toBe(50);
+  });
+
+  it('gives bodyweight sets no volume and no top weight', () => {
+    const exercise = makeExercise({ sets: [makeSet({ weight: null, reps: 10 })] });
+
+    expect(exerciseVolume(exercise)).toBe(0);
+    expect(topWeight(exercise)).toBe(0);
+  });
+
+  it('gives a weighted hold no volume, since its reps are seconds', () => {
+    const plank = makeExercise({ metric: 'time', sets: [makeSet({ weight: 25, reps: 60 })] });
+
+    expect(exerciseVolume(plank)).toBe(0);
+  });
+
+  it('totals volume across exercises', () => {
+    const summary = calculateWorkoutSummary(
+      [
+        makeExercise({ sets: [makeSet({ weight: 100, reps: 5 })] }),
+        makeExercise({ id: 'ex-2', sets: [makeSet({ weight: 20, reps: 10 })] }),
+      ],
+      600
+    );
+
+    expect(summary.totalVolume).toBe(700);
+  });
+
+  it('formats volume rounded with thousands separators', () => {
+    expect(formatWeight(12450.4, 'lb')).toBe('12,450 lb');
+    expect(formatWeight(540, 'kg')).toBe('540 kg');
   });
 });

@@ -26,23 +26,33 @@ import { haptics } from '@/utils/haptics';
 
 /** Source images are 3:4 two-panel diagrams. */
 const DEMO_ASPECT_RATIO = 3 / 4;
+const OVERLAY_MAX_WIDTH = 320;
+/** Two caption lines plus the margins around the overlay image. */
+const OVERLAY_CAPTION_SPACE = 68;
+const OVERLAY_MIN_IMAGE_HEIGHT = 120;
 
 interface ExerciseDemoProps {
   /** Exercise id — matches the demo filename. */
   exerciseId: string;
   /** 'card' starts collapsed behind a toggle; 'overlay' renders always-open. */
   variant?: 'card' | 'overlay';
+  /** Overlay only: the height available for the image and its caption. */
+  maxHeight?: number;
 }
 
-export function ExerciseDemo({ exerciseId, variant = 'card' }: ExerciseDemoProps) {
+export function ExerciseDemo({ exerciseId, variant = 'card', maxHeight }: ExerciseDemoProps) {
   const [expanded, setExpanded] = useState(variant === 'overlay');
   const [failed, setFailed] = useState(false);
 
   const uri = getExerciseDemoUri(exerciseId);
+  const imageHeight = (maxHeight ?? Number.POSITIVE_INFINITY) - OVERLAY_CAPTION_SPACE;
+  const overlayWidth = Math.min(OVERLAY_MAX_WIDTH, imageHeight * DEMO_ASPECT_RATIO);
 
   // No demo for this exercise, not on web, or the image 404'd — render nothing
-  // rather than a broken frame or an empty labelled box.
+  // rather than a broken frame or an empty labelled box. Same when the overlay
+  // has too little room for a diagram anyone could read.
   if (!uri || Platform.OS !== 'web' || failed) return null;
+  if (variant === 'overlay' && imageHeight < OVERLAY_MIN_IMAGE_HEIGHT) return null;
 
   const image = (
     <View style={styles.imageWrap}>
@@ -58,7 +68,7 @@ export function ExerciseDemo({ exerciseId, variant = 'card' }: ExerciseDemoProps
   );
 
   if (variant === 'overlay') {
-    return <View style={styles.overlayContainer}>{image}</View>;
+    return <View style={[styles.overlayContainer, { maxWidth: overlayWidth }]}>{image}</View>;
   }
 
   return (
@@ -93,7 +103,6 @@ const styles = StyleSheet.create({
   },
   overlayContainer: {
     width: '100%',
-    maxWidth: 320,
     marginBottom: spacing[4],
   },
   toggle: {

@@ -16,10 +16,11 @@ import { RevealRow } from '@/components/celebration';
 import { Flame } from '@/components/icons';
 import { SummaryExercises } from '@/components/workout/summary/SummaryExercises';
 import { uniformMetric } from '@/lib/metric';
-import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
+import { type WorkoutSummary, calculateWorkoutSummary, formatWeight } from '@/lib/workout-summary';
 import {
   useBaselineStore,
   usePlayerStore,
+  useSettingsStore,
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
@@ -41,6 +42,8 @@ export default function WorkoutSummaryScreen() {
     workoutId ? s.logs.find((l) => l.id === workoutId) : undefined
   );
   const hydrated = useWorkoutHistoryStore((s) => s.hydrated);
+  // Logs store no unit, so like History this reads the current setting.
+  const units = useSettingsStore((s) => s.units);
 
   // Post-save UI state: swaps the footer to a deliberate "Done" rather than
   // auto-exiting the screen that closes out a workout.
@@ -150,30 +153,33 @@ export default function WorkoutSummaryScreen() {
           </Text>
         </RevealRow>
 
-        {/* Stats */}
+        {/* Stats, two by two so the duration fits on one line */}
         <RevealRow index={2} style={styles.statsCard}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{formatDuration(summary.duration)}</Text>
-            <Text style={styles.statLabel}>Duration</Text>
+          <View style={styles.statRow}>
+            <View style={[styles.statItem, styles.statItemLeft]}>
+              <Text style={styles.statValue}>{formatDuration(summary.duration)}</Text>
+              <Text style={styles.statLabel}>Duration</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{formatWeight(summary.totalVolume, units)}</Text>
+              <Text style={styles.statLabel}>Volume</Text>
+            </View>
           </View>
 
-          <View style={styles.statDivider} />
-
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{summary.totalSets}</Text>
-            <Text style={styles.statLabel}>Sets</Text>
-          </View>
-
-          <View style={styles.statDivider} />
-
-          <View style={styles.statItem}>
-            {/* A workout of nothing but holds counts seconds, not reps. A
-                mixed one sums both and keeps the older label — one word cannot
-                say "reps and seconds", and "Reps" is what the bulk of it is. */}
-            <Text style={styles.statValue}>{summary.totalReps}</Text>
-            <Text style={styles.statLabel}>
-              {uniformMetric(summary.exercises) === 'time' ? 'Seconds' : 'Reps'}
-            </Text>
+          <View style={[styles.statRow, styles.statRowBottom]}>
+            <View style={[styles.statItem, styles.statItemLeft]}>
+              <Text style={styles.statValue}>{summary.totalSets}</Text>
+              <Text style={styles.statLabel}>Sets</Text>
+            </View>
+            <View style={styles.statItem}>
+              {/* A workout of nothing but holds counts seconds, not reps. A
+                  mixed one sums both and keeps the older label — one word cannot
+                  say "reps and seconds", and "Reps" is what the bulk of it is. */}
+              <Text style={styles.statValue}>{summary.totalReps}</Text>
+              <Text style={styles.statLabel}>
+                {uniformMetric(summary.exercises) === 'time' ? 'Seconds' : 'Reps'}
+              </Text>
+            </View>
           </View>
         </RevealRow>
 
@@ -181,6 +187,7 @@ export default function WorkoutSummaryScreen() {
           exercises={summary.exercises}
           blocks={log.blocks}
           blockTimes={log.blockTimes}
+          units={units}
           revealIndex={3}
         />
       </ScrollView>
@@ -259,15 +266,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   statsCard: {
-    flexDirection: 'row',
     backgroundColor: colors.background.secondary,
     borderRadius: radius.lg,
-    padding: spacing[4],
     marginBottom: spacing[4],
+  },
+  statRow: {
+    flexDirection: 'row',
+  },
+  statRowBottom: {
+    borderTopWidth: 1,
+    borderTopColor: colors.ui.border,
   },
   statItem: {
     flex: 1,
-    alignItems: 'center',
+    padding: spacing[4],
+  },
+  statItemLeft: {
+    borderRightWidth: 1,
+    borderRightColor: colors.ui.border,
   },
   statValue: {
     ...textStyles.h3,
@@ -277,11 +293,6 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.text.muted,
     marginTop: spacing[1],
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: colors.ui.border,
-    marginHorizontal: spacing[2],
   },
   footer: {
     paddingHorizontal: spacing[4],
