@@ -80,4 +80,56 @@ describe('customExerciseStore', () => {
 
     expect(getExerciseById('custom-saved')?.name).toBe('Saved Move');
   });
+
+  it('keeps both exercises when two saves overlap', async () => {
+    let finishFirst: () => void = () => {};
+    setJSON.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        })
+    );
+
+    const first = useCustomExerciseStore.getState().addExercise(goblet);
+    const second = useCustomExerciseStore.getState().addExercise({ ...goblet, name: 'Wall Sit' });
+    // The first write is in flight, and the second save must wait behind it.
+    while (setJSON.mock.calls.length === 0) await new Promise((r) => setTimeout(r, 0));
+    expect(setJSON).toHaveBeenCalledTimes(1);
+    finishFirst();
+    await Promise.all([first, second]);
+
+    const ids = useCustomExerciseStore.getState().exercises.map((e) => e.id);
+    expect(ids).toEqual(['custom-wall-sit', 'custom-goblet-squat']);
+    expect(setJSON).toHaveBeenLastCalledWith('custom_exercises.full_state', {
+      exercises: useCustomExerciseStore.getState().exercises,
+    });
+  });
+
+  it('lets a save run after an earlier one failed', async () => {
+    setJSON.mockRejectedValueOnce(new Error('quota'));
+
+    const failed = useCustomExerciseStore.getState().addExercise(goblet);
+    const next = useCustomExerciseStore.getState().addExercise({ ...goblet, name: 'Wall Sit' });
+
+    await expect(failed).rejects.toThrow('quota');
+    expect((await next).ok).toBe(true);
+    expect(useCustomExerciseStore.getState().exercises.map((e) => e.id)).toEqual([
+      'custom-wall-sit',
+    ]);
+  });
+
+  it('skips malformed entries from a restored backup', async () => {
+    const valid = { ...searchExercises('')[0], id: 'custom-saved', name: 'Saved Move' };
+    getJSON.mockResolvedValueOnce({
+      exercises: [null, 'text', { id: 'custom-no-name' }, { ...valid, id: 'bench' }, valid],
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await useCustomExerciseStore.getState().hydrate();
+
+    expect(useCustomExerciseStore.getState().exercises.map((e) => e.id)).toEqual(['custom-saved']);
+    expect(searchExercises('saved move').map((e) => e.id)).toEqual(['custom-saved']);
+    expect(warn).toHaveBeenCalledWith('Skipped 4 malformed custom exercise(s).');
+    warn.mockRestore();
+  });
 });

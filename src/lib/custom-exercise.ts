@@ -54,6 +54,32 @@ function uniqueId(name: string, exercises: ExerciseDefinition[]): string {
   return id;
 }
 
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+/**
+ * True for a saved entry with every field the lookups, picker rows and template
+ * defaults read. Used on hydrate, where the data may come from a restored file.
+ */
+export function isStoredExercise(value: unknown): value is ExerciseDefinition {
+  if (typeof value !== 'object' || value === null) return false;
+  const e = value as Record<string, unknown>;
+  return (
+    typeof e.id === 'string' &&
+    e.id.startsWith('custom-') &&
+    typeof e.name === 'string' &&
+    e.name.trim() !== '' &&
+    typeof e.primaryMuscle === 'string' &&
+    isStringArray(e.muscleGroups) &&
+    isStringArray(e.equipment) &&
+    typeof e.movementPattern === 'string' &&
+    typeof e.defaultSets === 'number' &&
+    typeof e.defaultReps === 'string' &&
+    typeof e.defaultRestSeconds === 'number' &&
+    (e.metric === undefined || e.metric === 'reps' || e.metric === 'time')
+  );
+}
+
 export function buildCustomExercise(
   input: CustomExerciseInput,
   exercises: ExerciseDefinition[]
