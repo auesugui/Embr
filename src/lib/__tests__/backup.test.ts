@@ -8,6 +8,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { STORAGE_KEYS } from '@/utils/storage';
 import {
   BACKUP_FORMAT_VERSION,
   BACKUP_KEYS,
@@ -252,6 +253,32 @@ describe('restoreBackup', () => {
 // key as the streak and the name. That is currently an accident of the key
 // list rather than a decision anyone wrote down — this test makes it a
 // decision. A restore that loses your face is a bug report.
+
+// -----------------------------------------------------------------------------
+// A new persisted slice is left out of backups unless someone remembers to add
+// it, and nothing else notices. This makes the choice explicit: every slice is
+// backed up or named here with the reason it is not.
+
+const NOT_BACKED_UP: Record<string, string> = {
+  'pet.full_state': 'game layer, removed (ADR-0014)',
+  'player.fp.full_state': 'FP engine, removed (ADR-0015)',
+  'tower.full_state': 'game layer, removed (ADR-0014)',
+  'session.full_state': 'the live session in progress, not a record',
+};
+
+describe('backup coverage', () => {
+  const slices = Object.values(STORAGE_KEYS).flatMap((group) =>
+    typeof group === 'object' && 'FULL_STATE' in group ? [group.FULL_STATE as string] : []
+  );
+
+  it.each(slices)('%s is backed up or listed as not backed up', (key) => {
+    expect(BACKUP_KEYS.includes(key) || key in NOT_BACKED_UP).toBe(true);
+  });
+
+  it('lists nothing as not backed up that is backed up', () => {
+    expect(Object.keys(NOT_BACKED_UP).filter((key) => BACKUP_KEYS.includes(key))).toEqual([]);
+  });
+});
 
 describe('custom exercises', () => {
   it('carries them, since templates refer to them only by id', async () => {
