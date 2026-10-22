@@ -19,7 +19,6 @@
 export const ROUTE_TITLES = {
   'workout/import-photos': 'Review workout',
   'workout/loadout': 'Start Workout',
-  'workout/add': 'Add Workout',
   'workout/summary': 'Workout Summary',
   'workout/session': 'Workout',
   'workout/template/[id]': 'Template',

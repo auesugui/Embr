@@ -31,3 +31,4 @@ export { useBaselineStore } from './baselineStore';
 export { useTemplateStore } from './templateStore';
 export { useWorkoutHistoryStore } from './workoutHistoryStore';
 export { useCardImportStore } from './cardImportStore';
+export { useCustomExerciseStore } from './customExerciseStore';

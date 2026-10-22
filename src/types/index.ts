@@ -194,24 +194,6 @@ export interface Exercise {
    * is genuinely counted. See `src/lib/metric.ts`.
    */
   metric?: Metric;
-  /**
-   * Set on a cardio entry typed in by hand. Its `sets` are empty. Strength
-   * exercises omit it, so every log written before cardio existed reads as
-   * before.
-   */
-  cardio?: CardioDetail;
-}
-
-/** The unit a distance was typed in. Like weight, values are never converted. */
-export type DistanceUnit = 'mi' | 'km';
-
-export interface CardioDetail {
-  durationSeconds: number;
-  /** Absent when no distance was typed. */
-  distance?: number;
-  distanceUnit?: DistanceUnit;
-  /** Rate of perceived exertion, a whole number from 1 to 10. */
-  rpe?: number;
 }
 
 export interface WorkoutSession {

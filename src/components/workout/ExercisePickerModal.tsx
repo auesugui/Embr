@@ -1,8 +1,9 @@
 // =============================================================================
 // IronQuest Exercise Picker Modal
 // =============================================================================
-// Searchable list of the built-in exercise database. Used by the template
-// editor (issue #5) to swap an exercise or add one to a personal copy.
+// Searchable list of the exercise library, built-ins plus the user's own. Used
+// by the template editor (issue #5) to swap an exercise or add one to a
+// personal copy. A search that names no exercise offers to create it.
 
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
@@ -17,9 +18,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChevronRight } from '@/components/icons';
-import { type ExerciseDefinition, searchExercises } from '@/data';
+import { ChevronRight, Plus } from '@/components/icons';
+import { CreateExerciseForm } from '@/components/workout/CreateExerciseForm';
+import { type ExerciseDefinition, allExercises, searchExercises } from '@/data';
 import { useKeyboardInset } from '@/hooks';
+import { findExerciseByName, toExerciseName } from '@/lib/custom-exercise';
+import { useCustomExerciseStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
 
@@ -34,9 +38,11 @@ interface ExercisePickerModalProps {
 
 function ExerciseRow({
   exercise,
+  isOwn,
   onSelect,
 }: {
   exercise: ExerciseDefinition;
+  isOwn: boolean;
   onSelect: (id: string) => void;
 }) {
   const handle = () => {
@@ -46,7 +52,10 @@ function ExerciseRow({
   return (
     <Pressable style={styles.row} onPress={handle}>
       <View style={styles.rowInfo}>
-        <Text style={styles.rowName}>{exercise.name}</Text>
+        <View style={styles.rowNameLine}>
+          <Text style={styles.rowName}>{exercise.name}</Text>
+          {isOwn && <Text style={styles.ownBadge}>YOURS</Text>}
+        </View>
         <Text style={styles.rowMeta}>
           {exercise.primaryMuscle} · {exercise.equipment.join('/')}
         </Text>
@@ -66,13 +75,20 @@ export function ExercisePickerModal({
   excludeIds = [],
 }: ExercisePickerModalProps) {
   const [query, setQuery] = useState('');
+  // The name being created, while the New Exercise step is showing.
+  const [creating, setCreating] = useState<string | null>(null);
+  // Subscribed so a new exercise shows up, and to mark the user's own.
+  const ownExercises = useCustomExerciseStore((state) => state.exercises);
   // The sheet has to get out of the keyboard's way itself: this is a PWA, and
   // KeyboardAvoidingView does nothing in a browser. See useKeyboardInset.
   const keyboardInset = useKeyboardInset();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    if (visible) setQuery('');
+    if (visible) {
+      setQuery('');
+      setCreating(null);
+    }
   }, [visible]);
 
   useEffect(() => {
@@ -89,7 +105,15 @@ export function ExercisePickerModal({
   );
 
   const excludeSet = new Set(excludeIds);
-  const results = searchExercises(query.trim()).filter((e) => !excludeSet.has(e.id));
+  const ownIds = new Set(ownExercises.map((e) => e.id));
+  const trimmed = query.trim();
+  const results = searchExercises(trimmed).filter((e) => !excludeSet.has(e.id));
+  const canCreate = trimmed.length > 0 && !findExerciseByName(trimmed, allExercises());
+
+  const startCreate = () => {
+    haptics.tap();
+    setCreating(toExerciseName(trimmed));
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -121,30 +145,54 @@ export function ExercisePickerModal({
           ]}
         >
           <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            <Pressable hitSlop={12} onPress={onClose}>
-              <Text style={styles.closeButton}>Cancel</Text>
+            <Text style={styles.title}>{creating === null ? title : 'New Exercise'}</Text>
+            <Pressable hitSlop={12} onPress={creating === null ? onClose : () => setCreating(null)}>
+              <Text style={styles.closeButton}>{creating === null ? 'Cancel' : 'Back'}</Text>
             </Pressable>
           </View>
 
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search exercises or muscle group…"
-            placeholderTextColor={colors.text.muted}
-            value={query}
-            onChangeText={setQuery}
-            autoCorrect={false}
-          />
+          {creating !== null ? (
+            <CreateExerciseForm initialName={creating} onSaved={handleSelect} />
+          ) : (
+            <>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search exercises or muscle group…"
+                placeholderTextColor={colors.text.muted}
+                value={query}
+                onChangeText={setQuery}
+                autoCorrect={false}
+              />
 
-          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
-            {results.length === 0 ? (
-              <Text style={styles.emptyText}>No exercises match “{query}”.</Text>
-            ) : (
-              results.map((exercise) => (
-                <MemoRow key={exercise.id} exercise={exercise} onSelect={handleSelect} />
-              ))
-            )}
-          </ScrollView>
+              <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+                {canCreate && (
+                  <Pressable
+                    style={styles.createRow}
+                    onPress={startCreate}
+                    accessibilityRole="button"
+                  >
+                    <View style={styles.createLine}>
+                      <Plus size={16} color={roles.accentText} />
+                      <Text style={styles.createText}>Create “{toExerciseName(trimmed)}”</Text>
+                    </View>
+                    <Text style={styles.createHint}>Saved to your library, then added here</Text>
+                  </Pressable>
+                )}
+                {results.length === 0 && !canCreate ? (
+                  <Text style={styles.emptyText}>No exercises match “{query}”.</Text>
+                ) : (
+                  results.map((exercise) => (
+                    <MemoRow
+                      key={exercise.id}
+                      exercise={exercise}
+                      isOwn={ownIds.has(exercise.id)}
+                      onSelect={handleSelect}
+                    />
+                  ))
+                )}
+              </ScrollView>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -209,9 +257,44 @@ const styles = StyleSheet.create({
   rowInfo: {
     flex: 1,
   },
+  rowNameLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
   rowName: {
     ...textStyles.body,
     color: colors.text.primary,
+  },
+  ownBadge: {
+    ...textStyles.caption,
+    fontSize: 11,
+    fontWeight: '700',
+    color: roles.accentText,
+    backgroundColor: roles.accentSubtle,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing[2],
+    overflow: 'hidden',
+  },
+  createRow: {
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ui.border,
+  },
+  createLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  createText: {
+    ...textStyles.button,
+    color: roles.accentText,
+  },
+  createHint: {
+    ...textStyles.caption,
+    color: colors.text.muted,
+    marginTop: 2,
   },
   rowMeta: {
     ...textStyles.caption,

@@ -105,6 +105,7 @@ export default function TabLayout() {
         name="history"
         options={{
           title: 'Workout History',
+          headerTitleAlign: 'center',
           href: null,
           headerLeft: () => (
             <Pressable

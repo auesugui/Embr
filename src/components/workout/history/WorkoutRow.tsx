@@ -9,7 +9,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChevronDown, ChevronUp } from '@/components/icons';
 import { describeBlock, isTimed, resolveBlock } from '@/lib/blocks';
-import { describeCardio } from '@/lib/cardio';
 import { exerciseMetric } from '@/lib/metric';
 import { summarizeSets } from '@/lib/set-summary';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
@@ -24,8 +23,7 @@ const formatDate = (iso: string): string => {
 };
 
 const formatDuration = (seconds: number): string => {
-  // Zero is "not recorded": a typed-in workout can leave the duration blank.
-  if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+  if (!Number.isFinite(seconds) || seconds < 0) return '—';
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   if (mins === 0) return `${secs}s`;
@@ -118,17 +116,6 @@ function ExerciseBreakdown({
   blocks: WorkoutBlock[] | undefined;
   units: 'lb' | 'kg';
 }) {
-  if (exercise.cardio) {
-    return (
-      <View style={styles.exerciseRow}>
-        <View style={styles.exerciseHeader}>
-          <Text style={styles.exerciseName}>{exercise.name}</Text>
-        </View>
-        <Text style={styles.exerciseDetail}>{describeCardio(exercise.cardio)}</Text>
-      </View>
-    );
-  }
-
   // Timed work was logged as rounds against a clock, not as planned sets.
   const unit = isTimed(resolveBlock(exercise, blocks).mode) ? 'Round' : 'Set';
   // One line instead of one row per set. See summarizeSets for when the
