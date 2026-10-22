@@ -5,6 +5,8 @@
 import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { Plus, X } from '@/components/icons';
+import { metricForName } from '@/lib/manual-workout';
+import { metricLabel } from '@/lib/metric';
 import { roles } from '@/theme';
 import type { WeightUnit } from '@/types';
 
@@ -25,6 +27,8 @@ export function StrengthCard({
   isNewest: boolean;
   handlers: ExerciseHandlers;
 }) {
+  // The column, placeholder and screen-reader name say what the number measures.
+  const label = metricLabel(metricForName(exercise.name));
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -61,7 +65,7 @@ export function StrengthCard({
           <Text style={[styles.setHeaderText, styles.setNumber]}>Set</Text>
           <Text style={[styles.setHeaderText, styles.setColumn]}>Weight ({units})</Text>
           <View style={styles.timesSpacer} />
-          <Text style={[styles.setHeaderText, styles.setColumn]}>Reps</Text>
+          <Text style={[styles.setHeaderText, styles.setColumn]}>{label}</Text>
           <View style={styles.removeSlot} />
         </View>
       )}
@@ -84,11 +88,11 @@ export function StrengthCard({
             style={styles.setInput}
             value={set.reps}
             onChangeText={(reps) => handlers.onUpdateSet(exercise.key, set.key, { reps })}
-            placeholder="Reps"
+            placeholder={label}
             placeholderTextColor={roles.textMuted}
             keyboardType="number-pad"
             selectTextOnFocus
-            accessibilityLabel={`Reps, set ${index + 1}`}
+            accessibilityLabel={`${label}, set ${index + 1}`}
           />
           <Pressable
             onPress={() => handlers.onRemoveSet(exercise.key, set.key)}

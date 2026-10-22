@@ -6,7 +6,7 @@
 // LoggedSet shape a live session writes, so history and backups read both alike.
 
 import { EXERCISE_DATABASE, type ExerciseDefinition } from '@/data';
-import type { CardioDetail, DistanceUnit, Exercise, LoggedSet } from '@/types';
+import type { CardioDetail, DistanceUnit, Exercise, LoggedSet, Metric } from '@/types';
 
 import { localDayKey } from './local-day';
 
@@ -100,6 +100,16 @@ const slugify = (name: string) =>
     .replace(/^-|-$/g, '');
 
 /**
+ * What the typed name measures. A movement the catalog counts in seconds (a
+ * plank) is entered and stored in seconds; anything else is reps.
+ */
+export function metricForName(name: string): Metric {
+  const normalized = normalizeName(name).toLowerCase();
+  const known = EXERCISE_DATABASE.find((e) => e.name.toLowerCase() === normalized);
+  return known?.metric ?? 'reps';
+}
+
+/**
  * A typed name that matches the catalog takes the catalog's id, so the log
  * lines up with seeded exercises. Any other name gets a stable id from its text.
  */
@@ -163,6 +173,8 @@ function buildExercise(draft: ManualExerciseDraft): Result<Exercise> {
   const name = normalizeName(draft.name);
   if (name === '') return { ok: false, error: 'Every exercise needs a name.' };
   if (draft.cardio) return buildCardio(name, draft.cardio);
+  const metric = metricForName(name);
+  const unit = metric === 'time' ? 'seconds' : 'reps';
 
   const sets: LoggedSet[] = [];
   for (let index = 0; index < draft.sets.length; index++) {
@@ -172,7 +184,7 @@ function buildExercise(draft: ManualExerciseDraft): Result<Exercise> {
 
     const reps = Number(repsText);
     if (!/^\d+$/.test(repsText) || reps < 1) {
-      return { ok: false, error: `${name}: set ${index + 1} needs reps, as a whole number.` };
+      return { ok: false, error: `${name}: set ${index + 1} needs ${unit}, as a whole number.` };
     }
 
     // Blank weight is bodyweight. History already reads a zero or missing
@@ -189,7 +201,13 @@ function buildExercise(draft: ManualExerciseDraft): Result<Exercise> {
 
   return {
     ok: true,
-    value: { ...identifyExercise(name), sets, restSeconds: 0, completed: true },
+    value: {
+      ...identifyExercise(name),
+      sets,
+      restSeconds: 0,
+      completed: true,
+      ...(metric === 'time' ? { metric } : {}),
+    },
   };
 }
 

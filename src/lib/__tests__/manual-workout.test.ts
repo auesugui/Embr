@@ -10,6 +10,7 @@ import {
   type ManualCardioDraft,
   type ManualWorkoutDraft,
   type ManualWorkoutResult,
+  metricForName,
   parseManualWorkout,
   parseWorkoutDate,
   suggestExercises,
@@ -334,5 +335,42 @@ describe('suggestExercises', () => {
 
   it('caps the list at the limit', () => {
     expect(suggestExercises('a', 3)).toHaveLength(3);
+  });
+});
+
+describe('held movements', () => {
+  it('reads the catalog metric from the typed name', () => {
+    expect(metricForName('Plank')).toBe('time');
+    expect(metricForName('  plank ')).toBe('time');
+    expect(metricForName('Back Squat')).toBe('reps');
+    expect(metricForName('Sled Push')).toBe('reps');
+  });
+
+  it('stores a plank in seconds, and leaves strength exercises without a metric', () => {
+    const { exercises } = saved(
+      parseManualWorkout(
+        makeDraft({
+          exercises: [
+            { name: 'Plank', sets: [row('', '45')] },
+            { name: 'Back Squat', sets: [row('135', '8')] },
+          ],
+        }),
+        NOW
+      )
+    );
+
+    expect(exercises[0]).toMatchObject({ id: 'plank', metric: 'time', sets: [{ reps: 45 }] });
+    expect(exercises[1]).not.toHaveProperty('metric');
+  });
+
+  it('names seconds, not reps, when a held movement is entered wrongly', () => {
+    expect(
+      failure(
+        parseManualWorkout(
+          makeDraft({ exercises: [{ name: 'Plank', sets: [row('', '1.5')] }] }),
+          NOW
+        )
+      )
+    ).toBe('Plank: set 1 needs seconds, as a whole number.');
   });
 });

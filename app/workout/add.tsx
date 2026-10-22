@@ -160,7 +160,7 @@ export default function AddWorkoutScreen() {
     onUpdateCardio: updateCardio,
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (savedRef.current) return;
     const draft: ManualWorkoutDraft = { date, durationMinutes, exercises };
     const result = parseManualWorkout(draft, new Date());
@@ -170,15 +170,24 @@ export default function AddWorkoutScreen() {
       return;
     }
 
+    // Held until the write settles. A second activation during the write is
+    // refused, and a failed write releases it so the same entry can be saved again.
     savedRef.current = true;
     const history = useWorkoutHistoryStore.getState();
-    history.addManualLog({
-      exercises: result.exercises,
-      durationSeconds: result.durationSeconds,
-      // The streak on the workout's own day, so an old entry shows that day's streak.
-      streakDays: streakOnDay(history.logs, result.timestamp),
-      timestamp: result.timestamp,
-    });
+    try {
+      await history.addManualLog({
+        exercises: result.exercises,
+        durationSeconds: result.durationSeconds,
+        // The streak on the workout's own day, so an old entry shows that day's streak.
+        streakDays: streakOnDay(history.logs, result.timestamp),
+        timestamp: result.timestamp,
+      });
+    } catch {
+      savedRef.current = false;
+      setError('Couldn’t save this workout. Nothing was added, so you can try again.');
+      haptics.warning();
+      return;
+    }
     // Recomputed from every saved workout, so this one counts on its own date.
     usePlayerStore.getState().syncStreak(useWorkoutHistoryStore.getState().logs);
     // The lifetime count a live save bumps, so Home and History agree.

@@ -69,8 +69,9 @@ interface WorkoutHistoryActions {
   /**
    * Persist a typed-in workout as already saved, in one write. It has no
    * session to finish and nothing to replay, so there is no unclaimed state.
+   * Rejects if the write fails, and the history is then unchanged.
    */
-  addManualLog: (input: ManualLogInput) => string;
+  addManualLog: (input: ManualLogInput) => Promise<string>;
   /** Read a log by id (undefined if missing / not yet hydrated). */
   getLog: (id: string) => WorkoutLog | undefined;
   /**
@@ -140,7 +141,7 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
     return id;
   },
 
-  addManualLog: ({ exercises, durationSeconds, streakDays, timestamp }) => {
+  addManualLog: async ({ exercises, durationSeconds, streakDays, timestamp }) => {
     const claimedAt = new Date().toISOString();
     const log: WorkoutLog = {
       id: generateId(),
@@ -152,11 +153,11 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
       claimedAt,
     };
 
-    set((state) => {
-      const logs = [log, ...state.logs];
-      persistLogs(logs).catch(console.warn);
-      return { logs };
-    });
+    // Written before the store changes, so a failed write reaches the caller
+    // and the history is left as it was.
+    const logs = [log, ...get().logs];
+    await persistLogs(logs);
+    set({ logs });
 
     return log.id;
   },
