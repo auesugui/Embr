@@ -4,6 +4,9 @@
 
 export {
   EXERCISE_DATABASE,
+  allExercises,
+  isCustomExercise,
+  setCustomExercises,
   getExerciseById,
   getExercisesByMuscle,
   getExercisesByPattern,

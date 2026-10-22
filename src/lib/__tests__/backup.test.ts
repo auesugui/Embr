@@ -253,6 +253,20 @@ describe('restoreBackup', () => {
 // list rather than a decision anyone wrote down — this test makes it a
 // decision. A restore that loses your face is a bug report.
 
+describe('custom exercises', () => {
+  it('carries them, since templates refer to them only by id', async () => {
+    const custom = JSON.stringify({ exercises: [{ id: 'custom-goblet-squat' }] });
+
+    (AsyncStorage.multiGet as jest.Mock).mockResolvedValueOnce(
+      BACKUP_KEYS.map((k) => [k, k === 'custom_exercises.full_state' ? custom : null])
+    );
+
+    const backup = await createBackup(0);
+
+    expect(backup.data['custom_exercises.full_state']).toBe(custom);
+  });
+});
+
 describe('profile avatar', () => {
   it('carries the player slice, which is where the avatar lives', () => {
     expect(BACKUP_KEYS).toContain('player.full_state');

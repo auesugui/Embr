@@ -1071,28 +1071,49 @@ export const EXERCISE_DATABASE: ExerciseDefinition[] = [
 ];
 
 // -----------------------------------------------------------------------------
+// Exercises the user created
+// -----------------------------------------------------------------------------
+// Set by customExerciseStore when it hydrates and on every add, so the lookups
+// below see them without each caller reading the store. Listed first, so a new
+// exercise is at the top of the picker.
+
+let customExercises: ExerciseDefinition[] = [];
+
+export function setCustomExercises(exercises: ExerciseDefinition[]): void {
+  customExercises = exercises;
+}
+
+export function isCustomExercise(id: string): boolean {
+  return customExercises.some((e) => e.id === id);
+}
+
+export function allExercises(): ExerciseDefinition[] {
+  return [...customExercises, ...EXERCISE_DATABASE];
+}
+
+// -----------------------------------------------------------------------------
 // Helper Functions
 // -----------------------------------------------------------------------------
 
 export function getExerciseById(id: string): ExerciseDefinition | undefined {
-  return EXERCISE_DATABASE.find((e) => e.id === id);
+  return allExercises().find((e) => e.id === id);
 }
 
 export function getExercisesByMuscle(muscle: MuscleGroup): ExerciseDefinition[] {
-  return EXERCISE_DATABASE.filter((e) => e.muscleGroups.includes(muscle));
+  return allExercises().filter((e) => e.muscleGroups.includes(muscle));
 }
 
 export function getExercisesByPattern(pattern: MovementPattern): ExerciseDefinition[] {
-  return EXERCISE_DATABASE.filter((e) => e.movementPattern === pattern);
+  return allExercises().filter((e) => e.movementPattern === pattern);
 }
 
 export function getExercisesByEquipment(equipment: Equipment): ExerciseDefinition[] {
-  return EXERCISE_DATABASE.filter((e) => e.equipment.includes(equipment));
+  return allExercises().filter((e) => e.equipment.includes(equipment));
 }
 
 export function searchExercises(query: string): ExerciseDefinition[] {
   const lowerQuery = query.toLowerCase();
-  return EXERCISE_DATABASE.filter(
+  return allExercises().filter(
     (e) =>
       e.name.toLowerCase().includes(lowerQuery) ||
       e.muscleGroups.some((m) => m.toLowerCase().includes(lowerQuery))

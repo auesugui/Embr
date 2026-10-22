@@ -15,6 +15,7 @@ import { APP_NAME } from '@/config';
 import { ROUTE_TITLES } from '@/navigation/routeTitles';
 import {
   useBaselineStore,
+  useCustomExerciseStore,
   usePRStore,
   usePlayerStore,
   useSettingsStore,
@@ -39,6 +40,7 @@ export default function RootLayout() {
   const hydrateBaseline = useBaselineStore((state) => state.hydrate);
   const hydrateTemplates = useTemplateStore((state) => state.hydrate);
   const hydrateWorkoutHistory = useWorkoutHistoryStore((state) => state.hydrate);
+  const hydrateCustomExercises = useCustomExerciseStore((state) => state.hydrate);
   const theme = useSettingsStore((state) => state.theme);
 
   // A8 hydration gate: stores hydrate from AsyncStorage asynchronously, but the
@@ -67,6 +69,7 @@ export default function RootLayout() {
           hydrateBaseline(),
           hydrateTemplates(),
           hydrateWorkoutHistory(),
+          hydrateCustomExercises(),
         ]);
         // Recomputed on every launch, so a streak that lapsed while the app was
         // closed reads 0 rather than the value it was last saved with.
@@ -94,6 +97,7 @@ export default function RootLayout() {
     hydrateBaseline,
     hydrateTemplates,
     hydrateWorkoutHistory,
+    hydrateCustomExercises,
   ]);
 
   // Document title for web (browser tab, home-screen icon label, SEO).
@@ -198,7 +202,6 @@ export default function RootLayout() {
               name="workout/loadout"
               options={{ title: ROUTE_TITLES['workout/loadout'] }}
             />
-            <Stack.Screen name="workout/add" options={{ title: ROUTE_TITLES['workout/add'] }} />
             <Stack.Screen
               name="workout/summary"
               options={{ title: ROUTE_TITLES['workout/summary'] }}

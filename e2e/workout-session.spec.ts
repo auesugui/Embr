@@ -199,3 +199,46 @@ test.describe('Profile', () => {
     await expect(page.getByText('Embr').first()).toBeVisible({ timeout: 10000 });
   });
 });
+
+// The typed-in workout screen is gone, but cardio entries it saved are still on
+// people's devices and in their backups. History must keep showing them.
+test.describe('History', () => {
+  test.beforeEach(({ page }) => seed(page));
+
+  test('still shows a cardio entry saved by the removed typed-in screen', async ({ page }) => {
+    const timestamp = new Date().toISOString();
+    await page.evaluate((at) => {
+      const log = {
+        id: 'saved-cardio',
+        timestamp: at,
+        claimedAt: at,
+        durationSeconds: 2700,
+        streakDays: 1,
+        sessionIntent: 'normal',
+        exercises: [
+          {
+            id: 'custom-bike',
+            name: 'Bike',
+            muscleGroups: [],
+            sets: [],
+            restSeconds: 0,
+            completed: true,
+            cardio: { durationSeconds: 2700, distance: 12, distanceUnit: 'km', rpe: 5 },
+          },
+        ],
+      };
+      localStorage.setItem('workout_history.full_state', JSON.stringify({ logs: [log] }));
+    }, timestamp);
+
+    await page.goto('/history');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await page
+      .getByRole('button', { name: /^Workout on/ })
+      .first()
+      .click();
+    await expect(page.getByText('45m · 12 km · RPE 5')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('No sets logged')).toHaveCount(0);
+  });
+});

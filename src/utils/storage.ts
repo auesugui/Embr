@@ -95,6 +95,10 @@ export const STORAGE_KEYS = {
   WORKOUT_HISTORY: {
     FULL_STATE: 'workout_history.full_state',
   },
+  // Exercises the user created from the exercise picker
+  CUSTOM_EXERCISES: {
+    FULL_STATE: 'custom_exercises.full_state',
+  },
   // Misc
   SCHEMA_VERSION: 'schema_version',
 } as const;
