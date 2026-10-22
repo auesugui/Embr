@@ -2,7 +2,8 @@
 // Custom exercise builder tests
 // =============================================================================
 
-import { EXERCISE_DATABASE } from '@/data';
+import { EXERCISE_DATABASE, setCustomExercises } from '@/data';
+import { baseExerciseId, exerciseMetric } from '@/lib/metric';
 import { describe, expect, it } from '@jest/globals';
 import {
   type CustomExerciseInput,
@@ -86,7 +87,29 @@ describe('buildCustomExercise', () => {
     if (!first.ok) throw new Error('expected ok');
     const renamed = { ...first.exercise, name: 'Something Else' };
     const second = buildCustomExercise(input(), [renamed]);
-    expect(second.ok && second.exercise.id).toBe('custom-goblet-squat-2');
+    expect(second.ok && second.exercise.id).toBe('custom-goblet-squat-v2');
+    expect(second.ok && baseExerciseId(second.exercise.id)).toBe('custom-goblet-squat-v2');
+  });
+
+  it('keeps a name ending in a number from reading as a session position', () => {
+    const result = buildCustomExercise(input({ name: 'Wall Sit 2', metric: 'time' }), []);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.exercise.id).toBe('custom-wall-sit-2-ex');
+    expect(baseExerciseId(result.exercise.id)).toBe(result.exercise.id);
+    // A session copy at position 1 still resolves to it.
+    expect(baseExerciseId(`${result.exercise.id}-1`)).toBe(result.exercise.id);
+  });
+
+  it('reads a numbered held exercise in seconds through exerciseMetric', () => {
+    const result = buildCustomExercise(input({ name: 'Wall Sit 2', metric: 'time' }), []);
+    if (!result.ok) throw new Error('expected ok');
+    setCustomExercises([result.exercise]);
+    try {
+      expect(exerciseMetric({ id: result.exercise.id })).toBe('time');
+      expect(exerciseMetric({ id: `${result.exercise.id}-3` })).toBe('time');
+    } finally {
+      setCustomExercises([]);
+    }
   });
 
   it('falls back to a generic slug for a name with no letters or digits', () => {

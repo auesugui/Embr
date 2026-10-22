@@ -38,15 +38,19 @@ export function findExerciseByName(
   return exercises.find((e) => e.name.toLowerCase() === wanted);
 }
 
+// An id never ends in `-<digits>`: a session exercise's id is the library id
+// plus `-<position>`, and baseExerciseId strips exactly that. "Wall Sit 2"
+// would otherwise lose its own 2 and look up the wrong movement.
 function uniqueId(name: string, exercises: ExerciseDefinition[]): string {
   const slug =
     name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'exercise';
+  const base = /-\d+$/.test(`custom-${slug}`) ? `custom-${slug}-ex` : `custom-${slug}`;
   const taken = new Set(exercises.map((e) => e.id));
-  let id = `custom-${slug}`;
-  for (let n = 2; taken.has(id); n++) id = `custom-${slug}-${n}`;
+  let id = base;
+  for (let n = 2; taken.has(id); n++) id = `${base}-v${n}`;
   return id;
 }
 
