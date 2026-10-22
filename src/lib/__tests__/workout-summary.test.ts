@@ -105,8 +105,10 @@ describe('volume and top weight', () => {
     expect(summary.totalVolume).toBe(700);
   });
 
-  it('formats volume rounded with thousands separators', () => {
-    expect(formatWeight(12450.4, 'lb')).toBe('12,450 lb');
+  it('formats weight with thousands separators and keeps fractional loads', () => {
+    expect(formatWeight(12450, 'lb')).toBe('12,450 lb');
     expect(formatWeight(540, 'kg')).toBe('540 kg');
+    expect(formatWeight(22.5, 'kg')).toBe('22.5 kg');
+    expect(formatWeight(1234.567, 'lb')).toBe('1,234.57 lb');
   });
 });
