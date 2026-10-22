@@ -2,7 +2,8 @@
 // Embr Player Store — profile, streak, workout count
 // =============================================================================
 
-import type { PlayerProfile, StreakData } from '@/types';
+import { deriveStreak } from '@/lib/streak';
+import type { PlayerProfile, StreakData, WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 
@@ -18,9 +19,8 @@ interface PlayerState {
 }
 
 interface PlayerActions {
-  // Streak Actions
-  updateStreak: (workedOutToday: boolean) => void;
-  resetStreak: () => void;
+  // Streak Actions. Recomputed from the saved workouts, never incremented.
+  syncStreak: (logs: WorkoutLog[]) => void;
 
   // Workout Actions
   incrementWorkoutCount: () => void;
@@ -89,55 +89,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   ...initialState,
 
   // Streak Actions
-  updateStreak: (workedOutToday) => {
-    const today = new Date().toISOString().split('T')[0];
-    const state = get();
-
-    if (!workedOutToday) {
-      const lastWorkout = state.streak.lastWorkoutDate;
-      if (lastWorkout) {
-        const lastDate = new Date(lastWorkout);
-        const daysSince = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysSince > 1) {
-          get().resetStreak();
-        }
-      }
-      return;
-    }
-
-    const lastWorkout = state.streak.lastWorkoutDate;
-    let newCurrent = state.streak.current;
-
-    if (lastWorkout !== today) {
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-      if (lastWorkout === yesterday) {
-        newCurrent = state.streak.current + 1;
-      } else if (!lastWorkout) {
-        newCurrent = 1;
-      } else {
-        newCurrent = 1;
-      }
-    }
-
-    const newStreak: StreakData = {
-      current: newCurrent,
-      longest: Math.max(state.streak.longest, newCurrent),
-      lastWorkoutDate: today,
-    };
-
-    set({ streak: newStreak });
-    persistState({ ...get(), streak: newStreak }).catch(console.warn);
-  },
-
-  resetStreak: () => {
-    const newStreak: StreakData = {
-      current: 0,
-      longest: get().streak.longest,
-      lastWorkoutDate: null,
-    };
-
-    set({ streak: newStreak });
-    persistState({ ...get(), streak: newStreak }).catch(console.warn);
+  syncStreak: (logs) => {
+    const streak = deriveStreak(logs, new Date(), get().streak.longest);
+    set({ streak });
+    persistState(get()).catch(console.warn);
   },
 
   // Workout Actions

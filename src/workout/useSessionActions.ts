@@ -13,7 +13,8 @@
 import { router } from 'expo-router';
 
 import { isOpenEnded, targetRepCount } from '@/lib/blocks';
-import { usePlayerStore, useWorkoutHistoryStore, useWorkoutStore } from '@/stores';
+import { streakOnDay } from '@/lib/streak';
+import { useWorkoutHistoryStore, useWorkoutStore } from '@/stores';
 import { showAlert } from '@/utils/alert';
 import { haptics } from '@/utils/haptics';
 import { confirmEndSession } from '@/workout/endSessionGuard';
@@ -91,10 +92,12 @@ export function useSessionActions({
     const { intent, startedAt } = workoutStoreState;
 
     const duration = Math.floor((Date.now() - (startedAt || Date.now())) / 1000);
-    // Streak multiplier + Spirit FP are sourced from the live streak store, not
-    // hardcoded. This wiring is what un-deads the streak multiplier (1.0×–2.0×)
-    // and the entire Spirit FP economy (issue #16 / audit C2).
-    const streakDays = usePlayerStore.getState().streak.current;
+    // The streak on the day of this workout, counting this workout. The summary
+    // reads this snapshot for its milestones, so it has to be the streak after it.
+    const streakDays = streakOnDay(
+      useWorkoutHistoryStore.getState().logs,
+      new Date().toISOString()
+    );
 
     // Persist the workout record BEFORE navigating. The summary receives only
     // this id — never the full payload as URL params — so reloading the summary

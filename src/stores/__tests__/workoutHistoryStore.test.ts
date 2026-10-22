@@ -192,6 +192,80 @@ describe('Workout History Store', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // addManualLog — a workout typed in by hand
+  // ---------------------------------------------------------------------------
+
+  describe('addManualLog', () => {
+    it('stores the log already claimed, at the given time', async () => {
+      const id = await useWorkoutHistoryStore.getState().addManualLog({
+        exercises: [makeExercise()],
+        durationSeconds: 2700,
+        streakDays: 4,
+        timestamp: '2026-10-20T12:00:00.000Z',
+      });
+
+      const log = useWorkoutHistoryStore.getState().getLog(id);
+      expect(log?.claimedAt).not.toBeNull();
+      expect(log?.timestamp).toBe('2026-10-20T12:00:00.000Z');
+      expect(log?.durationSeconds).toBe(2700);
+      expect(log?.streakDays).toBe(4);
+      expect(log?.sessionIntent).toBe('normal');
+    });
+
+    it('stamps the current time when no timestamp is given', async () => {
+      const before = Date.now();
+      const id = await useWorkoutHistoryStore.getState().addManualLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+      });
+
+      const log = useWorkoutHistoryStore.getState().getLog(id);
+      expect(Date.parse(log?.timestamp ?? '')).toBeGreaterThanOrEqual(before);
+    });
+
+    it('writes storage once, with the log already claimed', async () => {
+      await useWorkoutHistoryStore.getState().addManualLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+      });
+
+      const { appStorage } = require('@/utils/storage');
+      expect(appStorage.setJSON).toHaveBeenCalledTimes(1);
+      const [, persisted] = (appStorage.setJSON as jest.Mock).mock.calls[0];
+      expect(persisted.logs[0].claimedAt).not.toBeNull();
+    });
+
+    it('refuses a second save, the same as a session log', async () => {
+      const id = await useWorkoutHistoryStore.getState().addManualLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+      });
+
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(useWorkoutHistoryStore.getState().saveWorkout(id)).toBeNull();
+      warnSpy.mockRestore();
+    });
+
+    it('rejects when the write fails, and leaves the history unchanged', async () => {
+      const { appStorage } = require('@/utils/storage');
+      (appStorage.setJSON as jest.Mock).mockRejectedValueOnce(new Error('QuotaExceededError'));
+      const before = useWorkoutHistoryStore.getState().logs;
+
+      await expect(
+        useWorkoutHistoryStore.getState().addManualLog({
+          exercises: [makeExercise()],
+          durationSeconds: 600,
+          streakDays: 0,
+        })
+      ).rejects.toThrow('QuotaExceededError');
+      expect(useWorkoutHistoryStore.getState().logs).toBe(before);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Hydration
   // ---------------------------------------------------------------------------
 

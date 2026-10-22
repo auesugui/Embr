@@ -16,6 +16,9 @@
 // reads the log back here by ID. On a web reload the root layout rehydrates
 // this store, so the claimed log — and its `claimedAt` guard — is restored
 // before any re-claim can happen.
+//
+// A workout typed in by hand skips the session lifecycle: `addManualLog`
+// creates it already claimed, so there is no unclaimed state to pass through.
 
 import { mergeWorkoutLogs } from '@/lib/workout-merge';
 import type { Exercise, SessionIntent, WorkoutBlock, WorkoutLog } from '@/types';
@@ -25,6 +28,16 @@ import { create } from 'zustand';
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
+
+/** A workout typed in after the fact. Stored already claimed. */
+export interface ManualLogInput {
+  exercises: Exercise[];
+  durationSeconds: number;
+  /** Streak day count snapshot, as `createLog` takes at session finish. */
+  streakDays: number;
+  /** When the workout happened, ISO. Defaults to now. */
+  timestamp?: string;
+}
 
 export interface CreateLogInput {
   exercises: Exercise[];
@@ -53,6 +66,12 @@ interface WorkoutHistoryState {
 interface WorkoutHistoryActions {
   /** Persist a new (unclaimed) log and return its id. Call before navigation. */
   createLog: (input: CreateLogInput) => string;
+  /**
+   * Persist a typed-in workout as already saved, in one write. It has no
+   * session to finish and nothing to replay, so there is no unclaimed state.
+   * Rejects if the write fails, and the history is then unchanged.
+   */
+  addManualLog: (input: ManualLogInput) => Promise<string>;
   /** Read a log by id (undefined if missing / not yet hydrated). */
   getLog: (id: string) => WorkoutLog | undefined;
   /**
@@ -120,6 +139,27 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
     });
 
     return id;
+  },
+
+  addManualLog: async ({ exercises, durationSeconds, streakDays, timestamp }) => {
+    const claimedAt = new Date().toISOString();
+    const log: WorkoutLog = {
+      id: generateId(),
+      timestamp: timestamp ?? claimedAt,
+      exercises,
+      durationSeconds,
+      streakDays,
+      sessionIntent: 'normal',
+      claimedAt,
+    };
+
+    // Written before the store changes, so a failed write reaches the caller
+    // and the history is left as it was.
+    const logs = [log, ...get().logs];
+    await persistLogs(logs);
+    set({ logs });
+
+    return log.id;
   },
 
   getLog: (id) => get().logs.find((log) => log.id === id),
