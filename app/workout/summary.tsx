@@ -61,8 +61,8 @@ export default function WorkoutSummaryScreen() {
 
     haptics.success();
 
-    // Update streak
-    usePlayerStore.getState().updateStreak(true);
+    // The streak is derived from every saved workout, this one included.
+    usePlayerStore.getState().syncStreak(useWorkoutHistoryStore.getState().logs);
 
     // Increment workout count
     usePlayerStore.getState().incrementWorkoutCount();

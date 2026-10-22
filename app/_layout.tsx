@@ -68,6 +68,9 @@ export default function RootLayout() {
           hydrateTemplates(),
           hydrateWorkoutHistory(),
         ]);
+        // Recomputed on every launch, so a streak that lapsed while the app was
+        // closed reads 0 rather than the value it was last saved with.
+        usePlayerStore.getState().syncStreak(useWorkoutHistoryStore.getState().logs);
       } catch (error) {
         console.warn('Storage initialization error:', error);
       } finally {
@@ -195,6 +198,7 @@ export default function RootLayout() {
               name="workout/loadout"
               options={{ title: ROUTE_TITLES['workout/loadout'] }}
             />
+            <Stack.Screen name="workout/add" options={{ title: ROUTE_TITLES['workout/add'] }} />
             <Stack.Screen
               name="workout/summary"
               options={{ title: ROUTE_TITLES['workout/summary'] }}

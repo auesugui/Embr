@@ -4,6 +4,7 @@
 // Streak logic, workout count, profile, and achievements. The FP balance and
 // spending suites went with the engine (ADR-0015).
 
+import type { WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import {
   LEGACY_DEFAULT_NAME,
@@ -38,145 +39,61 @@ describe('Player Store', () => {
   // ---------------------------------------------------------------------------
 
   describe('Streak Actions', () => {
-    describe('updateStreak', () => {
-      it('should start streak at 1 for first workout', () => {
-        const { updateStreak } = usePlayerStore.getState();
-
-        updateStreak(true);
-
-        expect(usePlayerStore.getState().streak.current).toBe(1);
+    describe('syncStreak', () => {
+      // Local noon, so the day key is right in every time zone.
+      const daysAgo = (days: number) => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate() - days, 12).toISOString();
+      };
+      const workout = (timestamp: string): WorkoutLog => ({
+        id: `workout_${timestamp}`,
+        timestamp,
+        exercises: [],
+        durationSeconds: 600,
+        streakDays: 0,
+        sessionIntent: 'normal',
+        claimedAt: timestamp,
       });
 
-      it('should increment streak for consecutive days', () => {
-        const { updateStreak } = usePlayerStore.getState();
+      it('is zero with no saved workouts', () => {
+        usePlayerStore.getState().syncStreak([]);
 
-        // First workout
-        updateStreak(true);
-        expect(usePlayerStore.getState().streak.current).toBe(1);
-
-        // Simulate next day
-        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        usePlayerStore.setState({
-          streak: {
-            current: 1,
-            longest: 1,
-            lastWorkoutDate: yesterday,
-          },
+        expect(usePlayerStore.getState().streak).toMatchObject({
+          current: 0,
+          lastWorkoutDate: null,
         });
-
-        // Second day workout
-        updateStreak(true);
-        expect(usePlayerStore.getState().streak.current).toBe(2);
       });
 
-      it('should reset streak when missing a day', () => {
-        const { updateStreak } = usePlayerStore.getState();
+      it('counts consecutive days ending today', () => {
+        usePlayerStore
+          .getState()
+          .syncStreak([workout(daysAgo(0)), workout(daysAgo(1)), workout(daysAgo(2))]);
 
-        // First workout
-        updateStreak(true);
+        expect(usePlayerStore.getState().streak.current).toBe(3);
+      });
 
-        // Simulate 2 days ago (missed yesterday)
-        const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
-        usePlayerStore.setState({
-          streak: {
-            current: 5,
-            longest: 5,
-            lastWorkoutDate: twoDaysAgo,
-          },
-        });
-
-        // Workout today - streak should reset to 1
-        updateStreak(true);
+      it('joins two runs when a back-dated workout fills the gap', () => {
+        usePlayerStore.getState().syncStreak([workout(daysAgo(0)), workout(daysAgo(2))]);
         expect(usePlayerStore.getState().streak.current).toBe(1);
+
+        usePlayerStore
+          .getState()
+          .syncStreak([workout(daysAgo(0)), workout(daysAgo(2)), workout(daysAgo(1))]);
+        expect(usePlayerStore.getState().streak.current).toBe(3);
       });
 
-      it('should not increment for same day workout', () => {
-        const { updateStreak } = usePlayerStore.getState();
+      it('keeps the stored longest streak when the current run is shorter', () => {
+        usePlayerStore.setState({ streak: { current: 0, longest: 30, lastWorkoutDate: null } });
 
-        updateStreak(true);
-        updateStreak(true); // Same day
+        usePlayerStore.getState().syncStreak([workout(daysAgo(0))]);
 
-        expect(usePlayerStore.getState().streak.current).toBe(1);
-      });
-
-      it('should update longest streak', () => {
-        const { updateStreak } = usePlayerStore.getState();
-
-        // Start streak
-        updateStreak(true);
-
-        // Simulate building streak
-        for (let i = 0; i < 5; i++) {
-          const prevDate = new Date(Date.now() - (i + 1) * 24 * 60 * 60 * 1000)
-            .toISOString()
-            .split('T')[0];
-          usePlayerStore.setState({
-            streak: {
-              current: i + 1,
-              longest: i + 1,
-              lastWorkoutDate: prevDate,
-            },
-          });
-          updateStreak(true);
-        }
-
-        expect(usePlayerStore.getState().streak.longest).toBeGreaterThanOrEqual(5);
-      });
-
-      it('should not update longest when current is lower', () => {
-        const { updateStreak } = usePlayerStore.getState();
-
-        // Set up a long existing streak
-        usePlayerStore.setState({
-          streak: {
-            current: 0,
-            longest: 30,
-            lastWorkoutDate: null,
-          },
-        });
-
-        updateStreak(true);
-
-        // Longest should still be 30
         expect(usePlayerStore.getState().streak.longest).toBe(30);
       });
-    });
 
-    describe('resetStreak', () => {
-      it('should reset current streak to 0', () => {
-        const { resetStreak } = usePlayerStore.getState();
+      it('persists the derived streak', () => {
+        usePlayerStore.getState().syncStreak([workout(daysAgo(0))]);
 
-        usePlayerStore.setState({
-          streak: { current: 10, longest: 10, lastWorkoutDate: '2024-01-01' },
-        });
-
-        resetStreak();
-
-        expect(usePlayerStore.getState().streak.current).toBe(0);
-      });
-
-      it('should preserve longest streak', () => {
-        const { resetStreak } = usePlayerStore.getState();
-
-        usePlayerStore.setState({
-          streak: { current: 10, longest: 15, lastWorkoutDate: '2024-01-01' },
-        });
-
-        resetStreak();
-
-        expect(usePlayerStore.getState().streak.longest).toBe(15);
-      });
-
-      it('should clear lastWorkoutDate', () => {
-        const { resetStreak } = usePlayerStore.getState();
-
-        usePlayerStore.setState({
-          streak: { current: 10, longest: 10, lastWorkoutDate: '2024-01-01' },
-        });
-
-        resetStreak();
-
-        expect(usePlayerStore.getState().streak.lastWorkoutDate).toBeNull();
+        expect(require('@/utils/storage').appStorage.setJSON as jest.Mock).toHaveBeenCalled();
       });
     });
   });

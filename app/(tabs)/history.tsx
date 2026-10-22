@@ -55,6 +55,9 @@ export default function HistoryScreen() {
           <Pressable style={styles.emptyButton} onPress={() => router.replace('/(tabs)')}>
             <Text style={styles.emptyButtonText}>Start one from Workouts</Text>
           </Pressable>
+          <Pressable style={styles.emptyLink} onPress={() => router.push('/workout/add')}>
+            <Text style={styles.emptyLinkText}>Or add one you already did</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -63,9 +66,18 @@ export default function HistoryScreen() {
   // ---- History list ----
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.summaryLine}>
-        {claimed.length} workout{claimed.length === 1 ? '' : 's'} logged
-      </Text>
+      <View style={styles.listHeader}>
+        <Text style={styles.summaryLine}>
+          {claimed.length} workout{claimed.length === 1 ? '' : 's'} logged
+        </Text>
+        <Pressable
+          onPress={() => router.push('/workout/add')}
+          hitSlop={8}
+          accessibilityRole="button"
+        >
+          <Text style={styles.addLinkText}>Add workout</Text>
+        </Pressable>
+      </View>
 
       {claimed.map((log, i) => (
         <RevealRow key={log.id} index={Math.min(i, 6)}>
@@ -138,9 +150,26 @@ const styles = StyleSheet.create({
     ...textStyles.button,
     color: colors.background.primary,
   },
+  emptyLink: {
+    marginTop: spacing[4],
+    paddingVertical: spacing[1],
+  },
+  emptyLinkText: {
+    ...textStyles.button,
+    color: roles.accentText,
+  },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing[3],
+  },
   summaryLine: {
     ...textStyles.bodySmall,
     color: colors.text.muted,
-    marginBottom: spacing[3],
+  },
+  addLinkText: {
+    ...textStyles.button,
+    color: roles.accentText,
   },
 });
