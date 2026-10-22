@@ -37,9 +37,12 @@ export function topWeight(exercise: Exercise): number {
   return exercise.sets.filter((s) => s.logged).reduce((max, s) => Math.max(max, s.weight ?? 0), 0);
 }
 
-/** `22.5 kg`, `12,450 lb`. Keeps up to two decimals, since 2.5 kg plates exist. */
+/**
+ * `22.5 kg`, `12,450 lb`. Keeps the logged decimals. The rounding only strips
+ * float noise from volume sums, such as 0.1 + 0.2.
+ */
 export function formatWeight(value: number, units: string): string {
-  const [whole, fraction] = String(Math.round(value * 100) / 100).split('.');
+  const [whole, fraction] = String(Math.round(value * 1e6) / 1e6).split('.');
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return `${grouped}${fraction ? `.${fraction}` : ''} ${units}`;
 }

@@ -109,6 +109,8 @@ describe('volume and top weight', () => {
     expect(formatWeight(12450, 'lb')).toBe('12,450 lb');
     expect(formatWeight(540, 'kg')).toBe('540 kg');
     expect(formatWeight(22.5, 'kg')).toBe('22.5 kg');
-    expect(formatWeight(1234.567, 'lb')).toBe('1,234.57 lb');
+    expect(formatWeight(22.125, 'kg')).toBe('22.125 kg');
+    expect(formatWeight(1234.567, 'lb')).toBe('1,234.567 lb');
+    expect(formatWeight(0.1 + 0.2, 'kg')).toBe('0.3 kg');
   });
 });
