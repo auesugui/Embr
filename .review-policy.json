@@ -1,0 +1,14 @@
+{
+  "schema": "review-policy/v1",
+  "levels": {},
+  "context": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "src/lib/backup.ts",
+    "src/lib/metric.ts",
+    "src/lib/streak.ts",
+    "src/lib/local-day.ts",
+    "src/utils/storage.ts",
+    "src/data/index.ts"
+  ]
+}
