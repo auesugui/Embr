@@ -6,12 +6,16 @@
 // from. Tapping anywhere skips, because the most common thing you want from a
 // rest timer is to not be in it any more.
 
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExerciseDemo } from '@/components/workout/ExerciseDemo';
 import { RestTimerRing } from '@/components/workout/RestTimerRing';
 import { formatClock } from '@/lib/blocks';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
+
+const OVERLAY_PADDING_TOP = spacing[4];
 
 interface RestOverlayProps {
   /** Bare exercise id (no `-index` suffix) for the demo lookup. */
@@ -31,45 +35,61 @@ export function RestOverlay({
   onSkip,
   onTogglePause,
 }: RestOverlayProps) {
+  const insets = useSafeAreaInsets();
+  const paddingBottom = insets.bottom + spacing[4];
+  // The diagram gets whatever height the timer leaves. A fixed size ran it
+  // under the header and pushed the controls off a short screen.
+  const [overlayHeight, setOverlayHeight] = useState(0);
+  const [timerHeight, setTimerHeight] = useState(0);
+  const demoSpace = overlayHeight - OVERLAY_PADDING_TOP - paddingBottom - timerHeight;
+
   return (
-    <Pressable style={styles.restOverlay} onPress={onSkip}>
+    <Pressable
+      style={[styles.restOverlay, { paddingBottom }]}
+      onPress={onSkip}
+      onLayout={(e) => setOverlayHeight(e.nativeEvent.layout.height)}
+    >
       {/* Rest is the one moment in a session with time to look at a diagram,
           so here it's open by default rather than behind a toggle. */}
-      <ExerciseDemo exerciseId={exerciseId} variant="overlay" />
-
-      <Text style={styles.restLabel}>{paused ? 'Paused' : 'Rest'}</Text>
-      <RestTimerRing remaining={remaining} total={duration} paused={paused} size={200}>
-        <Text style={[styles.restTimer, remaining === 0 && styles.restTimerReady]}>
-          {formatClock(remaining)}
-        </Text>
-      </RestTimerRing>
-
-      {remaining === 0 ? (
-        <Text style={styles.readyText}>Tap to continue</Text>
-      ) : (
-        <View style={styles.restControls}>
-          <Pressable
-            style={styles.restControlButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              onTogglePause();
-            }}
-          >
-            <Text style={styles.restControlText}>{paused ? 'Resume' : 'Pause'}</Text>
-          </Pressable>
-          <Pressable
-            style={styles.restControlButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              onSkip();
-            }}
-          >
-            <Text style={styles.restControlText}>Skip</Text>
-          </Pressable>
-        </View>
+      {overlayHeight > 0 && timerHeight > 0 && (
+        <ExerciseDemo exerciseId={exerciseId} variant="overlay" maxHeight={demoSpace} />
       )}
 
-      <Text style={styles.tapHint}>Tap anywhere to skip</Text>
+      <View style={styles.timerBlock} onLayout={(e) => setTimerHeight(e.nativeEvent.layout.height)}>
+        <Text style={styles.restLabel}>{paused ? 'Paused' : 'Rest'}</Text>
+        <RestTimerRing remaining={remaining} total={duration} paused={paused} size={180}>
+          <Text style={[styles.restTimer, remaining === 0 && styles.restTimerReady]}>
+            {formatClock(remaining)}
+          </Text>
+        </RestTimerRing>
+
+        {remaining === 0 ? (
+          <Text style={styles.readyText}>Tap to continue</Text>
+        ) : (
+          <View style={styles.restControls}>
+            <Pressable
+              style={styles.restControlButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                onTogglePause();
+              }}
+            >
+              <Text style={styles.restControlText}>{paused ? 'Resume' : 'Pause'}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.restControlButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                onSkip();
+              }}
+            >
+              <Text style={styles.restControlText}>Skip</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <Text style={styles.tapHint}>Tap anywhere to skip</Text>
+      </View>
     </Pressable>
   );
 }
@@ -81,10 +101,16 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.background.primary + 'E6',
+    // Opaque: at 90% the session's buttons and chips read through the timer.
+    backgroundColor: roles.surface,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: spacing[6],
+    paddingTop: OVERLAY_PADDING_TOP,
     zIndex: 10,
+  },
+  timerBlock: {
+    alignItems: 'center',
   },
   restLabel: {
     ...textStyles.label,
@@ -127,6 +153,6 @@ const styles = StyleSheet.create({
   tapHint: {
     ...textStyles.caption,
     color: colors.text.muted,
-    marginTop: spacing[6],
+    marginTop: spacing[4],
   },
 });
