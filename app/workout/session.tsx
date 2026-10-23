@@ -14,7 +14,7 @@ import {
   SessionHeader,
   SetList,
 } from '@/components/workout/session';
-import { blockHintText, describeBlock, isOpenEnded } from '@/lib/blocks';
+import { blockHintText, describeBlock } from '@/lib/blocks';
 import { exerciseMetric, formatPrescription, uniformMetric } from '@/lib/metric';
 import { useSettingsStore, useWeightHistoryStore, useWorkoutStore } from '@/stores';
 import { colors, spacing } from '@/theme';
@@ -323,11 +323,10 @@ export default function WorkoutSessionScreen() {
               lastWeight={currentWeight}
               lastWeightUnit={currentWeightUnit}
               unitMatches={weightUnitMatches}
-              canAddRound={isOpenEnded(currentBlock.mode)}
               onQuickLog={handleQuickLog}
               onCustomInput={openEditor}
               onEditSet={openEditor}
-              onAddRound={() => {
+              onAddRow={() => {
                 haptics.tap();
                 actions.addSet(currentExerciseIndex);
               }}
