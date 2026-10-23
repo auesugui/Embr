@@ -27,12 +27,10 @@ interface SetListProps {
   lastWeightUnit: WeightUnit;
   /** Whether that remembered weight was logged in the current unit. */
   unitMatches: boolean;
-  /** Open-ended block: rounds keep going, so offer a manual extra row. */
-  canAddRound: boolean;
   onQuickLog: (exerciseIndex: number, setIndex: number, reps: number) => void;
   onCustomInput: (exerciseIndex: number, setIndex: number) => void;
   onEditSet: (exerciseIndex: number, setIndex: number) => void;
-  onAddRound: () => void;
+  onAddRow: () => void;
 }
 
 export function SetList({
@@ -45,11 +43,10 @@ export function SetList({
   lastWeight,
   lastWeightUnit,
   unitMatches,
-  canAddRound,
   onQuickLog,
   onCustomInput,
   onEditSet,
-  onAddRound,
+  onAddRow,
 }: SetListProps) {
   const hasWeight = lastWeight !== null && lastWeight > 0;
   // A hold logs seconds, not reps. Everything in this list — the ladder, the
@@ -124,14 +121,11 @@ export function SetList({
         </View>
       ))}
 
-      {/* Rounds are open-ended. Logging the last row opens the next one
-          automatically; this is the manual escape hatch (e.g. after clearing a
-          row, or to queue one up before you start). */}
-      {canAddRound && (
-        <Pressable style={styles.addRoundButton} onPress={onAddRound}>
-          <Text style={styles.addRoundText}>Add round</Text>
-        </Pressable>
-      )}
+      {/* An extra set on the day, or a round queued up in an open-ended block.
+          An added row left unlogged records nothing, so it needs no delete. */}
+      <Pressable style={styles.addRoundButton} onPress={onAddRow}>
+        <Text style={styles.addRoundText}>{timed ? 'Add round' : 'Add set'}</Text>
+      </Pressable>
     </View>
   );
 }

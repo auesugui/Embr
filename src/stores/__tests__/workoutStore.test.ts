@@ -3,6 +3,7 @@
 // =============================================================================
 // Tests for session lifecycle, exercise management, set logging, rest timer
 
+import { calculateWorkoutSummary } from '@/lib/workout-summary';
 import type { Exercise } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { useWeightHistoryStore } from '../weightHistoryStore';
@@ -387,6 +388,34 @@ describe('Workout Store', () => {
           completed: false,
         },
       ]);
+    });
+
+    describe('addSet on a set scheme', () => {
+      it('adds an extra set after the planned ones that logs like them', () => {
+        const { logSet, addSet } = useWorkoutStore.getState();
+
+        logSet(0, 0, 10, 135);
+        logSet(0, 1, 10, 135);
+        addSet(0);
+        useWorkoutStore.getState().logSet(0, 2, 8, 135);
+
+        const sets = useWorkoutStore.getState().exercises[0].sets;
+        expect(sets).toHaveLength(3);
+        expect(sets[2]).toMatchObject({ reps: 8, weight: 135, logged: true });
+      });
+
+      it('leaves an added set that is never logged out of the summary', () => {
+        const { logSet, addSet } = useWorkoutStore.getState();
+
+        logSet(0, 0, 10, 135);
+        logSet(0, 1, 10, 135);
+        addSet(0);
+
+        const summary = calculateWorkoutSummary(useWorkoutStore.getState().exercises, 600);
+        expect(summary.totalSets).toBe(2);
+        expect(summary.totalReps).toBe(20);
+        expect(summary.totalVolume).toBe(2700);
+      });
     });
 
     describe('logSet', () => {
