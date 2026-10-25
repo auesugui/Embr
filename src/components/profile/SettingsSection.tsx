@@ -1,13 +1,15 @@
 // =============================================================================
-// SettingsSection — appearance, haptics, units
+// SettingsSection — appearance, haptics, units, weekly goal
 // =============================================================================
-// Three settings, and two of them have consequences worth stating on screen:
+// Four settings, and three of them have consequences worth stating on screen:
 // changing the theme restarts the app (the palette is baked in at module scope
-// — see theme-boot), and changing units does NOT convert existing history,
-// because a 100 lb entry and a 100 kg entry are different facts (issue #42).
+// — see theme-boot), changing units does NOT convert existing history, because
+// a 100 lb entry and a 100 kg entry are different facts (issue #42), and
+// changing the weekly goal does not re-score weeks that already finished.
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { WeeklyGoalStepper } from '@/components/goal';
 import { radius, roles, spacing, textStyles } from '@/theme';
 import type { WeightUnit } from '@/types';
 
@@ -15,21 +17,25 @@ interface SettingsSectionProps {
   themePref: 'light' | 'dark' | 'system';
   haptics: boolean;
   units: WeightUnit;
+  weeklyGoal: number;
   /** True when the app can restart itself, which changes what the note says. */
   canReload: boolean;
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
   onToggleHaptics: () => void;
   onSetUnits: (unit: WeightUnit) => void;
+  onSetWeeklyGoal: (days: number) => void;
 }
 
 export function SettingsSection({
   themePref,
   haptics,
   units,
+  weeklyGoal,
   canReload,
   onThemeChange,
   onToggleHaptics,
   onSetUnits,
+  onSetWeeklyGoal,
 }: SettingsSectionProps) {
   return (
     <View style={styles.section}>
@@ -91,6 +97,18 @@ export function SettingsSection({
           ))}
         </View>
       </View>
+
+      <View style={styles.settingSpacer} />
+
+      {/* Weekly goal (issue #78). A number you set once, so it sits in the same
+            row shell as Units rather than getting a screen of its own. */}
+      <View style={styles.settingRow}>
+        <Text style={styles.settingLabel}>Weekly goal</Text>
+        <WeeklyGoalStepper goal={weeklyGoal} onChange={onSetWeeklyGoal} />
+      </View>
+      <Text style={styles.settingNote}>
+        1 to 7 days. Weeks run Monday to Sunday. Changing it does not change weeks already counted.
+      </Text>
     </View>
   );
 }

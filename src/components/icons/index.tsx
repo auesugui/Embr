@@ -1,7 +1,7 @@
 // =============================================================================
 // Embr icon set
 // =============================================================================
-// Eighteen icons, drawn on one 24×24 grid with one set of rules. This replaces
+// Nineteen icons, drawn on one 24×24 grid with one set of rules. This replaces
 // `@/components/icons`, which was the last third-party visual system left in
 // the app after ADR-0013 replaced the fonts, the palette and the art.
 //
@@ -173,6 +173,14 @@ export function Plus({ size = 24, color = '#000', strokeWidth, style }: IconProp
   return (
     <Icon size={size} color={color} strokeWidth={strokeWidth} style={style}>
       <Path d="M12 5.5v13M5.5 12h13" />
+    </Icon>
+  );
+}
+
+export function Minus({ size = 24, color = '#000', strokeWidth, style }: IconProps) {
+  return (
+    <Icon size={size} color={color} strokeWidth={strokeWidth} style={style}>
+      <Path d="M5.5 12h13" />
     </Icon>
   );
 }

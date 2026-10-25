@@ -13,7 +13,12 @@
 
 import type { Exercise, WorkoutLog } from '@/types';
 import { beforeEach, describe, expect, it } from '@jest/globals';
-import { countClaimedInLast7Days, countClaimedSince, getClaimedLogs } from '../history-stats';
+import {
+  countClaimedInLast7Days,
+  countClaimedSince,
+  countClaimedThisWeek,
+  getClaimedLogs,
+} from '../history-stats';
 
 // Fixed reference clock: 2026-07-03T12:00:00Z. All relative timestamps are
 // derived from this so the 7-day window is deterministic.
@@ -222,6 +227,36 @@ describe('history-stats', () => {
       ];
 
       expect(countClaimedSince(logs, since, NOW_MS)).toBe(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // countClaimedThisWeek — the "This Week" cell, on the hero's week boundary
+  // ---------------------------------------------------------------------------
+
+  describe('countClaimedThisWeek', () => {
+    // Week of Mon 2026-10-19 … Sun 2026-10-25, viewed on the Thursday.
+    const THURSDAY = new Date(2026, 9, 22, 9, 0);
+    const onDay = (month: number, day: number, hour = 9) =>
+      makeLog({
+        claimedAt: 'x',
+        timestamp: new Date(2026, month - 1, day, hour, 30).toISOString(),
+      });
+
+    it('counts workouts in the calendar week, not the rolling seven days', () => {
+      // The Sunday before is inside the rolling window but is last week.
+      const logs = [onDay(10, 18), onDay(10, 19), onDay(10, 22)];
+      expect(countClaimedThisWeek(logs, THURSDAY)).toBe(2);
+    });
+
+    it('counts two workouts on one day twice — it counts sessions, not days', () => {
+      expect(countClaimedThisWeek([onDay(10, 22, 7), onDay(10, 22, 18)], THURSDAY)).toBe(2);
+    });
+
+    it('ignores unclaimed workouts', () => {
+      expect(countClaimedThisWeek([makeLog({ timestamp: THURSDAY.toISOString() })], THURSDAY)).toBe(
+        0
+      );
     });
   });
 

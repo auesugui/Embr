@@ -117,8 +117,9 @@ test.describe('Home', () => {
     await expect(page.getByText('Full Body').first()).toBeVisible({ timeout: 5000 });
   });
 
-  test('shows the streak hero and quick stats', async ({ page }) => {
-    await expect(page.getByText('day streak')).toBeVisible({ timeout: 10000 });
+  test('shows the weekly goal hero and quick stats', async ({ page }) => {
+    // Exact, because the Quick Stats cell below it reads "This Week".
+    await expect(page.getByText('this week', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Quick Stats')).toBeVisible();
   });
 });

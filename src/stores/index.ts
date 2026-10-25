@@ -20,6 +20,7 @@ export {
   selectTheme,
   selectHapticsEnabled,
   selectReducedMotion,
+  selectWeeklyGoal,
 } from './settingsStore';
 export {
   useWeightHistoryStore,

@@ -370,12 +370,24 @@ export interface NotificationSettings {
 // a 100 lb entry and a 100 kg entry are different facts (issue #42).
 export type WeightUnit = 'lb' | 'kg';
 
+// One weekly-goal value and the week it took effect, as the Monday's local day
+// key. Stored as a list so changing the goal cannot change the status of a week
+// that has already finished — see src/lib/weekly-goal.ts for the rule.
+export interface WeeklyGoalEntry {
+  week: string;
+  days: number;
+}
+
 export interface Settings {
   theme: 'light' | 'dark' | 'system';
   haptics: boolean;
   notifications: NotificationSettings;
   units: WeightUnit;
   reducedMotion: boolean;
+  /** Empty on an install that never set one, which means the default of 3. */
+  weeklyGoals: WeeklyGoalEntry[];
+  /** True once the first-workout goal prompt has been shown. */
+  goalPromptSeen: boolean;
 }
 
 // -----------------------------------------------------------------------------

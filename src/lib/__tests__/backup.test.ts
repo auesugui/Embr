@@ -294,6 +294,50 @@ describe('custom exercises', () => {
   });
 });
 
+describe('weekly goal', () => {
+  it('carries the settings slice, which is where the goal and the prompt flag live', () => {
+    expect(BACKUP_KEYS).toContain('settings.full_state');
+  });
+
+  it('round-trips the goal history and the prompt flag verbatim', async () => {
+    const settings = JSON.stringify({
+      units: 'lb',
+      weeklyGoals: [
+        { week: '2026-09-28', days: 4 },
+        { week: '2026-10-19', days: 6 },
+      ],
+      goalPromptSeen: true,
+    });
+
+    (AsyncStorage.multiGet as jest.Mock).mockResolvedValueOnce(
+      BACKUP_KEYS.map((k) => [k, k === 'settings.full_state' ? settings : null])
+    );
+
+    const backup = await createBackup(0);
+    expect(backup.data['settings.full_state']).toBe(settings);
+
+    await restoreBackup(parseBackup(JSON.stringify(backup)));
+    const written = mockMultiSet.mock.calls[0][0] as [string, string][];
+    expect(written).toContainEqual(['settings.full_state', settings]);
+  });
+
+  it('restores a pre-#78 settings blob that has neither field', async () => {
+    // The fields are absent rather than empty, which the store reads as the
+    // default goal of 3 — see settingsStore's hydrate test.
+    const legacySettings = '{"theme":"dark","haptics":false,"units":"kg"}';
+    const legacy = validBackup({
+      app: 'ironquest',
+      data: { 'settings.full_state': legacySettings },
+    });
+
+    await expect(restoreBackup(parseBackup(JSON.stringify(legacy)))).resolves.toBe(1);
+
+    const written = mockMultiSet.mock.calls[0][0] as [string, string][];
+    expect(written).toContainEqual(['settings.full_state', legacySettings]);
+    expect(JSON.parse(written[0][1]).weeklyGoals).toBeUndefined();
+  });
+});
+
 describe('profile avatar', () => {
   it('carries the player slice, which is where the avatar lives', () => {
     expect(BACKUP_KEYS).toContain('player.full_state');

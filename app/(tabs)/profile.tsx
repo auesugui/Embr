@@ -22,7 +22,12 @@ import { User } from '@/components/icons';
 import { BackupSection } from '@/components/profile/BackupSection';
 import { SettingsSection } from '@/components/profile/SettingsSection';
 import { APP_NAME } from '@/config';
-import { usePlayerStore, useSettingsStore, useWorkoutHistoryStore } from '@/stores';
+import {
+  selectWeeklyGoal,
+  usePlayerStore,
+  useSettingsStore,
+  useWorkoutHistoryStore,
+} from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
 export default function ProfileScreen() {
@@ -32,7 +37,9 @@ export default function ProfileScreen() {
   const haptics = useSettingsStore((state) => state.haptics);
   const units = useSettingsStore((state) => state.units);
   const themePref = useSettingsStore((state) => state.theme);
+  const weeklyGoal = useSettingsStore(selectWeeklyGoal);
   const updateSetting = useSettingsStore((state) => state.updateSetting);
+  const setWeeklyGoal = useSettingsStore((state) => state.setWeeklyGoal);
 
   // Single in-flight flag for both actions — they're mutually exclusive and a
   // double-tap mid-restore would race two writes into the same storage keys.
@@ -252,10 +259,12 @@ export default function ProfileScreen() {
         themePref={themePref}
         haptics={haptics}
         units={units}
+        weeklyGoal={weeklyGoal}
         canReload={isFileIOSupported}
         onThemeChange={handleThemeChange}
         onToggleHaptics={() => updateSetting('haptics', !haptics)}
         onSetUnits={(u) => updateSetting('units', u)}
+        onSetWeeklyGoal={setWeeklyGoal}
       />
 
       <BackupSection
