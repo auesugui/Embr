@@ -22,12 +22,9 @@ import { User } from '@/components/icons';
 import { BackupSection } from '@/components/profile/BackupSection';
 import { SettingsSection } from '@/components/profile/SettingsSection';
 import { APP_NAME } from '@/config';
-import {
-  selectWeeklyGoal,
-  usePlayerStore,
-  useSettingsStore,
-  useWorkoutHistoryStore,
-} from '@/stores';
+import { useLocalDay } from '@/hooks';
+import { goalInEffect } from '@/lib/weekly-goal';
+import { usePlayerStore, useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
 export default function ProfileScreen() {
@@ -37,9 +34,14 @@ export default function ProfileScreen() {
   const haptics = useSettingsStore((state) => state.haptics);
   const units = useSettingsStore((state) => state.units);
   const themePref = useSettingsStore((state) => state.theme);
-  const weeklyGoal = useSettingsStore(selectWeeklyGoal);
   const updateSetting = useSettingsStore((state) => state.updateSetting);
   const setWeeklyGoal = useSettingsStore((state) => state.setWeeklyGoal);
+
+  // Which week's goal the row shows depends on the date, and this tab can be
+  // left open across midnight like any other.
+  const today = useLocalDay();
+  const weeklyGoals = useSettingsStore((state) => state.weeklyGoals);
+  const weeklyGoal = goalInEffect(weeklyGoals, today);
 
   // Single in-flight flag for both actions — they're mutually exclusive and a
   // double-tap mid-restore would race two writes into the same storage keys.

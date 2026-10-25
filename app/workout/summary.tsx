@@ -16,10 +16,11 @@ import { RevealRow } from '@/components/celebration';
 import { WeeklyGoalPrompt } from '@/components/goal';
 import { Flame } from '@/components/icons';
 import { SummaryExercises } from '@/components/workout/summary/SummaryExercises';
+import { useLocalDay } from '@/hooks';
 import { uniformMetric } from '@/lib/metric';
+import { goalInEffect } from '@/lib/weekly-goal';
 import { type WorkoutSummary, calculateWorkoutSummary, formatWeight } from '@/lib/workout-summary';
 import {
-  selectWeeklyGoal,
   useBaselineStore,
   usePlayerStore,
   useSettingsStore,
@@ -47,7 +48,11 @@ export default function WorkoutSummaryScreen() {
   // Logs store no unit, so like History this reads the current setting.
   const units = useSettingsStore((s) => s.units);
 
-  const weeklyGoal = useSettingsStore(selectWeeklyGoal);
+  // A workout finished at 23:58 is still on screen at 00:02, and the goal the
+  // prompt offers belongs to whichever week it is now.
+  const today = useLocalDay();
+  const weeklyGoals = useSettingsStore((s) => s.weeklyGoals);
+  const weeklyGoal = goalInEffect(weeklyGoals, today);
 
   // Post-save UI state: swaps the footer to a deliberate "Done" rather than
   // auto-exiting the screen that closes out a workout.

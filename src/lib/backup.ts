@@ -52,6 +52,8 @@ export const BACKUP_KEYS: readonly string[] = [
  * restoring — a rename that quietly invalidates every existing backup is how
  * you lose data with a cosmetic change.
  */
+const SETTINGS_KEY: string = STORAGE_KEYS.SETTINGS.FULL_STATE;
+
 export const BACKUP_APP_ID = 'embr';
 const ACCEPTED_APP_IDS = new Set(['embr', 'ironquest']);
 
@@ -162,5 +164,43 @@ export async function restoreBackup(backup: BackupFile): Promise<number> {
   if (entries.length === 0) return 0;
 
   await AsyncStorage.multiSet(entries);
+  if (!(SETTINGS_KEY in backup.data)) await clearWeeklyGoals();
   return entries.length;
+}
+
+/**
+ * Empty the weekly-goal list in the settings already on the device, leaving
+ * every other setting alone.
+ *
+ * This is the one exception to "keys the backup doesn't carry are left alone",
+ * and it exists because the goal list SCORES the history being restored. A
+ * backup written before issue #78, or by an install that never opened Settings,
+ * carries no goal list at all — but the device it lands on might be sitting on
+ * a goal of 6, and every week of the incoming history would then be judged
+ * against a number that history never knew about. An empty list means the
+ * default of 3, which is exactly what an install without the setting meant.
+ *
+ * Units, theme, haptics and the prompt flag are properties of the device, not
+ * of the history, so they stay. A device with no settings at all is already on
+ * the default and is not written to.
+ */
+async function clearWeeklyGoals(): Promise<void> {
+  const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+  if (!raw) return;
+
+  let settings: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return;
+    settings = parsed as Record<string, unknown>;
+  } catch {
+    // Unreadable settings are left exactly as they are. Restore has already
+    // written the history; corrupting the blob on the way past helps nobody.
+    return;
+  }
+
+  const current = settings.weeklyGoals;
+  if (!Array.isArray(current) || current.length === 0) return;
+
+  await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...settings, weeklyGoals: [] }));
 }

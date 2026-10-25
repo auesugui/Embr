@@ -15,6 +15,7 @@ import { WeeklyHero } from '@/components/goal';
 import { PressableScale, type SwipeAction, SwipeActions } from '@/components/ui';
 import { TemplateCard } from '@/components/workout/TemplateCard';
 import { WORKOUT_TEMPLATES } from '@/data';
+import { useLocalDay } from '@/hooks';
 import { countClaimedThisWeek } from '@/lib/history-stats';
 import { weekProgress } from '@/lib/weekly-goal';
 import { weeklyGoalLine } from '@/lib/weekly-goal-copy';
@@ -37,12 +38,20 @@ export default function HomeScreen() {
 
   // The hero's week, derived from history the way the daily streak is — a
   // workout typed in for a past week repairs the run without a replay.
+  //
+  // `today` is the clock, not a decoration: this tab is where a suspended PWA
+  // resumes, so without it the week would still be yesterday's after midnight.
+  const today = useLocalDay();
   const logs = useWorkoutHistoryStore((s) => s.logs);
   const weeklyGoals = useSettingsStore((s) => s.weeklyGoals);
-  const progress = useMemo(() => weekProgress(logs, weeklyGoals), [logs, weeklyGoals]);
+  const progress = useMemo(
+    () => weekProgress(logs, weeklyGoals, today),
+    [logs, weeklyGoals, today]
+  );
 
-  // Quick Stats — real store data, not hardcoded literals.
-  const workoutsThisWeek = useWorkoutHistoryStore((s) => countClaimedThisWeek(s.logs));
+  // Quick Stats — real store data, not hardcoded literals. Same calendar week
+  // as the hero, so the same clock.
+  const workoutsThisWeek = useMemo(() => countClaimedThisWeek(logs, today), [logs, today]);
   const prCount = usePRStore((state) => state.totalPRCount);
 
   const deleteTemplate = useTemplateStore((state) => state.deleteTemplate);

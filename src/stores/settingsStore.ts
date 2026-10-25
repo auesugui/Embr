@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { localWeekKey } from '@/lib/local-week';
-import { goalForWeek, normalizeWeeklyGoals, setGoalForWeek } from '@/lib/weekly-goal';
+import { normalizeWeeklyGoals, setGoalForWeek } from '@/lib/weekly-goal';
 import type { NotificationSettings, Settings } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
@@ -108,6 +108,7 @@ export const selectTheme = (state: SettingsStore) => state.theme;
 export const selectHapticsEnabled = (state: SettingsStore) => state.haptics;
 export const selectReducedMotion = (state: SettingsStore) => state.reducedMotion;
 
-/** The weekly goal in effect right now. */
-export const selectWeeklyGoal = (state: SettingsStore) =>
-  goalForWeek(state.weeklyGoals, localWeekKey(new Date()));
+// There is deliberately no `selectWeeklyGoal`. Which goal is in effect depends
+// on the date, and a selector that reads the clock at render time is wrong for
+// every screen that stays mounted across midnight. Read `weeklyGoals` and pass
+// it to `goalInEffect` with the date from `useLocalDay`.

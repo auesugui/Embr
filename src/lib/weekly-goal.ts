@@ -61,6 +61,10 @@ export function goalForWeek(goals: WeeklyGoalEntry[], weekKey: string): number {
   return clampWeeklyGoal(goal);
 }
 
+/** The goal in effect at `now`. */
+export const goalInEffect = (goals: WeeklyGoalEntry[], now: Date): number =>
+  goalForWeek(goals, localWeekKey(now));
+
 /** `days` as the goal from `weekKey` on, replacing an entry already on that week. */
 export function setGoalForWeek(
   goals: WeeklyGoalEntry[],

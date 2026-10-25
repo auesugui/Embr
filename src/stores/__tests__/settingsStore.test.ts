@@ -5,11 +5,11 @@
 // has no weekly-goal fields at all, and it has to come back as an install on
 // the default of 3 rather than as an install with no goal.
 
-import { DEFAULT_WEEKLY_GOAL, weeklyStreak } from '@/lib/weekly-goal';
+import { DEFAULT_WEEKLY_GOAL, goalInEffect, weeklyStreak } from '@/lib/weekly-goal';
 import type { Settings, WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 
-import { selectWeeklyGoal, useSettingsStore } from '../settingsStore';
+import { useSettingsStore } from '../settingsStore';
 
 jest.mock('@/utils/storage', () => ({
   appStorage: {
@@ -43,7 +43,9 @@ beforeEach(() => {
 describe('weekly goal', () => {
   it('starts with no recorded change, which reads as the default', () => {
     expect(useSettingsStore.getState().weeklyGoals).toEqual([]);
-    expect(selectWeeklyGoal(useSettingsStore.getState())).toBe(DEFAULT_WEEKLY_GOAL);
+    expect(goalInEffect(useSettingsStore.getState().weeklyGoals, THURSDAY)).toBe(
+      DEFAULT_WEEKLY_GOAL
+    );
   });
 
   it('records a change against the current week and persists it', () => {
@@ -75,7 +77,7 @@ describe('hydrate', () => {
 
     await useSettingsStore.getState().hydrate();
 
-    expect(selectWeeklyGoal(useSettingsStore.getState())).toBe(5);
+    expect(goalInEffect(useSettingsStore.getState().weeklyGoals, THURSDAY)).toBe(5);
     expect(useSettingsStore.getState().goalPromptSeen).toBe(true);
   });
 
@@ -87,7 +89,7 @@ describe('hydrate', () => {
 
     expect(restored.weeklyGoals).toEqual([]);
     expect(restored.goalPromptSeen).toBe(false);
-    expect(selectWeeklyGoal(restored)).toBe(DEFAULT_WEEKLY_GOAL);
+    expect(goalInEffect(restored.weeklyGoals, THURSDAY)).toBe(DEFAULT_WEEKLY_GOAL);
 
     // Two weeks of three days each: identical to an explicit goal of 3.
     const logs = [log(10, 5), log(10, 7), log(10, 9), log(10, 12), log(10, 14), log(10, 16)];
