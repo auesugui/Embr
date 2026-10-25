@@ -342,8 +342,8 @@ describe('weekly goal', () => {
     const written = mockMultiSet.mock.calls[0][0] as [string, string][];
     expect(written).toContainEqual(['settings.full_state', legacySettings]);
     expect(JSON.parse(written[0][1]).weeklyGoals).toBeUndefined();
-    // Carried settings replace the device's wholesale; nothing to clear.
-    expect(mockSetItem).not.toHaveBeenCalled();
+    // Carried settings replace the device's wholesale; nothing to read or clear.
+    expect(mockGetItem).not.toHaveBeenCalled();
   });
 
   // ---------------------------------------------------------------------------
@@ -353,6 +353,11 @@ describe('weekly goal', () => {
   // except this one: the goal list scores the history being restored. Landing
   // an old export on a device set to 6 would judge weeks that never knew about
   // that number against it.
+  //
+  // The reset rides in the SAME multiSet as the restored entries. A second
+  // write after the batch could reject on its own, and then the history would
+  // already be replaced while the caller reported a failure and never offered
+  // the reload — the next save would put the stale in-memory logs back over it.
   // ---------------------------------------------------------------------------
 
   const historyOnly = () =>
@@ -375,36 +380,65 @@ describe('weekly goal', () => {
 
     await expect(restoreBackup(historyOnly())).resolves.toBe(1);
 
-    expect(mockSetItem).toHaveBeenCalledTimes(1);
-    const [key, value] = mockSetItem.mock.calls[0];
-    expect(key).toBe('settings.full_state');
-    expect(JSON.parse(value)).toEqual({
+    // One write, carrying both the restored history and the reset settings.
+    expect(mockMultiSet).toHaveBeenCalledTimes(1);
+    expect(mockSetItem).not.toHaveBeenCalled();
+
+    const written = mockMultiSet.mock.calls[0][0] as [string, string][];
+    expect(written[0]).toEqual(['workout_history.full_state', '{"logs":[]}']);
+    expect(written[1][0]).toBe('settings.full_state');
+    expect(JSON.parse(written[1][1])).toEqual({
       theme: 'dark',
       haptics: false,
       units: 'kg',
       goalPromptSeen: true,
       weeklyGoals: [],
     });
-    // The restored history itself is untouched by any of this.
-    const written = mockMultiSet.mock.calls[0][0] as [string, string][];
-    expect(written).toEqual([['workout_history.full_state', '{"logs":[]}']]);
   });
 
-  it('writes nothing when the device has no settings of its own', async () => {
+  it('writes nothing extra when the device has no settings of its own', async () => {
     mockGetItem.mockResolvedValue(null);
     await expect(restoreBackup(historyOnly())).resolves.toBe(1);
-    expect(mockSetItem).not.toHaveBeenCalled();
+    expect(mockMultiSet.mock.calls[0][0]).toEqual([['workout_history.full_state', '{"logs":[]}']]);
   });
 
   it('leaves a device already on the default alone', async () => {
     mockGetItem.mockResolvedValue('{"units":"lb","weeklyGoals":[]}');
     await restoreBackup(historyOnly());
-    expect(mockSetItem).not.toHaveBeenCalled();
+    expect(mockMultiSet.mock.calls[0][0]).toEqual([['workout_history.full_state', '{"logs":[]}']]);
   });
 
   it('leaves settings it cannot read exactly as they are', async () => {
     mockGetItem.mockResolvedValue('{not json');
     await expect(restoreBackup(historyOnly())).resolves.toBe(1);
+    expect(mockMultiSet.mock.calls[0][0]).toEqual([['workout_history.full_state', '{"logs":[]}']]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Failure ordering
+  //
+  // Half a restore is the worst outcome: the history is gone, the caller says
+  // it failed, and nothing reloads, so the stores still hold the old logs and
+  // the next save writes them back over what was just restored. Everything that
+  // can reject therefore happens before the one write.
+  // ---------------------------------------------------------------------------
+
+  it('writes nothing at all when the settings read fails', async () => {
+    mockGetItem.mockRejectedValue(new Error('storage unavailable'));
+
+    await expect(restoreBackup(historyOnly())).rejects.toThrow('storage unavailable');
+
+    expect(mockMultiSet).not.toHaveBeenCalled();
+    expect(mockSetItem).not.toHaveBeenCalled();
+  });
+
+  it('does not follow a failed batch with a second write', async () => {
+    mockGetItem.mockResolvedValue('{"units":"lb","weeklyGoals":[{"week":"2026-10-19","days":6}]}');
+    mockMultiSet.mockRejectedValue(new Error('quota exceeded'));
+
+    await expect(restoreBackup(historyOnly())).rejects.toThrow('quota exceeded');
+
+    expect(mockMultiSet).toHaveBeenCalledTimes(1);
     expect(mockSetItem).not.toHaveBeenCalled();
   });
 });
