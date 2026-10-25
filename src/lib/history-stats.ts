@@ -13,6 +13,9 @@
 
 import type { WorkoutLog } from '@/types';
 
+import { localDayKey } from './local-day';
+import { localWeekKey, weekKeyForDay } from './local-week';
+
 /** One week in milliseconds. */
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -57,4 +60,23 @@ export function countClaimedSince(
 /** Convenience: count of claimed workouts in the rolling 7-day window. */
 export function countClaimedInLast7Days(logs: WorkoutLog[], nowMs: number = Date.now()): number {
   return countClaimedSince(logs, nowMs - SEVEN_DAYS_MS, nowMs);
+}
+
+/**
+ * Count of claimed workouts in the current Monday-to-Sunday week.
+ *
+ * The "This Week" cell used the rolling 7 days, which disagreed with the hero
+ * the moment the hero started counting a calendar week (issue #78). Workouts,
+ * not days — the hero is the one that counts days trained.
+ */
+export function countClaimedThisWeek(logs: WorkoutLog[], now: Date = new Date()): number {
+  const week = localWeekKey(now);
+  let count = 0;
+  for (const log of logs) {
+    if (log.claimedAt === null) continue;
+    const date = new Date(log.timestamp);
+    if (Number.isNaN(date.getTime())) continue;
+    if (weekKeyForDay(localDayKey(date)) === week) count++;
+  }
+  return count;
 }

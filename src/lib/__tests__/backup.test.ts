@@ -23,10 +23,14 @@ import {
 jest.mock('@react-native-async-storage/async-storage', () => ({
   multiGet: jest.fn(),
   multiSet: jest.fn(),
+  getItem: jest.fn(),
+  setItem: jest.fn(),
 }));
 
 const mockMultiGet = AsyncStorage.multiGet as jest.Mock;
 const mockMultiSet = AsyncStorage.multiSet as jest.Mock;
+const mockGetItem = AsyncStorage.getItem as jest.Mock;
+const mockSetItem = AsyncStorage.setItem as jest.Mock;
 
 const FIXED_NOW = Date.UTC(2026, 7, 10, 15, 0, 0); // 2026-08-10
 
@@ -41,6 +45,9 @@ const validBackup = (overrides: Partial<BackupFile> = {}): BackupFile => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockMultiSet.mockResolvedValue(undefined);
+  mockSetItem.mockResolvedValue(undefined);
+  // Default: nothing already on the device.
+  mockGetItem.mockResolvedValue(null);
 });
 
 describe('createBackup', () => {
@@ -291,6 +298,148 @@ describe('custom exercises', () => {
     const backup = await createBackup(0);
 
     expect(backup.data['custom_exercises.full_state']).toBe(custom);
+  });
+});
+
+describe('weekly goal', () => {
+  it('carries the settings slice, which is where the goal and the prompt flag live', () => {
+    expect(BACKUP_KEYS).toContain('settings.full_state');
+  });
+
+  it('round-trips the goal history and the prompt flag verbatim', async () => {
+    const settings = JSON.stringify({
+      units: 'lb',
+      weeklyGoals: [
+        { week: '2026-09-28', days: 4 },
+        { week: '2026-10-19', days: 6 },
+      ],
+      goalPromptSeen: true,
+    });
+
+    (AsyncStorage.multiGet as jest.Mock).mockResolvedValueOnce(
+      BACKUP_KEYS.map((k) => [k, k === 'settings.full_state' ? settings : null])
+    );
+
+    const backup = await createBackup(0);
+    expect(backup.data['settings.full_state']).toBe(settings);
+
+    await restoreBackup(parseBackup(JSON.stringify(backup)));
+    const written = mockMultiSet.mock.calls[0][0] as [string, string][];
+    expect(written).toContainEqual(['settings.full_state', settings]);
+  });
+
+  it('restores a pre-#78 settings blob that has neither field', async () => {
+    // The fields are absent rather than empty, which the store reads as the
+    // default goal of 3 — see settingsStore's hydrate test.
+    const legacySettings = '{"theme":"dark","haptics":false,"units":"kg"}';
+    const legacy = validBackup({
+      app: 'ironquest',
+      data: { 'settings.full_state': legacySettings },
+    });
+
+    await expect(restoreBackup(parseBackup(JSON.stringify(legacy)))).resolves.toBe(1);
+
+    const written = mockMultiSet.mock.calls[0][0] as [string, string][];
+    expect(written).toContainEqual(['settings.full_state', legacySettings]);
+    expect(JSON.parse(written[0][1]).weeklyGoals).toBeUndefined();
+    // Carried settings replace the device's wholesale; nothing to read or clear.
+    expect(mockGetItem).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // A backup with NO settings entry at all
+  //
+  // Omitted keys are normally left alone, and that is right for every slice
+  // except this one: the goal list scores the history being restored. Landing
+  // an old export on a device set to 6 would judge weeks that never knew about
+  // that number against it.
+  //
+  // The reset rides in the SAME multiSet as the restored entries. A second
+  // write after the batch could reject on its own, and then the history would
+  // already be replaced while the caller reported a failure and never offered
+  // the reload — the next save would put the stale in-memory logs back over it.
+  // ---------------------------------------------------------------------------
+
+  const historyOnly = () =>
+    parseBackup(
+      JSON.stringify(
+        validBackup({ app: 'ironquest', data: { 'workout_history.full_state': '{"logs":[]}' } })
+      )
+    );
+
+  it('clears the device goal list when the backup carries no settings', async () => {
+    mockGetItem.mockResolvedValue(
+      JSON.stringify({
+        theme: 'dark',
+        haptics: false,
+        units: 'kg',
+        goalPromptSeen: true,
+        weeklyGoals: [{ week: '2026-10-19', days: 6 }],
+      })
+    );
+
+    await expect(restoreBackup(historyOnly())).resolves.toBe(1);
+
+    // One write, carrying both the restored history and the reset settings.
+    expect(mockMultiSet).toHaveBeenCalledTimes(1);
+    expect(mockSetItem).not.toHaveBeenCalled();
+
+    const written = mockMultiSet.mock.calls[0][0] as [string, string][];
+    expect(written[0]).toEqual(['workout_history.full_state', '{"logs":[]}']);
+    expect(written[1][0]).toBe('settings.full_state');
+    expect(JSON.parse(written[1][1])).toEqual({
+      theme: 'dark',
+      haptics: false,
+      units: 'kg',
+      goalPromptSeen: true,
+      weeklyGoals: [],
+    });
+  });
+
+  it('writes nothing extra when the device has no settings of its own', async () => {
+    mockGetItem.mockResolvedValue(null);
+    await expect(restoreBackup(historyOnly())).resolves.toBe(1);
+    expect(mockMultiSet.mock.calls[0][0]).toEqual([['workout_history.full_state', '{"logs":[]}']]);
+  });
+
+  it('leaves a device already on the default alone', async () => {
+    mockGetItem.mockResolvedValue('{"units":"lb","weeklyGoals":[]}');
+    await restoreBackup(historyOnly());
+    expect(mockMultiSet.mock.calls[0][0]).toEqual([['workout_history.full_state', '{"logs":[]}']]);
+  });
+
+  it('leaves settings it cannot read exactly as they are', async () => {
+    mockGetItem.mockResolvedValue('{not json');
+    await expect(restoreBackup(historyOnly())).resolves.toBe(1);
+    expect(mockMultiSet.mock.calls[0][0]).toEqual([['workout_history.full_state', '{"logs":[]}']]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Failure ordering
+  //
+  // Half a restore is the worst outcome: the history is gone, the caller says
+  // it failed, and nothing reloads, so the stores still hold the old logs and
+  // the next save writes them back over what was just restored. Everything that
+  // can reject therefore happens before the one write.
+  // ---------------------------------------------------------------------------
+
+  it('writes nothing at all when the settings read fails', async () => {
+    mockGetItem.mockRejectedValue(new Error('storage unavailable'));
+
+    await expect(restoreBackup(historyOnly())).rejects.toThrow('storage unavailable');
+
+    expect(mockMultiSet).not.toHaveBeenCalled();
+    expect(mockSetItem).not.toHaveBeenCalled();
+  });
+
+  it('does not follow a failed batch with a second write', async () => {
+    mockGetItem.mockResolvedValue('{"units":"lb","weeklyGoals":[{"week":"2026-10-19","days":6}]}');
+    mockMultiSet.mockRejectedValue(new Error('quota exceeded'));
+
+    await expect(restoreBackup(historyOnly())).rejects.toThrow('quota exceeded');
+
+    expect(mockMultiSet).toHaveBeenCalledTimes(1);
+    expect(mockSetItem).not.toHaveBeenCalled();
   });
 });
 

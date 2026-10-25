@@ -13,9 +13,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RevealRow } from '@/components/celebration';
+import { WeeklyGoalPrompt } from '@/components/goal';
 import { Flame } from '@/components/icons';
 import { SummaryExercises } from '@/components/workout/summary/SummaryExercises';
+import { useLocalDay } from '@/hooks';
 import { uniformMetric } from '@/lib/metric';
+import { goalInEffect } from '@/lib/weekly-goal';
 import { type WorkoutSummary, calculateWorkoutSummary, formatWeight } from '@/lib/workout-summary';
 import {
   useBaselineStore,
@@ -45,9 +48,19 @@ export default function WorkoutSummaryScreen() {
   // Logs store no unit, so like History this reads the current setting.
   const units = useSettingsStore((s) => s.units);
 
+  // A workout finished at 23:58 is still on screen at 00:02, and the goal the
+  // prompt offers belongs to whichever week it is now.
+  const today = useLocalDay();
+  const weeklyGoals = useSettingsStore((s) => s.weeklyGoals);
+  const weeklyGoal = goalInEffect(weeklyGoals, today);
+
   // Post-save UI state: swaps the footer to a deliberate "Done" rather than
   // auto-exiting the screen that closes out a workout.
   const [justClaimed, setJustClaimed] = useState(false);
+
+  // The weekly-goal ask (issue #78). Local, because the `seen` flag is written
+  // the moment the card appears — the card itself has to outlive that write.
+  const [goalPromptOpen, setGoalPromptOpen] = useState(false);
 
   const summary: WorkoutSummary | null = useMemo(() => {
     if (!log) return null;
@@ -83,6 +96,17 @@ export default function WorkoutSummaryScreen() {
         0
       );
       if (sessionMax > 0) baselineStore.recordSession(ex.id, sessionMax);
+    }
+
+    // Ask for a weekly goal once, here, after the first workout anyone ever
+    // saves — the one moment they have proved they will log something.
+    const settings = useSettingsStore.getState();
+    const savedCount = useWorkoutHistoryStore
+      .getState()
+      .logs.filter((l) => l.claimedAt !== null).length;
+    if (savedCount === 1 && !settings.goalPromptSeen) {
+      settings.updateSetting('goalPromptSeen', true);
+      setGoalPromptOpen(true);
     }
 
     // End the session; the log is already persisted in history. Stay on the
@@ -182,6 +206,18 @@ export default function WorkoutSummaryScreen() {
             </View>
           </View>
         </RevealRow>
+
+        {/* Under the numbers they just earned, above the set-by-set detail:
+            the ask lands once the session has been read, not before it. */}
+        {goalPromptOpen && (
+          <RevealRow index={0}>
+            <WeeklyGoalPrompt
+              goal={weeklyGoal}
+              onChange={(days) => useSettingsStore.getState().setWeeklyGoal(days)}
+              onDismiss={() => setGoalPromptOpen(false)}
+            />
+          </RevealRow>
+        )}
 
         <SummaryExercises
           exercises={summary.exercises}

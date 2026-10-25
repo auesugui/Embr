@@ -2,6 +2,8 @@
 // IronQuest Settings Store - App Preferences
 // =============================================================================
 
+import { localWeekKey } from '@/lib/local-week';
+import { normalizeWeeklyGoals, setGoalForWeek } from '@/lib/weekly-goal';
 import type { NotificationSettings, Settings } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
@@ -13,6 +15,8 @@ import { create } from 'zustand';
 interface SettingsActions {
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   updateNotifications: (notifications: Partial<NotificationSettings>) => void;
+  /** Set the weekly goal from this week on. Finished weeks keep their own. */
+  setWeeklyGoal: (days: number, now?: Date) => void;
   reset: () => void;
   hydrate: () => Promise<void>;
 }
@@ -33,6 +37,8 @@ const initialState: Settings = {
   },
   units: 'lb',
   reducedMotion: false,
+  weeklyGoals: [],
+  goalPromptSeen: false,
 };
 
 // -----------------------------------------------------------------------------
@@ -63,6 +69,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     appStorage.setJSON(STORAGE_KEYS.SETTINGS.FULL_STATE, current).catch(console.warn);
   },
 
+  setWeeklyGoal: (days, now = new Date()) => {
+    get().updateSetting('weeklyGoals', setGoalForWeek(get().weeklyGoals, localWeekKey(now), days));
+  },
+
   reset: () => {
     set(initialState);
     appStorage.delete(STORAGE_KEYS.SETTINGS.FULL_STATE).catch(console.warn);
@@ -78,6 +88,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           units: stored.units ?? initialState.units,
           reducedMotion: stored.reducedMotion ?? initialState.reducedMotion,
           notifications: stored.notifications ?? initialState.notifications,
+          // A backup written before issue #78 has neither, which is an install
+          // on the default goal of 3 that has not been prompted.
+          weeklyGoals: normalizeWeeklyGoals(stored.weeklyGoals),
+          goalPromptSeen: stored.goalPromptSeen ?? initialState.goalPromptSeen,
         });
       }
     } catch (error) {
@@ -93,3 +107,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 export const selectTheme = (state: SettingsStore) => state.theme;
 export const selectHapticsEnabled = (state: SettingsStore) => state.haptics;
 export const selectReducedMotion = (state: SettingsStore) => state.reducedMotion;
+
+// There is deliberately no `selectWeeklyGoal`. Which goal is in effect depends
+// on the date, and a selector that reads the clock at render time is wrong for
+// every screen that stays mounted across midnight. Read `weeklyGoals` and pass
+// it to `goalInEffect` with the date from `useLocalDay`.

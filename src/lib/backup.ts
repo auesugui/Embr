@@ -52,6 +52,8 @@ export const BACKUP_KEYS: readonly string[] = [
  * restoring — a rename that quietly invalidates every existing backup is how
  * you lose data with a cosmetic change.
  */
+const SETTINGS_KEY: string = STORAGE_KEYS.SETTINGS.FULL_STATE;
+
 export const BACKUP_APP_ID = 'embr';
 const ACCEPTED_APP_IDS = new Set(['embr', 'ironquest']);
 
@@ -161,6 +163,56 @@ export async function restoreBackup(backup: BackupFile): Promise<number> {
   const entries = Object.entries(backup.data).filter(([key]) => BACKUP_KEYS.includes(key));
   if (entries.length === 0) return 0;
 
-  await AsyncStorage.multiSet(entries);
+  // Everything that can fail happens BEFORE the write. A step that rejects
+  // after the batch would leave the history replaced while the caller shows
+  // "Restore failed" and never offers the reload that rehydrates the stores —
+  // and the next save would then write the stale in-memory logs back over the
+  // history that was just restored. So the goal-list reset is read, computed,
+  // and added to the same batch; a read that rejects fails the restore with
+  // nothing written at all.
+  const reset = SETTINGS_KEY in backup.data ? null : await weeklyGoalReset();
+
+  await AsyncStorage.multiSet(reset === null ? entries : [...entries, reset]);
   return entries.length;
+}
+
+/**
+ * The settings value to write back with the weekly-goal list emptied, or null
+ * when there is nothing to change. Reads; never writes.
+ *
+ * Emptying that list is the one exception to "keys the backup doesn't carry are
+ * left alone", and it exists because the goal list SCORES the history being
+ * restored. A backup written before issue #78, or by an install that never
+ * opened Settings, carries no goal list at all — but the device it lands on
+ * might be sitting on a goal of 6, and every week of the incoming history would
+ * then be judged against a number that history never knew about. An empty list
+ * means the default of 3, which is exactly what an install without the setting
+ * meant.
+ *
+ * Units, theme, haptics and the prompt flag are properties of the device, not
+ * of the history, so they stay. A device with no settings is already on the
+ * default, and settings that cannot be parsed are left exactly as they are:
+ * both return null rather than a rewritten blob.
+ *
+ * The count `restoreBackup` reports stays the number of slices the FILE
+ * carried, so this entry is not added to it — the user is told what was
+ * restored, not how many keys were touched.
+ */
+async function weeklyGoalReset(): Promise<[string, string] | null> {
+  const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+  if (!raw) return null;
+
+  let settings: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    settings = parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const current = settings.weeklyGoals;
+  if (!Array.isArray(current) || current.length === 0) return null;
+
+  return [SETTINGS_KEY, JSON.stringify({ ...settings, weeklyGoals: [] })];
 }

@@ -5,29 +5,53 @@
 // It gets breathing room, the display face, and the one emotional beat the
 // tracker has — the streak. Density belongs on session/history, not here.
 
-import { ChevronRight, Flame, Pencil, Plus, Trash } from '@/components/icons';
+import { ChevronRight, Pencil, Plus, Trash } from '@/components/icons';
 import { router } from 'expo-router';
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { CountUpText, RevealRow } from '@/components/celebration';
+import { RevealRow } from '@/components/celebration';
+import { WeeklyHero } from '@/components/goal';
 import { PressableScale, type SwipeAction, SwipeActions } from '@/components/ui';
 import { TemplateCard } from '@/components/workout/TemplateCard';
 import { WORKOUT_TEMPLATES } from '@/data';
-import { countClaimedInLast7Days } from '@/lib/history-stats';
+import { useLocalDay } from '@/hooks';
+import { countClaimedThisWeek } from '@/lib/history-stats';
+import { weekProgress } from '@/lib/weekly-goal';
+import { weeklyGoalLine } from '@/lib/weekly-goal-copy';
 import { ownWorkoutRoute } from '@/lib/workout-routes';
-import { usePRStore, usePlayerStore, useTemplateStore, useWorkoutHistoryStore } from '@/stores';
+import {
+  usePRStore,
+  usePlayerStore,
+  useSettingsStore,
+  useTemplateStore,
+  useWorkoutHistoryStore,
+} from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
 import { showAlert } from '@/utils/alert';
 import { haptics } from '@/utils/haptics';
 
 export default function HomeScreen() {
-  const streak = usePlayerStore((state) => state.streak.current);
   const totalWorkouts = usePlayerStore((state) => state.totalWorkouts);
   const personalTemplates = useTemplateStore((state) => state.templates);
   const createBlankTemplate = useTemplateStore((state) => state.createBlankTemplate);
 
-  // Quick Stats — real store data, not hardcoded literals.
-  const workoutsThisWeek = useWorkoutHistoryStore((s) => countClaimedInLast7Days(s.logs));
+  // The hero's week, derived from history the way the daily streak is — a
+  // workout typed in for a past week repairs the run without a replay.
+  //
+  // `today` is the clock, not a decoration: this tab is where a suspended PWA
+  // resumes, so without it the week would still be yesterday's after midnight.
+  const today = useLocalDay();
+  const logs = useWorkoutHistoryStore((s) => s.logs);
+  const weeklyGoals = useSettingsStore((s) => s.weeklyGoals);
+  const progress = useMemo(
+    () => weekProgress(logs, weeklyGoals, today),
+    [logs, weeklyGoals, today]
+  );
+
+  // Quick Stats — real store data, not hardcoded literals. Same calendar week
+  // as the hero, so the same clock.
+  const workoutsThisWeek = useMemo(() => countClaimedThisWeek(logs, today), [logs, today]);
   const prCount = usePRStore((state) => state.totalPRCount);
 
   const deleteTemplate = useTemplateStore((state) => state.deleteTemplate);
@@ -123,14 +147,7 @@ export default function HomeScreen() {
           here — that's why this card is tall and centered rather than a compact
           stat row. Don't fill the space with layout. */}
       <RevealRow index={0} style={styles.hero}>
-        <View style={styles.heroMark}>
-          <Flame size={28} color={streak > 0 ? roles.accent : roles.textMuted} strokeWidth={1.75} />
-        </View>
-        <CountUpText value={streak} style={styles.heroValue} />
-        <Text style={styles.heroLabel}>day streak</Text>
-        <Text style={styles.heroCaption}>
-          {streak > 0 ? 'Keep it going.' : 'Log a workout to start one.'}
-        </Text>
+        <WeeklyHero progress={progress} line={weeklyGoalLine(progress)} />
       </RevealRow>
 
       {/* Quick Stats — one card, divided. Three separate cards read as three
@@ -274,26 +291,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     alignItems: 'center',
     marginBottom: spacing[6],
-  },
-  heroMark: {
-    marginBottom: spacing[2],
-  },
-  heroValue: {
-    ...textStyles.hero,
-    color: roles.textPrimary,
-    fontSize: 56,
-    lineHeight: 62,
-  },
-  heroLabel: {
-    ...textStyles.label,
-    color: roles.textSecondary,
-    letterSpacing: 0.3,
-  },
-  heroCaption: {
-    ...textStyles.displaySmall,
-    color: roles.textMuted,
-    fontSize: 16,
-    marginTop: spacing[3],
   },
 
   // --- Sections -------------------------------------------------------------
