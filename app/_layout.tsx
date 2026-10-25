@@ -194,6 +194,7 @@ export default function RootLayout() {
                 animation: 'slide_from_bottom',
               }}
             />
+            <Stack.Screen name="exercise/[id]" options={{ title: ROUTE_TITLES['exercise/[id]'] }} />
             <Stack.Screen
               name="workout/import-photos"
               options={{ title: ROUTE_TITLES['workout/import-photos'] }}

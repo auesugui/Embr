@@ -281,3 +281,26 @@ export function ClipboardList({ size = 24, color = '#000', strokeWidth, style }:
     </Icon>
   );
 }
+
+/**
+ * Progress. The rising polyline plus its arrowhead, which is what makes it read
+ * as a trend rather than a mountain range at tab-bar size.
+ */
+export function TrendingUp({ size = 24, color = '#000', strokeWidth, style }: IconProps) {
+  return (
+    <Icon size={size} color={color} strokeWidth={strokeWidth} style={style}>
+      <Path d="M3.5 16.5 9.3 10.7 13.4 14.8 20.5 7.6" />
+      <Path d="M15.2 7.6h5.3v5.3" />
+    </Icon>
+  );
+}
+
+/** The chart-shaped empty state. Axes first, so the mark reads before the line. */
+export function LineChart({ size = 24, color = '#000', strokeWidth, style }: IconProps) {
+  return (
+    <Icon size={size} color={color} strokeWidth={strokeWidth} style={style}>
+      <Path d="M4.2 3.5v16.3h16.3" />
+      <Path d="M19.3 9.3 14.3 14.3 10.3 10.3 7.3 13.3" />
+    </Icon>
+  );
+}

@@ -91,16 +91,29 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="progress"
+        options={{
+          title: 'Progress',
+          tabBarIcon: ({ focused }) => <TabIcon name="progress" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
           tabBarIcon: ({ focused }) => <TabIcon name="profile" focused={focused} />,
         }}
       />
-      {/* History is reachable from the home screen, not the tab bar. `href:
+      {/* History is reachable from the Progress tab, not the tab bar. `href:
           null` keeps the route resolvable via router.push while hiding it as a
-          tab. The explicit header back affordance returns to the Quest Board
-          (tab navigators don't provide one themselves). */}
+          tab. Tab navigators provide no back affordance of their own, so the
+          header carries one.
+
+          It names Progress rather than calling router.back(): inside a tab
+          navigator `back` pops to the FIRST tab, so from History it landed on
+          Workouts — one screen further back than the one you came from. A deep
+          link into /history has nowhere to return to either, and Progress is
+          the right answer for both. */}
       <Tabs.Screen
         name="history"
         options={{
@@ -109,7 +122,7 @@ export default function TabLayout() {
           href: null,
           headerLeft: () => (
             <Pressable
-              onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+              onPress={() => router.replace('/(tabs)/progress')}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <View style={styles.headerBack}>

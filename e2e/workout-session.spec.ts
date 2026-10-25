@@ -102,8 +102,9 @@ test.describe('Onboarding', () => {
 test.describe('Home', () => {
   test.beforeEach(({ page }) => seed(page));
 
-  test('shows the two tracker tabs and no game-layer tabs', async ({ page }) => {
+  test('shows the three tracker tabs and no game-layer tabs', async ({ page }) => {
     await expect(page.getByRole('tab', { name: 'Workouts' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('tab', { name: 'Progress' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Profile' })).toBeVisible();
 
     // Regression guard for ADR-0014: these must never come back by accident.
@@ -121,6 +122,62 @@ test.describe('Home', () => {
     // Exact, because the Quick Stats cell below it reads "This Week".
     await expect(page.getByText('this week', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Quick Stats')).toBeVisible();
+  });
+
+  // Workout History moved to the Progress tab (issue #77). A row that comes
+  // back here means Home is doing two jobs again.
+  test('no longer carries the Workout History row', async ({ page }) => {
+    await expect(page.getByText('Quick Stats')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Workout History')).toHaveCount(0);
+  });
+});
+
+// The payoff for logging: the tab lists what you have logged and each row opens
+// its own chart. Seeded through localStorage, same as the History spec below.
+test.describe('Progress', () => {
+  test.beforeEach(({ page }) => seed(page));
+
+  test('lists a logged exercise and opens its progress screen', async ({ page }) => {
+    await page.evaluate(() => {
+      const session = (id: string, daysAgo: number, weight: number) => {
+        const at = new Date(Date.now() - daysAgo * 86400000).toISOString();
+        return {
+          id,
+          timestamp: at,
+          claimedAt: at,
+          durationSeconds: 1800,
+          streakDays: 1,
+          sessionIntent: 'normal',
+          exercises: [
+            {
+              id: 'bench_press-0',
+              name: 'Bench Press',
+              muscleGroups: ['chest'],
+              restSeconds: 90,
+              completed: true,
+              sets: [{ reps: 5, weight, logged: true, isPR: false, isRepPR: false }],
+            },
+          ],
+        };
+      };
+      localStorage.setItem(
+        'workout_history.full_state',
+        JSON.stringify({ logs: [session('s2', 2, 195), session('s1', 16, 185)] })
+      );
+    });
+
+    await page.goto('/progress');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await expect(page.getByText('Workout History')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('2 sessions ·', { exact: false })).toBeVisible();
+
+    await page.getByRole('button', { name: /^Bench Press, 195 lb/ }).click();
+    await page.waitForTimeout(1200);
+
+    await expect(page.getByText('Current PR')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Personal records')).toBeVisible();
   });
 });
 
