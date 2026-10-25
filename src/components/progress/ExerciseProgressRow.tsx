@@ -29,7 +29,9 @@ export function ExerciseProgressRow({
   onPress: () => void;
 }) {
   const latest = progress.points[progress.points.length - 1];
-  const summary = summarizePoint(latest, progress.metric, units);
+  // The latest session in its own terms. A lift done bodyweight last Tuesday
+  // reads "12 reps · Oct 23" rather than repeating last month's weight.
+  const summary = summarizePoint(latest, latest.metric, units);
 
   return (
     <Pressable
@@ -53,7 +55,9 @@ export function ExerciseProgressRow({
         <Text style={styles.meta}>{summary}</Text>
       </View>
 
-      <Sparkline values={progress.points.map((point) => point.value)} />
+      {/* Only the comparable sessions: a shape drawn across two metrics would
+          be a line between a weight and a rep count. */}
+      <Sparkline values={progress.comparable.map((point) => point.value)} />
       <ChevronRight size={18} color={roles.textMuted} />
     </Pressable>
   );

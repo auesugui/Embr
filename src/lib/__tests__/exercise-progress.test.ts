@@ -8,6 +8,7 @@
 import type { Exercise, LoggedSet, WorkoutLog } from '@/types';
 import { describe, expect, it } from '@jest/globals';
 
+import type { ProgressMetric } from '../exercise-progress';
 import {
   buildExerciseProgress,
   chartAxis,
@@ -24,6 +25,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** `daysAgo` before the fixed clock, as an ISO timestamp. */
 const at = (daysAgo: number): string => new Date(NOW_MS - daysAgo * DAY_MS).toISOString();
+
+/** The metric the bare point fixtures below are in. */
+const weight: ProgressMetric = 'weight';
 
 const set = (over: Partial<LoggedSet> = {}): LoggedSet => ({
   reps: 5,
@@ -101,20 +105,35 @@ describe('buildExerciseProgress — the series', () => {
     expect(buildExerciseProgress(logs)[0].points.map((p) => p.value)).toEqual([150, 160]);
   });
 
-  it('groups a movement logged twice in one session under one exercise', () => {
-    // A session exercise's id is the library id plus its position, so the same
-    // movement in two slots must not become two exercises.
+  it('merges a movement logged twice in one session into one point', () => {
+    // The Powerbuilding templates carry the same movement twice — a heavy entry
+    // and a back-off entry. That is one session of it, at the heavier value.
     const logs = [
       log(at(0), [
-        exercise({ id: 'bench_press-0', sets: [set({ weight: 135 })] }),
-        exercise({ id: 'bench_press-3', sets: [set({ weight: 185 })] }),
+        exercise({ id: 'db_floor_press-0', sets: [set({ weight: 185, reps: 5 })] }),
+        exercise({ id: 'db_floor_press-3', sets: [set({ weight: 135, reps: 12 })] }),
       ]),
     ];
 
     const progress = buildExerciseProgress(logs);
     expect(progress).toHaveLength(1);
-    expect(progress[0].exerciseId).toBe('bench_press');
+    expect(progress[0].exerciseId).toBe('db_floor_press');
+    expect(progress[0].points).toHaveLength(1);
+    expect(progress[0].points[0].value).toBe(185);
+    expect(progress[0].points[0].reps).toBe(5);
+  });
+
+  it('counts a repeated movement as one session, not two', () => {
+    // Two logs, the movement twice in each. Four entries, two sessions — which
+    // is what the chart's two-point rule and "N sessions logged" count.
+    const twice = () => [
+      exercise({ id: 'db_rdl-0', sets: [set({ weight: 120 })] }),
+      exercise({ id: 'db_rdl-4', sets: [set({ weight: 90 })] }),
+    ];
+    const progress = buildExerciseProgress([log(at(7), twice(), 'a'), log(at(0), twice(), 'b')]);
+
     expect(progress[0].points).toHaveLength(2);
+    expect(progress[0].comparable).toHaveLength(2);
   });
 
   it('breaks a weight tie by reps, so the row names the hardest set', () => {
@@ -146,8 +165,10 @@ describe('buildExerciseProgress — metric choice', () => {
 
     const [progress] = buildExerciseProgress(logs);
     expect(progress.metric).toBe('weight');
-    // The bodyweight session has no weight, so it is not a point on a weight series.
-    expect(progress.points.map((p) => p.value)).toEqual([135]);
+    // Both sessions happened, so both count. Only the weighted one is on the
+    // series, because reps are never compared with weights.
+    expect(progress.points.map((p) => p.metric)).toEqual(['reps', 'weight']);
+    expect(progress.comparable.map((p) => p.value)).toEqual([135]);
   });
 
   it('uses best reps for a movement that never carried a weight', () => {
@@ -208,6 +229,98 @@ describe('buildExerciseProgress — metric choice', () => {
     ];
 
     expect(buildExerciseProgress(logs)[0].metric).toBe('time');
+  });
+
+  // ---------------------------------------------------------------------------
+  // A movement logged both ways. Every session counts; only the comparable ones
+  // are plotted. See the module header.
+  // ---------------------------------------------------------------------------
+
+  it('keeps a bodyweight session of a weighted movement as a session', () => {
+    const logs = [
+      log(at(20), [exercise({ sets: [set({ weight: 135, reps: 8 })] })], 'a'),
+      log(at(10), [exercise({ sets: [set({ weight: 155, reps: 5 })] })], 'b'),
+      log(at(0), [exercise({ sets: [set({ weight: null, reps: 12 })] })], 'c'),
+    ];
+
+    const [progress] = buildExerciseProgress(logs);
+    expect(progress.metric).toBe('weight');
+    // Three sessions logged, two of them on the chart.
+    expect(progress.points).toHaveLength(3);
+    expect(progress.comparable.map((p) => p.value)).toEqual([135, 155]);
+    // The last logged date is the bodyweight one — it is still a session.
+    expect(progress.points[2].timestamp).toBe(at(0));
+    expect(progress.points[2].metric).toBe('reps');
+  });
+
+  it('shows the latest session in its own terms when it left the series metric', () => {
+    const logs = [
+      log(at(10), [exercise({ sets: [set({ weight: 155, reps: 5 })] })], 'a'),
+      log(at(0), [exercise({ sets: [set({ weight: null, reps: 12 })] })], 'b'),
+    ];
+
+    const [progress] = buildExerciseProgress(logs);
+    const latest = progress.points[progress.points.length - 1];
+    expect(summarizePoint(latest, latest.metric, 'lb')).toBe(
+      `12 reps · ${formatProgressDate(at(0))}`
+    );
+  });
+
+  it('switches to weight once a bodyweight movement starts carrying one', () => {
+    const logs = [
+      log(
+        at(20),
+        [exercise({ id: 'pull_ups-0', name: 'Pull-Up', sets: [set({ weight: null, reps: 10 })] })],
+        'a'
+      ),
+      log(
+        at(10),
+        [exercise({ id: 'pull_ups-0', name: 'Pull-Up', sets: [set({ weight: 25, reps: 6 })] })],
+        'b'
+      ),
+      log(
+        at(0),
+        [exercise({ id: 'pull_ups-0', name: 'Pull-Up', sets: [set({ weight: 35, reps: 5 })] })],
+        'c'
+      ),
+    ];
+
+    const [progress] = buildExerciseProgress(logs);
+    expect(progress.metric).toBe('weight');
+    expect(progress.points).toHaveLength(3);
+    expect(progress.comparable.map((p) => p.value)).toEqual([25, 35]);
+  });
+
+  it('orders by the true latest session, including one outside the series metric', () => {
+    const logs = [
+      log(
+        at(12),
+        [exercise({ id: 'squat-0', name: 'Back Squat', sets: [set({ weight: 225 })] })],
+        'a'
+      ),
+      log(at(8), [exercise({ id: 'bench_press-0', sets: [set({ weight: 185 })] })], 'b'),
+      // Back Squat again, bodyweight. It is the newest session of anything.
+      log(
+        at(1),
+        [exercise({ id: 'squat-0', name: 'Back Squat', sets: [set({ weight: null, reps: 20 })] })],
+        'c'
+      ),
+    ];
+
+    expect(buildExerciseProgress(logs).map((p) => p.name)).toEqual(['Back Squat', 'Bench Press']);
+  });
+
+  it('leaves the chart with one point when only one session is comparable', () => {
+    // Two sessions, so "one session so far" would be wrong — but the chart
+    // still cannot draw a line, because the other session is in reps.
+    const logs = [
+      log(at(10), [exercise({ sets: [set({ weight: 155, reps: 5 })] })], 'a'),
+      log(at(0), [exercise({ sets: [set({ weight: null, reps: 12 })] })], 'b'),
+    ];
+
+    const [progress] = buildExerciseProgress(logs);
+    expect(progress.points.length).toBeGreaterThanOrEqual(2);
+    expect(progress.comparable).toHaveLength(1);
   });
 
   it('leaves cardio entries out of the list entirely', () => {
@@ -279,10 +392,10 @@ describe('buildExerciseProgress — list ordering and naming', () => {
 
 describe('rangePoints', () => {
   const points = [
-    { logId: 'a', timestamp: at(300), value: 150, reps: 5, hasPR: false },
-    { logId: 'b', timestamp: at(120), value: 165, reps: 5, hasPR: false },
-    { logId: 'c', timestamp: at(60), value: 175, reps: 5, hasPR: false },
-    { logId: 'd', timestamp: at(10), value: 195, reps: 3, hasPR: false },
+    { logId: 'a', timestamp: at(300), metric: weight, value: 150, reps: 5, hasPR: false },
+    { logId: 'b', timestamp: at(120), metric: weight, value: 165, reps: 5, hasPR: false },
+    { logId: 'c', timestamp: at(60), metric: weight, value: 175, reps: 5, hasPR: false },
+    { logId: 'd', timestamp: at(10), metric: weight, value: 195, reps: 3, hasPR: false },
   ];
 
   it('keeps only the sessions inside the window', () => {
@@ -305,6 +418,7 @@ describe('progressRecords', () => {
   const point = (timestamp: string, value: number) => ({
     logId: timestamp,
     timestamp,
+    metric: weight,
     value,
     reps: 5,
     hasPR: false,
@@ -340,6 +454,7 @@ describe('hasRecentPR', () => {
   const flagged = (daysAgo: number) => ({
     logId: `p${daysAgo}`,
     timestamp: at(daysAgo),
+    metric: weight,
     value: 195,
     reps: 3,
     hasPR: true,

@@ -58,13 +58,15 @@ export default function ExerciseProgressScreen() {
     );
   }
 
-  const { metric, points } = progress;
+  const { metric, points, comparable } = progress;
+  // The headline is the most recent session, read in ITS metric. The chart and
+  // the records are the series metric only — see exercise-progress.ts.
   const latest = points[points.length - 1];
-  const records = progressRecords(points);
+  const records = progressRecords(comparable);
   const currentPR = records[0];
-  const charted = rangePoints(points, range);
-  const chartable = points.length >= 2;
-  const headline = splitHeadline(latest.value, metric, units);
+  const charted = rangePoints(comparable, range);
+  const chartable = comparable.length >= 2;
+  const headline = splitHeadline(latest.value, latest.metric, units);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -74,7 +76,7 @@ export default function ExerciseProgressScreen() {
           {headline.unit !== null && <Text style={styles.bigUnit}> {headline.unit}</Text>}
         </Text>
         <Text style={styles.caption}>
-          {`${describeLatest(metric)}, ${formatProgressDate(latest.timestamp)} · ${
+          {`${describeLatest(latest.metric)}, ${formatProgressDate(latest.timestamp)} · ${
             points.length
           } session${points.length === 1 ? '' : 's'} logged`}
         </Text>
@@ -93,10 +95,17 @@ export default function ExerciseProgressScreen() {
           )}
           <Text style={styles.chartCaption}>{describeSeries(metric, units)}</Text>
         </View>
-      ) : (
+      ) : points.length < 2 ? (
         <ProgressEmpty
           title="One session so far"
           body="A line needs two points. Log this one again and the chart starts here."
+        />
+      ) : (
+        /* Logged more than once, but only one of those is in the series metric
+           — the others were a weight against reps, or the reverse. */
+        <ProgressEmpty
+          title="Not enough to chart yet"
+          body="Weights and reps are not compared, so the chart needs two sessions logged the same way."
         />
       )}
 

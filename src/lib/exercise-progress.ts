@@ -6,17 +6,32 @@
 // sets of claimed workouts, so a workout typed in for a past date lands in the
 // series at its own date.
 //
-// THE SERIES RULE, stated once. One point per claimed session, in session
-// order, and the point is that session's BEST LOGGED SET of the exercise:
+// THE SESSION RULE. One point per claimed session, in session order. A session
+// is a LOG, not an entry: the Powerbuilding templates carry the same movement
+// twice (a heavy entry and a back-off entry), and those are one session of it.
+// Every entry of the movement in a log has its logged sets merged before the
+// session's best set is picked, so the point reads the heavier of the two.
+//
+// Each session's best logged set is read in its own terms:
 //
 //   hold (metric 'time')   the longest hold, in seconds
-//   weighted               the heaviest weight, with the reps it was done for
-//   bodyweight             the best reps — used when no logged set of this
-//                          exercise, in any session, carried a weight
+//   any weight logged      the heaviest weight, with the reps it was done for
+//   no weight logged       the best reps
 //
-// Which of the three applies is decided per exercise, not per session, so the
-// series never changes units partway along. The hold check wins because the
-// metric is a property of the movement (src/lib/metric.ts).
+// THE SERIES RULE. The exercise's series metric is the hold, when the most
+// recent session is one; otherwise weight when any session carried a weight;
+// otherwise reps. `comparable` is the subset of sessions measured in that
+// metric, and it is the only thing the chart and the PR list ever read — reps
+// are never compared with weights, and a plotted line never changes units
+// partway along.
+//
+// EVERY SESSION STILL COUNTS. `points` holds all of them whatever their
+// metric, and that is what the list ordering, the last logged date, the
+// session count and the History row read. So a lift you did bodyweight last
+// Tuesday keeps its place at the top of the list and is counted, while the
+// chart and the records stay in weights. When the most recent session is not
+// in the series metric, a caller showing "the latest" shows that session in
+// its own terms (`point.metric`).
 //
 // Sets with `logged: false` are not part of the record and are ignored. A
 // session whose logged sets produce no positive value is not a point at all.
@@ -50,9 +65,11 @@ export interface ProgressPoint {
   logId: string;
   /** ISO timestamp of the session. */
   timestamp: string;
-  /** The series value: heaviest weight, best reps, or longest hold in seconds. */
+  /** What this session's own best set measures. */
+  metric: ProgressMetric;
+  /** Heaviest weight, best reps, or longest hold in seconds — per `metric`. */
   value: number;
-  /** Reps at the best set. Only carries information on a `weight` series. */
+  /** Reps at the best set. Only carries information on a `weight` point. */
   reps: number;
   /** A logged set in this session was flagged a PR when it was logged. */
   hasPR: boolean;
@@ -63,9 +80,12 @@ export interface ExerciseProgress {
   exerciseId: string;
   /** The name as the most recent log spells it. */
   name: string;
+  /** What the chart and the PR list are measured in. */
   metric: ProgressMetric;
-  /** Oldest first, never empty. */
+  /** Every session, whatever its metric. Oldest first, never empty. */
   points: ProgressPoint[];
+  /** The subset in `metric` — what the chart and the PR list plot. Never empty. */
+  comparable: ProgressPoint[];
 }
 
 export interface ProgressRecord {
@@ -92,20 +112,20 @@ const RANGE_DAYS: Record<Exclude<ProgressRange, 'All'>, number> = {
 // Derivation
 // -----------------------------------------------------------------------------
 
-/** One session's logged sets of one exercise, before the metric is known. */
+/** One session's logged sets of one exercise, merged across repeated entries. */
 interface RawSession {
   logId: string;
   timestamp: string;
+  /** What the movement measures, from the last entry of it in the log. */
+  metric: 'reps' | 'time';
   sets: LoggedSet[];
 }
 
 interface RawGroup {
   exerciseId: string;
   name: string;
-  /** The metric of the most recent entry, same source as the name. */
-  metric: 'reps' | 'time';
-  anyWeight: boolean;
-  sessions: RawSession[];
+  /** Keyed by log id — that key is what merges the repeated entries. */
+  sessions: Map<string, RawSession>;
 }
 
 /** The best set of a session, read under the resolved metric. */
@@ -149,37 +169,47 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
       if (sets.length === 0) continue;
 
       const exerciseId = baseExerciseId(exercise.id);
-      const existing = groups.get(exerciseId);
-      const group: RawGroup = existing ?? {
-        exerciseId,
-        name: exercise.name,
-        metric: 'reps',
-        anyWeight: false,
-        sessions: [],
-      };
-
+      let group = groups.get(exerciseId);
+      if (!group) {
+        group = { exerciseId, name: exercise.name, sessions: new Map() };
+        groups.set(exerciseId, group);
+      }
       group.name = exercise.name;
-      group.metric = exerciseMetric(exercise);
-      group.anyWeight ||= sets.some((set) => (set.weight ?? 0) > 0);
-      group.sessions.push({ logId: log.id, timestamp: log.timestamp, sets });
 
-      if (!existing) groups.set(exerciseId, group);
+      // Repeated entries of one movement in one log are one session of it.
+      const session = group.sessions.get(log.id);
+      if (session) {
+        session.sets.push(...sets);
+        session.metric = exerciseMetric(exercise);
+      } else {
+        group.sessions.set(log.id, {
+          logId: log.id,
+          timestamp: log.timestamp,
+          metric: exerciseMetric(exercise),
+          sets: [...sets],
+        });
+      }
     }
   }
 
   const progress: ExerciseProgress[] = [];
 
   for (const group of groups.values()) {
-    const metric: ProgressMetric =
-      group.metric === 'time' ? 'time' : group.anyWeight ? 'weight' : 'reps';
-
     const points: ProgressPoint[] = [];
-    for (const session of group.sessions) {
+    // Insertion order is log order, which is session order.
+    for (const session of group.sessions.values()) {
+      const metric: ProgressMetric =
+        session.metric === 'time'
+          ? 'time'
+          : session.sets.some((set) => (set.weight ?? 0) > 0)
+            ? 'weight'
+            : 'reps';
       const { value, reps } = bestSet(session.sets, metric);
       if (value <= 0) continue;
       points.push({
         logId: session.logId,
         timestamp: session.timestamp,
+        metric,
         value,
         reps,
         hasPR: session.sets.some((set) => set.isPR),
@@ -187,7 +217,25 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
     }
 
     if (points.length === 0) continue;
-    progress.push({ exerciseId: group.exerciseId, name: group.name, metric, points });
+
+    // A hold is a property of the movement, so the most recent session decides
+    // it. Otherwise weight wins over reps wherever both were logged, and the
+    // latest session always has a metric, so `comparable` is never empty.
+    const latest = points[points.length - 1];
+    const metric: ProgressMetric =
+      latest.metric === 'time'
+        ? 'time'
+        : points.some((point) => point.metric === 'weight')
+          ? 'weight'
+          : 'reps';
+
+    progress.push({
+      exerciseId: group.exerciseId,
+      name: group.name,
+      metric,
+      points,
+      comparable: points.filter((point) => point.metric === metric),
+    });
   }
 
   return progress.sort(
