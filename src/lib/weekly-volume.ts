@@ -147,9 +147,13 @@ export interface ReadingSegment {
  * three weeks of window — before that the sentence names what is missing
  * rather than comparing against a week that does not exist.
  *
- * A last full week that also held the other unit says so instead of comparing.
- * The ring on the bar is the mark; this is the eight words that explain it, and
- * they take the place of the comparison rather than adding a third sentence.
+ * THE COMPARISON READS TWO COMPLETED WEEKS, the last full one and the one
+ * before it, so a session left out of EITHER of them leaves the percentage
+ * resting on a figure that is only part of that week's work. When either has
+ * one, the sentence says how many were left out and prints no percentage at
+ * all — a number that cannot be trusted is left out rather than qualified,
+ * which is how every other missing figure in the app is handled. The rings on
+ * the bars say which weeks they were in, so the sentence does not have to.
  */
 export function volumeReadingSegments(strip: VolumeStrip): ReadingSegment[] {
   const { weeks, unit } = strip;
@@ -174,16 +178,17 @@ export function volumeReadingSegments(strip: VolumeStrip): ReadingSegment[] {
     strong: true,
   };
 
-  if (previous.excluded > 0) {
-    return [
-      running,
-      { id: 'lead', text: ' so far this week. Last full week ' },
-      last,
-      { id: 'excluded', text: `, with ${describeExcluded(previous.excluded, unit)}.` },
-    ];
-  }
+  /** The sentence that states the last full week and what it left out. */
+  const notCounted = (count: number): ReadingSegment[] => [
+    running,
+    { id: 'lead', text: ' so far this week. Last full week ' },
+    last,
+    { id: 'excluded', text: `, with ${describeExcluded(count, unit)}.` },
+  ];
 
+  // Nothing to compare against yet, so there is only the one week to qualify.
   if (weeks.length === 2) {
+    if (previous.excluded > 0) return notCounted(previous.excluded);
     return [
       { id: 'lead', text: 'Last full week ' },
       last,
@@ -191,7 +196,15 @@ export function volumeReadingSegments(strip: VolumeStrip): ReadingSegment[] {
     ];
   }
 
-  const change = describeChange(previous.volume, weeks[weeks.length - 3].volume);
+  // The week the percentage is measured against. A session left out of it
+  // skews the comparison exactly as much as one left out of the week being
+  // compared, so the two are counted together and answered once.
+  const baseline = weeks[weeks.length - 3];
+  const excluded = previous.excluded + baseline.excluded;
+  if (excluded > 0) return notCounted(excluded);
+
+  // Both weeks are whole, so the percentage compares like with like.
+  const change = describeChange(previous.volume, baseline.volume);
   return [
     running,
     { id: 'lead', text: ' so far this week. Last full week ' },

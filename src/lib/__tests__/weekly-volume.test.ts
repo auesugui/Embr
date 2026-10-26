@@ -336,6 +336,63 @@ describe('volumeReading — units', () => {
     expect(volumeReading(strip(logs, 'kg'))).toContain('with 2 lb sessions not counted.');
   });
 
+  // The comparison reads the last full week AND the one before it, so a
+  // session left out of either leaves the percentage resting on part of a
+  // week. The window here is the weeks of Oct 5, Oct 12 and Oct 19 (today).
+  describe('a comparison with a session left out of it', () => {
+    const weeks = (over: { baseline?: WorkoutLog[]; lastFull?: WorkoutLog[] } = {}) => [
+      inUnit(2026, 10, 5, 100000, 'kg'),
+      ...(over.baseline ?? []),
+      inUnit(2026, 10, 12, 104000, 'kg'),
+      ...(over.lastFull ?? []),
+      inUnit(2026, 10, 20, 61750, 'kg'),
+    ];
+
+    it('prints the percentage when neither compared week left anything out', () => {
+      // The lb session is in the week in progress, which is never compared.
+      const logs = [...weeks(), inUnit(2026, 10, 21, 21300, 'lb')];
+
+      expect(volumeReading(strip(logs, 'kg'))).toBe(
+        '61,750 kg so far this week. Last full week 104,000 kg, up 4 % on the one before.'
+      );
+    });
+
+    it('drops the percentage when the week being compared left one out', () => {
+      const logs = weeks({ lastFull: [inUnit(2026, 10, 14, 21300, 'lb')] });
+
+      expect(volumeReading(strip(logs, 'kg'))).toBe(
+        '61,750 kg so far this week. Last full week 104,000 kg, with one lb session not counted.'
+      );
+    });
+
+    it('drops it when the week it is measured AGAINST left one out', () => {
+      const logs = weeks({ baseline: [inUnit(2026, 10, 7, 21300, 'lb')] });
+
+      expect(volumeReading(strip(logs, 'kg'))).toBe(
+        '61,750 kg so far this week. Last full week 104,000 kg, with one lb session not counted.'
+      );
+    });
+
+    it('counts both weeks together when each left one out', () => {
+      const logs = weeks({
+        baseline: [inUnit(2026, 10, 7, 21300, 'lb')],
+        lastFull: [inUnit(2026, 10, 14, 20000, 'lb')],
+      });
+
+      expect(volumeReading(strip(logs, 'kg'))).toBe(
+        '61,750 kg so far this week. Last full week 104,000 kg, with 2 lb sessions not counted.'
+      );
+    });
+
+    it('still reads as one when both left-out sessions fall in one week', () => {
+      const logs = weeks({
+        baseline: [inUnit(2026, 10, 7, 21300, 'lb'), inUnit(2026, 10, 8, 20000, 'lb')],
+      });
+
+      expect(volumeReading(strip(logs, 'kg'))).toContain('with 2 lb sessions not counted.');
+    });
+  });
+
   it('names the unit in the first week after a switch', () => {
     const logs = [inUnit(2026, 10, 6, 21300, 'lb'), inUnit(2026, 10, 20, 4980, 'kg')];
 
