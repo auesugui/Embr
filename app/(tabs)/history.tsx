@@ -1,25 +1,71 @@
 // =============================================================================
-// IronQuest Workout History Screen
+// Embr Workout History Screen
 // =============================================================================
 // Reverse-chronological list of CLAIMED workouts. A session only becomes
-// "history" once its FP has been claimed (`claimedAt != null`); unclaimed /
+// "history" once it has been saved (`claimedAt != null`); unclaimed /
 // abandoned sessions are intentionally hidden — see getClaimedLogs.
 //
-// The FP figure shown is `log.totalFP`, captured at claim time by the real FP
-// engine (src/lib/workout-summary → calculateSessionFP). This screen never
-// recomputes FP — it only renders what was already awarded.
+// Above the list sit a month calendar and a twelve-week volume strip, both
+// folded out of the same saved logs (src/lib/history-calendar.ts,
+// src/lib/weekly-volume.ts). Tapping a day filters the list; the month you are
+// looking at does not. Together they are capped at 400 px and collapse to a
+// single week row once the list starts scrolling, because a header that leaves
+// four rows on screen is a worse History than no header.
 
-import { router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useNavigation } from 'expo-router';
+import { useLayoutEffect, useMemo, useState } from 'react';
+import {
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from 'react-native';
 
 import { ClipboardList } from '@/components/icons';
+import { HistoryCalendar } from '@/components/workout/history/HistoryCalendar';
+import { ShowingLine } from '@/components/workout/history/ShowingLine';
+import { WeeklyVolumeStrip } from '@/components/workout/history/WeeklyVolumeStrip';
 import { WorkoutRow } from '@/components/workout/history/WorkoutRow';
+import { useLocalDay } from '@/hooks/useLocalDay';
+import {
+  COLLAPSE_AT,
+  canStepBack,
+  canStepForward,
+  earliestMonth,
+  isCollapsed,
+  logsForDay,
+  monthGrid,
+  monthName,
+  monthOfDay,
+  monthTitle,
+  shiftMonth,
+  trainingDayKeys,
+  weekRowForDay,
+} from '@/lib/history-calendar';
 import { getClaimedLogs } from '@/lib/history-stats';
+import { localDayKey } from '@/lib/local-day';
+import { volumeStrip } from '@/lib/weekly-volume';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 
 import { RevealRow } from '@/components/celebration';
+
+/**
+ * Web only, and not cosmetic: the browser holds the content still when
+ * something above the viewport changes height, by moving the scroll offset by
+ * the same amount. The collapse takes 132 px of grid away, so the offset would
+ * drop back under the threshold and the next scroll event would expand the
+ * calendar again — a header that flapped between 80 px and 212 px of scroll.
+ * With anchoring off, the list slides up once as the grid shrinks and the
+ * collapse holds.
+ */
+const NO_SCROLL_ANCHOR =
+  Platform.OS === 'web' ? ({ overflowAnchor: 'none' } as unknown as ViewStyle) : null;
 
 export default function HistoryScreen() {
   const logs = useWorkoutHistoryStore((s) => s.logs);
@@ -27,11 +73,79 @@ export default function HistoryScreen() {
   const units = useSettingsStore((s) => s.units);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // The grid rings today and stops at the current month, so the screen has to
+  // re-render when today changes rather than read the clock here. See
+  // useLocalDay.
+  const now = useLocalDay();
+  const todayKey = localDayKey(now);
+
+  // Null follows today, so a screen left open across midnight into a new month
+  // moves with it instead of staying on the month it was opened in.
+  const [month, setMonth] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+  // The chevron is a manual override for the visit; once used, scrolling no
+  // longer decides. Component state, not a setting.
+  const [folded, setFolded] = useState<boolean | null>(null);
+  const [openedByStep, setOpenedByStep] = useState(false);
+
+  const viewedMonth = month ?? monthOfDay(todayKey);
+  const collapsed = isCollapsed({ folded, scrolled, openedByStep });
+  // The day the collapsed row is about. It survives stepping to another month,
+  // so collapsed the card is labelled by this day's month rather than by the
+  // month being browsed — the row and its title have to agree.
+  const focusKey = selectedDay ?? todayKey;
+  const headerMonth = collapsed ? monthOfDay(focusKey) : viewedMonth;
+
+  const trainedDays = useMemo(() => trainingDayKeys(logs), [logs]);
+  const strip = useMemo(() => volumeStrip(logs, now), [logs, now]);
+  const earliest = useMemo(() => earliestMonth(logs), [logs]);
+  const grid = useMemo(
+    () => monthGrid(viewedMonth, { todayKey, trainedDays, selectedKey: selectedDay }),
+    [viewedMonth, todayKey, trainedDays, selectedDay]
+  );
+  const week = useMemo(
+    () => weekRowForDay(focusKey, { todayKey, trainedDays, selectedKey: selectedDay }),
+    [focusKey, todayKey, trainedDays, selectedDay]
+  );
+
+  const navigation = useNavigation();
+  // Collapsed, the month moves into the nav bar so the grid's own title can go
+  // with the rows it labelled.
+  useLayoutEffect(() => {
+    const label = collapsed ? monthName(headerMonth) : null;
+    navigation.setOptions({
+      headerRight:
+        label === null ? undefined : () => <Text style={styles.headerMonth}>{label}</Text>,
+    });
+  }, [navigation, collapsed, headerMonth]);
+
   // Claimed-only, newest-first. Derived in render so store updates reflect
   // immediately (e.g. claiming a workout adds it to the list right away).
   const claimed = getClaimedLogs(logs);
+  const shown = selectedDay === null ? claimed : logsForDay(logs, selectedDay);
 
   const handleToggle = (id: string) => setExpandedId((current) => (current === id ? null : id));
+  const handleSelectDay = (key: string) =>
+    setSelectedDay((current) => (current === key ? null : key));
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const past = event.nativeEvent.contentOffset.y > COLLAPSE_AT;
+    setScrolled(past);
+    // Passing the threshold ends a step's expansion and hands the collapse
+    // back to the scroll, which is the state the screen was in before the step.
+    if (past) setOpenedByStep(false);
+  };
+  // Stepping a month opens the grid: collapsed, the card shows the selected
+  // day's own week, so a step would change nothing you can see.
+  const handleStep = (delta: number) => {
+    setMonth(shiftMonth(viewedMonth, delta));
+    setOpenedByStep(true);
+  };
+  // The chevron is the deliberate choice, so it always wins over a step's.
+  const handleFold = () => {
+    setFolded(!collapsed);
+    setOpenedByStep(false);
+  };
 
   // ---- Loading (store hydrating from AsyncStorage) ----
   if (!hydrated) {
@@ -43,6 +157,8 @@ export default function HistoryScreen() {
   }
 
   // ---- Empty state (no claimed workouts yet) ----
+  // Neither the calendar nor the strip renders here: an empty grid and a flat
+  // row above "No workouts yet" are two more ways of saying nothing.
   if (claimed.length === 0) {
     return (
       <View style={styles.stateContainer}>
@@ -62,12 +178,55 @@ export default function HistoryScreen() {
 
   // ---- History list ----
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.summaryLine}>
-        {claimed.length} workout{claimed.length === 1 ? '' : 's'} logged
-      </Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, NO_SCROLL_ANCHOR]}
+      onScroll={handleScroll}
+      scrollEventThrottle={16}
+      // Pinned only while a day is selected, and only once it has collapsed:
+      // the date you are filtering by has to stay on screen, a 400 px header
+      // does not.
+      stickyHeaderIndices={selectedDay !== null && collapsed ? [0] : undefined}
+    >
+      <View style={styles.header}>
+        <HistoryCalendar
+          title={monthTitle(headerMonth)}
+          days={grid}
+          week={week}
+          collapsed={collapsed}
+          canPrevious={canStepBack(viewedMonth, earliest)}
+          canNext={canStepForward(viewedMonth, todayKey)}
+          emptyNote={
+            grid.some((cell) => cell.trained) ? null : `No workouts in ${monthName(viewedMonth)}.`
+          }
+          onPrevious={() => handleStep(-1)}
+          onNext={() => handleStep(1)}
+          onToggleCollapsed={handleFold}
+          onSelectDay={handleSelectDay}
+        />
+        {strip !== null && <WeeklyVolumeStrip strip={strip} units={units} />}
+        {/* Inside the block, so a pinned header keeps carrying the date it is
+            filtering by and the way out of it. */}
+        {selectedDay !== null && (
+          <ShowingLine
+            dayKey={selectedDay}
+            count={shown.length}
+            onClear={() => setSelectedDay(null)}
+          />
+        )}
+      </View>
 
-      {claimed.map((log, i) => (
+      {selectedDay === null && (
+        <Text style={styles.summaryLine}>
+          {claimed.length} workout{claimed.length === 1 ? '' : 's'} logged
+        </Text>
+      )}
+
+      {/* A filter that matched nothing, not an account with no history — one
+          line, and the way out is Clear. */}
+      {shown.length === 0 && <Text style={styles.emptyDay}>No workout logged on this day.</Text>}
+
+      {shown.map((log, i) => (
         <RevealRow key={log.id} index={Math.min(i, 6)}>
           <WorkoutRow
             log={log}
@@ -93,6 +252,18 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing[4],
     paddingBottom: spacing[8],
+  },
+  // Opaque: while it is pinned, the list scrolls underneath it.
+  header: {
+    backgroundColor: roles.surface,
+    gap: spacing[3],
+    paddingBottom: spacing[3],
+  },
+  headerMonth: {
+    ...textStyles.caption,
+    fontSize: 13,
+    color: roles.textTertiary,
+    marginRight: spacing[4],
   },
   stateContainer: {
     flex: 1,
@@ -142,5 +313,12 @@ const styles = StyleSheet.create({
     ...textStyles.bodySmall,
     color: colors.text.muted,
     marginBottom: spacing[3],
+  },
+  emptyDay: {
+    ...textStyles.caption,
+    fontSize: 13,
+    color: roles.textTertiary,
+    textAlign: 'center',
+    paddingVertical: spacing[3],
   },
 });
