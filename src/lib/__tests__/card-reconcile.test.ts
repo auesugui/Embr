@@ -17,13 +17,15 @@ import {
 } from '../card-import/review';
 
 const card = (overrides: Partial<ParsedCard> = {}): ParsedCard => ({
+  format: 'workout',
+  weekDay: null,
   title: 'Dumbbell PPL',
   subtitle: 'Workout A',
   date: '2026-10-13',
   rows: [
-    { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: 10 },
-    { id: 'r1', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: 10 },
-    { id: 'r2', name: 'Arnold Press', sets: 3, weightLb: 40, reps: 8 },
+    { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: '10' },
+    { id: 'r1', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: '10' },
+    { id: 'r2', name: 'Arnold Press', sets: 3, weightLb: 40, reps: '8' },
   ],
   durationMin: 57,
   volumeLb: 4890,
@@ -43,7 +45,7 @@ describe('reconcile', () => {
 
   it('keeps the first reading and flags a weight the readings disagree on', () => {
     const second = card({
-      rows: [{ id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 20, reps: 10 }],
+      rows: [{ id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 20, reps: '10' }],
     });
 
     const reading = reconcile(card(), second);
@@ -59,10 +61,10 @@ describe('reconcile', () => {
   it('flags a movement only one reading found, and keeps the one the second reading found', () => {
     const second = card({
       rows: [
-        { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: 10 },
-        { id: 'r1', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: 10 },
-        { id: 'r2', name: 'Arnold Press', sets: 3, weightLb: 40, reps: 8 },
-        { id: 'r3', name: 'Lateral Raise', sets: 2, weightLb: 15, reps: 12 },
+        { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: '10' },
+        { id: 'r1', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: '10' },
+        { id: 'r2', name: 'Arnold Press', sets: 3, weightLb: 40, reps: '8' },
+        { id: 'r3', name: 'Lateral Raise', sets: 2, weightLb: 15, reps: '12' },
       ],
     });
 
@@ -79,10 +81,10 @@ describe('reconcile', () => {
   it('puts a movement only the second reading found where it sits on the card', () => {
     const second = card({
       rows: [
-        { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: 10 },
-        { id: 'r1', name: 'Reverse Fly', sets: 3, weightLb: 20, reps: 7 },
-        { id: 'r2', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: 10 },
-        { id: 'r3', name: 'Arnold Press', sets: 3, weightLb: 40, reps: 8 },
+        { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: '10' },
+        { id: 'r1', name: 'Reverse Fly', sets: 3, weightLb: 20, reps: '7' },
+        { id: 'r2', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: '10' },
+        { id: 'r3', name: 'Arnold Press', sets: 3, weightLb: 40, reps: '8' },
       ],
     });
 
@@ -153,7 +155,7 @@ describe('setField', () => {
   it('ignores text that is not a number for a number field', () => {
     const next = setField(clean(), 'rows.0.reps', 'ten');
 
-    expect(next.card.rows[0].reps).toBe(10);
+    expect(next.card.rows[0].reps).toBe('10');
   });
 
   it('ignores a zero or fractional count', () => {

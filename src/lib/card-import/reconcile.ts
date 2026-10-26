@@ -5,6 +5,9 @@
 // value is taken as read. Where they differ, the first reading is kept and the
 // field is flagged, so the person picks the right value before anything is saved.
 // Nothing is saved on a guess.
+//
+// The card's format is not compared: it is read from the card's own shape rather
+// than from a value, and there is no field for the person to settle it in.
 
 import type { ParsedCard, ParsedRow } from './parse-card';
 
@@ -48,6 +51,7 @@ export function reconcile(first: ParsedCard, second: ParsedCard): Reading {
   // Text is compared without case and spacing: "Week 2-Day 1" and "Week 2 - Day 1" are the same subtitle.
   compareText('title', first.title, second.title);
   compareText('subtitle', first.subtitle, second.subtitle);
+  compareText('weekDay', first.weekDay, second.weekDay);
   compare('date', first.date, second.date);
   compare('durationMin', first.durationMin, second.durationMin);
   compare('volumeLb', first.volumeLb, second.volumeLb);

@@ -15,20 +15,46 @@ const shown = (value: string): string => (value === 'nothing' ? 'no value' : val
 
 export function FieldFlag({
   flag,
+  accepts,
+  rule,
+  noun,
   onChoose,
 }: {
   flag: Disagreement;
+  /**
+   * What the field can hold. A reading the field would refuse is named in the
+   * question but is not offered, because a button that does nothing when pressed is
+   * worse than one that is not there.
+   */
+  accepts?: (value: string) => unknown;
+  /** Why a reading was left out. Printed only when one was. */
+  rule?: string;
+  /** What the field holds, for the line that says neither reading is one. */
+  noun?: string;
   onChoose: (value: string) => void;
 }) {
+  const offered = [flag.first, flag.second].filter((value) => !accepts || accepts(value) !== null);
+
   return (
     <View style={styles.flag}>
       <Text style={styles.flagText}>
-        Read as {shown(flag.first)} or {shown(flag.second)}. Which is right?
+        {offered.length === 0 && noun
+          ? `Neither reading is a ${noun}. Type it.`
+          : `Read as ${shown(flag.first)} or ${shown(flag.second)}. Which is right?`}
       </Text>
-      <View style={styles.choices}>
-        <Choice label={shown(flag.first)} onPress={() => onChoose(flag.first)} />
-        <Choice label={shown(flag.second)} onPress={() => onChoose(flag.second)} />
-      </View>
+      {offered.length > 0 ? (
+        <View style={styles.choices}>
+          {offered.map((value) => (
+            <Choice key={value} label={shown(value)} onPress={() => onChoose(value)} />
+          ))}
+        </View>
+      ) : null}
+      {rule && offered.length === 1 ? (
+        <Text style={styles.rule}>
+          {shown(offered[0] === flag.first ? flag.second : flag.first)} is not a {noun}, so it is
+          not offered. {rule}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -80,6 +106,12 @@ const styles = StyleSheet.create({
   flagText: {
     ...textStyles.caption,
     color: roles.accentText,
+  },
+  rule: {
+    ...textStyles.captionSmall,
+    color: roles.accentText,
+    opacity: 0.82,
+    marginTop: spacing[2],
   },
   choices: {
     flexDirection: 'row',

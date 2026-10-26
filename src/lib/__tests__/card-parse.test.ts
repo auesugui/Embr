@@ -52,17 +52,22 @@ describe('parseCard', () => {
     const { rows } = parseCard(standaloneCard);
 
     expect(rows).toEqual([
-      expect.objectContaining({ name: 'Pull-Up (Bodyweight)', sets: 3, weightLb: null, reps: 5 }),
-      expect.objectContaining({ name: 'Bent Over Row (Dumbbell)', sets: 3, weightLb: 70, reps: 8 }),
-      expect.objectContaining({ name: 'Shrug (Dumbbell)', sets: 3, weightLb: 45, reps: 12 }),
+      expect.objectContaining({ name: 'Pull-Up (Bodyweight)', sets: 3, weightLb: null, reps: '5' }),
+      expect.objectContaining({
+        name: 'Bent Over Row (Dumbbell)',
+        sets: 3,
+        weightLb: 70,
+        reps: '8',
+      }),
+      expect.objectContaining({ name: 'Shrug (Dumbbell)', sets: 3, weightLb: 45, reps: '12' }),
       expect.objectContaining({
         name: 'Incline Chest Fly (Dumbbell)',
         sets: 3,
         weightLb: 30,
-        reps: 10,
+        reps: '10',
       }),
-      expect.objectContaining({ name: 'Reverse Fly', sets: 3, weightLb: 20, reps: 7 }),
-      expect.objectContaining({ name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: 10 }),
+      expect.objectContaining({ name: 'Reverse Fly', sets: 3, weightLb: 20, reps: '7' }),
+      expect.objectContaining({ name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: '10' }),
     ]);
   });
 
@@ -122,7 +127,7 @@ describe('parseCard', () => {
 describe('cardWarnings', () => {
   it('flags a missing movement list, and not a missing date, since a copy has no date', () => {
     expect(cardWarnings(parseCard(['EXERCISE SETS BEST SET']))).toEqual([
-      'No movements found on this card.',
+      'No workout found in this photo. Embr reads two Boostcamp cards: the summary after you finish a workout, and the “Next up” card on the program screen.',
     ]);
   });
 

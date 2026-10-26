@@ -422,6 +422,38 @@ describe('custom exercises', () => {
   });
 });
 
+describe('personal templates', () => {
+  it('round-trips a rep range and a single count, which is what a card import writes', async () => {
+    const templates = JSON.stringify({
+      templates: [
+        {
+          id: 'custom-1',
+          days: [
+            {
+              id: 'day0',
+              exercises: [
+                { exerciseId: 'db_goblet_squat', sets: 3, reps: '3-12', restSeconds: 90 },
+                { exerciseId: 'hanging_leg_raise', sets: 3, reps: '8', restSeconds: 60 },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    (AsyncStorage.multiGet as jest.Mock).mockResolvedValueOnce(
+      BACKUP_KEYS.map((k) => [k, k === 'personal_templates.full_state' ? templates : null])
+    );
+
+    const backup = await createBackup(0);
+    expect(backup.data['personal_templates.full_state']).toBe(templates);
+
+    await restoreBackup(parseBackup(JSON.stringify(backup)));
+    const written = mockMultiSet.mock.calls[0][0] as [string, string][];
+    expect(written).toContainEqual(['personal_templates.full_state', templates]);
+  });
+});
+
 describe('weekly goal', () => {
   it('carries the settings slice, which is where the goal and the prompt flag live', () => {
     expect(BACKUP_KEYS).toContain('settings.full_state');

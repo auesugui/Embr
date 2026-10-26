@@ -44,14 +44,22 @@ export function ReviewCardView({
   // can hold up a save without a way to clear it.
   const headerFlags = disagreements.filter((flag) => !flag.path.startsWith('rows.'));
   const warnings = cardWarnings(card);
-  const footer = [
-    card.durationMin !== null ? `${card.durationMin} min` : null,
-    card.volumeLb !== null ? `${card.volumeLb.toLocaleString('en-US')} lb` : null,
-    card.totalSets !== null ? `${card.totalSets} sets` : null,
-  ].filter(Boolean);
+  const plan = card.format === 'plan';
+  // The card's own check line: what the photo says about the workout as a whole, so the
+  // read can be checked against it at a glance. None of it is stored.
+  const footer = plan
+    ? [card.weekDay, `${card.rows.length} ${card.rows.length === 1 ? 'movement' : 'movements'}`]
+    : [
+        card.durationMin !== null ? `${card.durationMin} min` : null,
+        card.volumeLb !== null ? `${card.volumeLb.toLocaleString('en-US')} lb` : null,
+        card.totalSets !== null ? `${card.totalSets} sets` : null,
+      ];
 
   return (
     <View style={styles.card}>
+      {card.format ? (
+        <Text style={styles.format}>{plan ? 'Plan card' : 'Workout card'}</Text>
+      ) : null}
       <Text style={styles.title}>{card.title ?? 'Untitled workout'}</Text>
 
       <View style={styles.dateLine}>
@@ -69,6 +77,7 @@ export function ReviewCardView({
           row={row}
           flags={flagsFor(`rows.${index}`)}
           match={matchFor(row)}
+          plan={plan}
           onEdit={onEdit}
           onKeep={onKeep}
           onRemove={onRemoveRow}
@@ -77,8 +86,8 @@ export function ReviewCardView({
         />
       ))}
 
-      {footer.length > 0 ? (
-        <Text style={styles.footer}>The card says: {footer.join(' · ')}</Text>
+      {footer.some(Boolean) ? (
+        <Text style={styles.footer}>The card says: {footer.filter(Boolean).join(' · ')}</Text>
       ) : null}
       {warnings.map((warning) => (
         <Text key={warning} style={styles.warning}>
@@ -101,6 +110,14 @@ const styles = StyleSheet.create({
     borderColor: roles.border,
     padding: spacing[4],
     marginBottom: spacing[4],
+  },
+  format: {
+    ...textStyles.captionSmall,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: roles.textMuted,
+    marginBottom: spacing[1],
   },
   title: {
     ...textStyles.h4,

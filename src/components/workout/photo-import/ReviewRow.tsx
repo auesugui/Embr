@@ -4,13 +4,16 @@
 // The movement name on its own line, so a long name is never cut off. Beneath it, the
 // library exercise it will be copied as, with a choice to change or skip it. Then its
 // sets and reps, each labelled. Every field is editable, because a read can be wrong
-// in any of them. The weight is read for reference only: a copied workout has none.
+// in any of them. The weight is read for reference only: a copied workout has none,
+// and a plan card has no weight to show, so that box is absent rather than empty.
 
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { FieldFlag, MovementFlag } from '@/components/workout/photo-import/ReviewFlags';
 import type { ParsedRow } from '@/lib/card-import/parse-card';
+import { isCutOffName } from '@/lib/card-import/parse-card';
 import type { Disagreement } from '@/lib/card-import/reconcile';
+import { readReps } from '@/lib/card-import/review';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
 /** How a movement on the card lines up with the library. */
@@ -26,6 +29,8 @@ interface ReviewRowProps {
   /** Every flag on this movement, and on its own row. */
   flags: Disagreement[];
   match: MovementMatch;
+  /** A plan card's row: no weight was read, and the reps box holds a range. */
+  plan: boolean;
   onEdit: (path: string, text: string) => void;
   onKeep: (path: string) => void;
   onRemove: (index: number) => void;
@@ -38,6 +43,7 @@ export function ReviewRow({
   row,
   flags,
   match,
+  plan,
   onEdit,
   onKeep,
   onRemove,
@@ -51,6 +57,10 @@ export function ReviewRow({
   const weightFlag = flagOn('weightLb');
   const repsFlag = flagOn('reps');
   const movement = `Movement ${index + 1}`;
+  // The name is the thing that is wrong, so it carries the flagged border until the
+  // movement is settled, the way a disagreed value does.
+  const cutOff = match.kind === 'unmatched' && isCutOffName(row.name);
+  const faint = match.kind === 'skipped';
 
   return (
     <View style={styles.wrap}>
@@ -63,7 +73,7 @@ export function ReviewRow({
       ) : null}
 
       <TextInput
-        style={[styles.name, nameFlag && styles.flagged]}
+        style={[styles.name, (nameFlag || cutOff) && styles.flagged]}
         value={row.name}
         onChangeText={(text) => onEdit(`rows.${index}.name`, text)}
         accessibilityLabel={`${movement} name`}
@@ -72,7 +82,9 @@ export function ReviewRow({
 
       <View style={styles.matchRow}>
         <Text style={[styles.matchText, match.kind === 'unmatched' && styles.matchNeeded]}>
-          {matchLabel(match)}
+          {cutOff
+            ? 'The name is cut off on the card. Choose the exercise, or skip it.'
+            : matchLabel(match)}
         </Text>
         {match.kind === 'present' ? null : (
           <View style={styles.matchActions}>
@@ -106,26 +118,42 @@ export function ReviewRow({
           accessibilityLabel={`${movement} sets`}
           value={String(row.sets)}
           flagged={setsFlag !== undefined}
+          faint={faint}
           onChangeText={(text) => onEdit(`rows.${index}.sets`, text)}
         />
         <Figure
           label="Reps"
           accessibilityLabel={`${movement} reps`}
-          value={String(row.reps)}
+          value={row.reps}
+          // The one text field on the screen: a rep range is not something a number pad types.
+          text
+          wide={plan}
           flagged={repsFlag !== undefined}
+          faint={faint}
           onChangeText={(text) => onEdit(`rows.${index}.reps`, text)}
         />
-        <Figure
-          label="Card lb"
-          accessibilityLabel={`${movement} weight in pounds, for reference`}
-          value={row.weightLb === null ? '' : String(row.weightLb)}
-          placeholder="bw"
-          flagged={weightFlag !== undefined}
-          onChangeText={(text) => onEdit(`rows.${index}.weightLb`, text)}
-        />
+        {plan ? null : (
+          <Figure
+            label="Card lb"
+            accessibilityLabel={`${movement} weight in pounds, for reference`}
+            value={row.weightLb === null ? '' : String(row.weightLb)}
+            placeholder="bw"
+            flagged={weightFlag !== undefined}
+            faint={faint}
+            onChangeText={(text) => onEdit(`rows.${index}.weightLb`, text)}
+          />
+        )}
       </View>
       {setsFlag ? <FieldFlag flag={setsFlag} onChoose={(v) => onEdit(setsFlag.path, v)} /> : null}
-      {repsFlag ? <FieldFlag flag={repsFlag} onChoose={(v) => onEdit(repsFlag.path, v)} /> : null}
+      {repsFlag ? (
+        <FieldFlag
+          flag={repsFlag}
+          accepts={readReps}
+          rule="A range is two whole numbers from 1 to 99, low first. One number on its own works too."
+          noun="rep range"
+          onChoose={(v) => onEdit(repsFlag.path, v)}
+        />
+      ) : null}
       {weightFlag ? (
         <FieldFlag flag={weightFlag} onChoose={(v) => onEdit(weightFlag.path, v)} />
       ) : null}
@@ -152,6 +180,9 @@ function Figure({
   value,
   placeholder,
   flagged,
+  faint,
+  text,
+  wide,
   onChangeText,
 }: {
   label: string;
@@ -159,18 +190,27 @@ function Figure({
   value: string;
   placeholder?: string;
   flagged: boolean;
+  /** The movement is skipped, so its figures are read but not copied. */
+  faint?: boolean;
+  text?: boolean;
+  wide?: boolean;
   onChangeText: (text: string) => void;
 }) {
   return (
     <View style={styles.figure}>
       <Text style={styles.figureLabel}>{label}</Text>
       <TextInput
-        style={[styles.figureInput, flagged && styles.flagged]}
+        style={[
+          styles.figureInput,
+          wide && styles.figureWide,
+          flagged && styles.flagged,
+          faint && styles.faint,
+        ]}
         value={value}
         placeholder={placeholder}
         placeholderTextColor={roles.textTertiary}
         onChangeText={onChangeText}
-        keyboardType="number-pad"
+        keyboardType={text ? 'default' : 'number-pad'}
         selectTextOnFocus
         accessibilityLabel={accessibilityLabel}
       />
@@ -229,6 +269,12 @@ const styles = StyleSheet.create({
   figureLabel: {
     ...textStyles.caption,
     color: roles.textMuted,
+  },
+  figureWide: {
+    width: 100,
+  },
+  faint: {
+    color: roles.textTertiary,
   },
   figureInput: {
     ...textStyles.body,

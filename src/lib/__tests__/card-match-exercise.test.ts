@@ -4,8 +4,8 @@
 // A movement is matched only when the library clearly has it. Anything less is left
 // for the person to choose, so these tests pin both the matches and the refusals.
 
-import { EXERCISE_DATABASE } from '@/data';
-import { describe, expect, it } from '@jest/globals';
+import { EXERCISE_DATABASE, setCustomExercises } from '@/data';
+import { afterEach, describe, expect, it } from '@jest/globals';
 import { matchExercise, movementKey } from '../card-import/match-exercise';
 
 describe('matchExercise', () => {
@@ -40,7 +40,45 @@ describe('matchExercise', () => {
     expect(matchExercise('Overhead Press')).toBe('overhead_press');
     expect(matchExercise('DB Overhead Press')).toBe('db_overhead_press');
   });
+
+  it('matches a plan card movement the library names with its equipment', () => {
+    expect(matchExercise('Goblet Squat')).toBe('db_goblet_squat');
+    expect(matchExercise('Standing Calf Raise')).toBe('db_standing_calf_raise');
+  });
+
+  it('matches across a plural the library writes and the card does not', () => {
+    expect(matchExercise('Lunge (Dumbbell)')).toBe('db_lunges');
+    expect(matchExercise('Pull-Up')).toBe('pull_ups');
+  });
+
+  it('lets an equipment hint pick between the versions of one movement', () => {
+    // The library has Shrugs and DB Shrugs, so the card's "(Dumbbell)" is the difference.
+    expect(matchExercise('Shrug (Dumbbell)')).toBe('db_shrugs');
+    expect(matchExercise('Shrug')).toBeUndefined();
+  });
+
+  it('matches an exercise the person created, as the picker lists it', () => {
+    setCustomExercises([
+      {
+        id: 'custom_sled_push',
+        name: 'Sled Push',
+        muscleGroups: ['quads'],
+        primaryMuscle: 'quads',
+        movementPattern: 'lunge',
+        equipment: ['machine'],
+        defaultSets: 3,
+        defaultReps: '10',
+        defaultRestSeconds: 90,
+        isCompound: true,
+        fpDistribution: { power: 1 },
+      },
+    ]);
+
+    expect(matchExercise('Sled Push (Machine)')).toBe('custom_sled_push');
+  });
 });
+
+afterEach(() => setCustomExercises([]));
 
 describe('movementKey', () => {
   it('reads the same movement whatever the order of its words and however the equipment is written', () => {

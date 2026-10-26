@@ -107,7 +107,7 @@ export default function ImportPhotosScreen() {
     const { exerciseId, skipped } = resolve(row);
     if (skipped || !exerciseId || inDay.has(exerciseId) || queued.has(exerciseId)) continue;
     queued.add(exerciseId);
-    additions.push({ exerciseId, sets: row.sets, reps: String(row.reps) });
+    additions.push({ exerciseId, sets: row.sets, reps: row.reps });
   }
 
   const allClear =
@@ -170,14 +170,19 @@ export default function ImportPhotosScreen() {
     : cards.some((card) => card.reading === null)
       ? 'Remove the photo that could not be read.'
       : cards.length > 1
-        ? 'Remove the extra cards. One workout goes into one day.'
+        ? `Remove the extra ${cards.length === 2 ? 'card' : 'cards'}. One workout goes into one day.`
         : unsettled > 0
           ? `${unsettled} ${unsettled === 1 ? 'movement needs' : 'movements need'} an exercise, or a skip.`
-          : additions.length === 0 && onlyCard !== null
-            ? 'Every movement is skipped or already in this workout. Nothing to add.'
-            : allClear
-              ? ''
-              : 'Resolve the highlighted values first.';
+          : // A photo with no movements is not a card at all, so it is neither skipped nor
+            // already here. It is checked before the skipped-or-present note, which would
+            // otherwise claim a photo of a wall held movements.
+            rows.length === 0 && onlyCard !== null
+            ? 'Remove this photo and take one of those two cards.'
+            : additions.length === 0 && onlyCard !== null
+              ? 'Every movement is skipped or already in this workout. Nothing to add.'
+              : allClear
+                ? ''
+                : 'Resolve the highlighted values first.';
 
   return (
     <View style={styles.screen}>
