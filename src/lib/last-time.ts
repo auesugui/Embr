@@ -26,17 +26,20 @@
 // has always read.
 //
 // THE PRE-FILL reads the same history (`prefillWeight`), because the weight
-// cache behind it is five entries deep and a unit switch can push a real
-// session out of it.
+// cache behind it is five entries deep, a unit switch can push a real session
+// out of it, and a workout added through history never writes it at all.
 
 import { isPerformedSet } from '@/lib/exercise-progress';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { baseExerciseId, exerciseMetric, formatCompact } from '@/lib/metric';
 import { compactEntry, describeEntry, sameWork } from '@/lib/set-summary';
 import { effectiveWeightUnit } from '@/lib/weight-unit';
+import type { CachedWeight } from '@/stores/weightHistoryStore';
 import type { LoggedSet, Metric, WeightUnit, WorkoutLog } from '@/types';
 
 export interface LastPerformed {
+  /** ISO timestamp of that workout. */
+  timestamp: string;
   /** Every performed set of the movement in that workout, in order. */
   sets: LoggedSet[];
   /** What those numbers measure, as that workout itself spells it. */
@@ -76,6 +79,7 @@ export function findLastPerformed(
     if (sets.length === 0) continue;
 
     return {
+      timestamp: log.timestamp,
       sets,
       metric: exerciseMetric(entries[entries.length - 1]),
       unit: effectiveWeightUnit(log, setting),
@@ -116,14 +120,33 @@ function describeSets(
 }
 
 /**
+ * The last set that carried a load, which is what the weight cache would have
+ * remembered: a drop set opens on the weight you finished on, not the one you
+ * started with.
+ */
+function finishingLoad(sets: LoggedSet[]): number | null {
+  for (let index = sets.length - 1; index >= 0; index--) {
+    const weight = sets[index].weight ?? 0;
+    if (weight > 0) return weight;
+  }
+  return null;
+}
+
+/**
  * The weight a new set opens with: the last one you used IN `units`, or null.
  *
- * `cached` is weightHistoryStore's answer and is the usual one — it is written
- * on every logged set, so inside a session the second set opens on the first.
- * But it keeps five entries per movement, so five sets logged in the other
- * unit push a real session out of it, and then the field would open empty
- * although the session it should read is still saved. The workouts do not
- * expire, so they are the record when the cache has nothing.
+ * TWO RECORDS, RANKED BY TIME. `cached` is weightHistoryStore's answer, which
+ * is written on every logged set — so inside a session the second set opens on
+ * the first, and that reuse always wins here because every saved workout this
+ * reads is older than the session's own start. But the cache is neither
+ * complete nor authoritative: it keeps five weights per movement, so sets in
+ * the other unit can push a real session out of it, and a workout added
+ * through history never writes it at all. So the saved session is read too and
+ * the NEWER of the two is the answer. Trusting the cache first left a movement
+ * opening on last month's number after a workout was typed in.
+ *
+ * A cached weight with an unreadable time loses to a saved session, which
+ * carries its own date.
  *
  * It never crosses units and never converts: filling 275 into a kg field loads
  * 275 kg onto a bar that held 275 lb. A session logged with no unit of its own
@@ -132,7 +155,7 @@ function describeSets(
  */
 export function prefillWeight(args: {
   /** weightHistoryStore's remembered weight in this unit, or null. */
-  cached: number | null;
+  cached: CachedWeight | null;
   logs: WorkoutLog[];
   exerciseId: string;
   /** ms epoch the current session started. */
@@ -140,21 +163,20 @@ export function prefillWeight(args: {
   /** The unit being logged in, which is the setting. */
   units: WeightUnit;
 }): number | null {
-  if (args.cached !== null && args.cached > 0) return args.cached;
+  const remembered = args.cached !== null && args.cached.weight > 0 ? args.cached : null;
 
   // The unit being logged in is the setting, so it answers twice: once for a
   // workout that carries no unit, and once as the unit being looked for.
   const last = findLastPerformed(args.logs, args.exerciseId, args.before, args.units, args.units);
-  if (!last) return null;
+  const saved = last === null ? null : finishingLoad(last.sets);
 
-  // The last set that carried a load, which is what the cache would have
-  // remembered: a drop set opens on the weight you finished on, not the one
-  // you started with.
-  for (let index = last.sets.length - 1; index >= 0; index--) {
-    const weight = last.sets[index].weight ?? 0;
-    if (weight > 0) return weight;
-  }
-  return null;
+  if (saved === null || last === null) return remembered?.weight ?? null;
+  if (remembered === null) return saved;
+
+  // findLastPerformed has already dropped a log with an unreadable timestamp.
+  const rememberedAt = Date.parse(remembered.recordedAt);
+  if (Number.isNaN(rememberedAt) || rememberedAt < Date.parse(last.timestamp)) return saved;
+  return remembered.weight;
 }
 
 /**

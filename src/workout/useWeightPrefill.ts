@@ -40,16 +40,30 @@ export function useWeightPrefill({
   const logs = useWorkoutHistoryStore((state) => state.logs);
   // Subscribed rather than read in render: a modal save has to re-render the
   // chips with the new weight immediately.
-  const cached = useWeightHistoryStore((state) =>
-    exerciseId ? lastWeightInUnit(state.history[exerciseId], units) : null
+  //
+  // The SLICE, not an answer derived from it. A selector is compared by
+  // identity, so one that builds an object re-runs the render that re-runs the
+  // selector — "Maximum update depth exceeded", on the screen you log sets on.
+  // This record changes only when a weight is written.
+  const record = useWeightHistoryStore((state) =>
+    exerciseId ? state.history[exerciseId] : undefined
   );
   // The session's own start, so the answer cannot move under a screen that
   // stays mounted — the same anchor the Last time caption reads against.
   const before = startedAt ?? Number.POSITIVE_INFINITY;
 
   const current = useMemo(
-    () => (exerciseId ? prefillWeight({ cached, logs, exerciseId, before, units }) : null),
-    [cached, exerciseId, logs, before, units]
+    () =>
+      exerciseId
+        ? prefillWeight({
+            cached: lastWeightInUnit(record, units),
+            logs,
+            exerciseId,
+            before,
+            units,
+          })
+        : null,
+    [record, exerciseId, logs, before, units]
   );
 
   /** The same answer for any movement, read at the moment it is asked for. */

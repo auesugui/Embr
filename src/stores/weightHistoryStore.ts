@@ -18,8 +18,8 @@ interface WeightHistoryActions {
   getLastWeight: (exerciseId: string) => number | null;
   // Unit-aware read: pre-#42 entries default to lb.
   getLastWeightWithUnit: (exerciseId: string) => { weight: number; unit: WeightUnit } | null;
-  /** The pre-fill. Never crosses units — see `lastWeightInUnit`. */
-  getLastWeightInUnit: (exerciseId: string, unit: WeightUnit) => number | null;
+  /** What the pre-fill remembers, with its time — see `lastWeightInUnit`. */
+  getLastWeightInUnit: (exerciseId: string, unit: WeightUnit) => CachedWeight | null;
   saveWeight: (exerciseId: string, weight: number, unit?: WeightUnit) => void;
   getRecentWeights: (exerciseId: string) => WeightHistoryEntry[];
   clearExerciseHistory: (exerciseId: string) => void;
@@ -44,6 +44,13 @@ const initialState: WeightHistoryState = {
   history: {},
 };
 
+/** A remembered weight and when it was written, so it can be ranked by age. */
+export interface CachedWeight {
+  weight: number;
+  /** ISO timestamp of the set that wrote it. */
+  recordedAt: string;
+}
+
 /**
  * The most recent remembered weight for this movement IN `unit`, or null.
  *
@@ -53,18 +60,28 @@ const initialState: WeightHistoryState = {
  * weight recorded in the unit being logged in, and opens empty when there is
  * none (#85 step 2, Q5).
  *
+ * It comes back WITH its timestamp because this cache is not the only record
+ * of what you lifted: a workout added through history writes no entry here, so
+ * the two have to be ranked rather than one trusted over the other. See
+ * `prefillWeight`. `lastWeight` is written in the same breath as `updatedAt`,
+ * which is why that is its time.
+ *
  * Exported as a pure function so the screen's selector and the store action
  * answer this from one definition rather than two.
  */
 export function lastWeightInUnit(
   history: ExerciseWeightHistory | undefined,
   unit: WeightUnit
-): number | null {
+): CachedWeight | null {
   if (!history) return null;
   // Pre-#42 entries carry no unit — they were all logged in lb.
-  if ((history.lastUnit ?? 'lb') === unit) return history.lastWeight;
+  if ((history.lastUnit ?? 'lb') === unit) {
+    return history.lastWeight === null
+      ? null
+      : { weight: history.lastWeight, recordedAt: history.updatedAt };
+  }
   const match = history.recentWeights.find((entry) => (entry.unit ?? 'lb') === unit);
-  return match?.weight ?? null;
+  return match === undefined ? null : { weight: match.weight, recordedAt: match.timestamp };
 }
 
 // Helper to persist state

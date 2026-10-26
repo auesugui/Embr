@@ -299,15 +299,51 @@ describe('lastTimeLine', () => {
 // workouts do not expire, which is why they are read behind it.
 
 describe('prefillWeight', () => {
+  /** A remembered weight, written `daysAgo` before this session started. */
+  const remembered = (weight: number, daysAgo = 3) => ({ weight, recordedAt: at(daysAgo) });
+
   const fill = (
     logs: WorkoutLog[],
-    cached: number | null = null,
+    cached: { weight: number; recordedAt: string } | null = null,
     units: 'lb' | 'kg' = 'lb',
     exerciseId = 'bench_press-0'
   ) => prefillWeight({ cached, logs, exerciseId, before: SESSION_START, units });
 
   it('takes the remembered weight when the cache has one', () => {
-    expect(fill([], 135)).toBe(135);
+    expect(fill([], remembered(135))).toBe(135);
+  });
+
+  it('prefers a saved session logged after the cache was last written', () => {
+    // A workout added through History writes no cache entry, so the cache can
+    // hold an older weight for a movement that has since been trained.
+    const logs = [log(at(1), [exercise({ sets: [set({ weight: 100 })] })], { weightUnit: 'kg' })];
+
+    expect(fill(logs, remembered(85, 9), 'kg')).toBe(100);
+  });
+
+  it('keeps the remembered weight when it is the newer of the two', () => {
+    const logs = [log(at(9), [exercise({ sets: [set({ weight: 85 })] })], { weightUnit: 'kg' })];
+
+    expect(fill(logs, remembered(100, 1), 'kg')).toBe(100);
+  });
+
+  it('keeps a weight written during this session, which is newer than any log', () => {
+    // Set 1 of the session being logged right now: `recordedAt` is after the
+    // session start, and every saved workout read here is before it.
+    const logs = [log(at(1), [exercise({ sets: [set({ weight: 100 })] })], { weightUnit: 'kg' })];
+    const justNow = { weight: 125, recordedAt: new Date(SESSION_START + 60_000).toISOString() };
+
+    expect(fill(logs, justNow, 'kg')).toBe(125);
+  });
+
+  it('lets a saved session win over a remembered weight with no readable time', () => {
+    const logs = [log(at(1), [exercise({ sets: [set({ weight: 100 })] })], { weightUnit: 'kg' })];
+
+    expect(fill(logs, { weight: 85, recordedAt: 'not a date' }, 'kg')).toBe(100);
+  });
+
+  it('keeps an unreadable remembered weight when there is no session to rank it against', () => {
+    expect(fill([], { weight: 85, recordedAt: 'not a date' }, 'kg')).toBe(85);
   });
 
   it('reads the last session in this unit when the cache has nothing', () => {

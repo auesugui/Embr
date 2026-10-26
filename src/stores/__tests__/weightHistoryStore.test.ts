@@ -254,7 +254,10 @@ describe('Weight History Store', () => {
 
       saveWeight('bench-press', 135, 'lb');
 
-      expect(getLastWeightInUnit('bench-press', 'lb')).toBe(135);
+      const cached = getLastWeightInUnit('bench-press', 'lb');
+      expect(cached?.weight).toBe(135);
+      // The time comes with it, so a saved session can be ranked against it.
+      expect(Number.isNaN(Date.parse(cached?.recordedAt ?? ''))).toBe(false);
     });
 
     it('does not hand the other unit’s number to the field', () => {
@@ -271,8 +274,8 @@ describe('Weight History Store', () => {
       saveWeight('bench-press', 100, 'kg');
       saveWeight('bench-press', 195, 'lb');
 
-      expect(getLastWeightInUnit('bench-press', 'kg')).toBe(100);
-      expect(getLastWeightInUnit('bench-press', 'lb')).toBe(195);
+      expect(getLastWeightInUnit('bench-press', 'kg')?.weight).toBe(100);
+      expect(getLastWeightInUnit('bench-press', 'lb')?.weight).toBe(195);
     });
 
     it('takes the most recent entry in that unit, not the oldest', () => {
@@ -282,7 +285,7 @@ describe('Weight History Store', () => {
       saveWeight('bench-press', 90, 'kg');
       saveWeight('bench-press', 195, 'lb');
 
-      expect(getLastWeightInUnit('bench-press', 'kg')).toBe(90);
+      expect(getLastWeightInUnit('bench-press', 'kg')?.weight).toBe(90);
     });
 
     it('is null for a movement with no history at all', () => {
@@ -302,7 +305,7 @@ describe('Weight History Store', () => {
       });
 
       const { getLastWeightInUnit } = useWeightHistoryStore.getState();
-      expect(getLastWeightInUnit('bench-press', 'lb')).toBe(135);
+      expect(getLastWeightInUnit('bench-press', 'lb')?.weight).toBe(135);
       expect(getLastWeightInUnit('bench-press', 'kg')).toBeNull();
     });
   });
@@ -363,8 +366,35 @@ describe('Weight History Store', () => {
       ).toBeNull();
       // The saved session has not, so the field opens on it.
       expect(fill([kgSession()], 'kg')).toBe(100);
-      // And the lb side still answers from the cache.
+      // And the lb side still answers from the cache, which is newer than the
+      // saved kg session it is ranked against.
       expect(fill([kgSession()], 'lb')).toBe(205);
+    });
+
+    it('lets a workout added through History beat an older remembered weight', () => {
+      // A workout typed in or imported writes no cache entry, so the cache can
+      // hold a weight from before a session the lifter has since trained.
+      useWeightHistoryStore.setState({
+        history: {
+          'bench_press-0': {
+            exerciseId: 'bench_press-0',
+            lastWeight: 85,
+            lastUnit: 'kg',
+            recentWeights: [{ weight: 85, timestamp: '2026-10-10T12:00:00.000Z', unit: 'kg' }],
+            updatedAt: '2026-10-10T12:00:00.000Z',
+          },
+        },
+      });
+
+      // The saved session is ten days newer than the remembered weight.
+      expect(fill([kgSession()], 'kg')).toBe(100);
+    });
+
+    it('keeps a weight logged in this session over an earlier saved one', () => {
+      // saveWeight stamps now, which is after every workout this reads.
+      useWeightHistoryStore.getState().saveWeight('bench_press-0', 125, 'kg');
+
+      expect(fill([kgSession()], 'kg')).toBe(125);
     });
 
     it('opens empty when no session in that unit exists either', () => {
