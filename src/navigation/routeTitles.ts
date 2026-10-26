@@ -17,6 +17,9 @@
 // build: this map isn't flag-aware, so the gamified copy showed up on a screen
 // that had nothing to do with the game layer (ADR-0013).
 export const ROUTE_TITLES = {
+  // Static fallback: the screen overrides it with the exercise's own name once
+  // the series resolves, the same way `workout/template/[id]` does.
+  'exercise/[id]': 'Exercise Progress',
   'workout/import-photos': 'Review workout',
   'workout/loadout': 'Start Workout',
   'workout/summary': 'Workout Summary',

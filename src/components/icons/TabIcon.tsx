@@ -12,10 +12,10 @@
 // The `den` and `tower` entries are gone with the game layer (ADR-0014). They
 // survived here as dead map keys long after the routes were deleted.
 
-import { ClipboardList, User } from '@/components/icons';
+import { ClipboardList, TrendingUp, User } from '@/components/icons';
 import { roles } from '@/theme';
 
-export type TabIconName = 'quest' | 'profile';
+export type TabIconName = 'quest' | 'progress' | 'profile';
 
 interface TabIconProps {
   name: TabIconName;
@@ -34,6 +34,7 @@ interface TabIconProps {
 
 const ICONS = {
   quest: ClipboardList,
+  progress: TrendingUp,
   profile: User,
 } as const;
 

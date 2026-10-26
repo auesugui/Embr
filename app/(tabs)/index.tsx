@@ -5,7 +5,7 @@
 // It gets breathing room, the display face, and the one emotional beat the
 // tracker has — the streak. Density belongs on session/history, not here.
 
-import { ChevronRight, Pencil, Plus, Trash } from '@/components/icons';
+import { Pencil, Plus, Trash } from '@/components/icons';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -232,17 +232,9 @@ export default function HomeScreen() {
         </PressableScale>
       </RevealRow>
 
-      {/* Workout History — reachable from home (issue #18). */}
-      <RevealRow index={3} style={styles.section}>
-        <PressableScale
-          style={styles.rowButton}
-          activeScale={0.985}
-          onPress={() => router.push('/(tabs)/history')}
-        >
-          <Text style={styles.rowButtonText}>Workout History</Text>
-          <ChevronRight size={20} color={roles.textMuted} />
-        </PressableScale>
-      </RevealRow>
+      {/* Workout History used to sit here (issue #18). It is the top row of the
+          Progress tab now (issue #77): Home is the screen you arrive at and
+          start from, and looking backwards has its own place. */}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>
@@ -370,19 +362,5 @@ const styles = StyleSheet.create({
     ...textStyles.button,
     color: roles.onAccent,
     fontWeight: '700',
-  },
-  rowButton: {
-    backgroundColor: roles.surfaceRaised,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: roles.border,
-    padding: spacing[4],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  rowButtonText: {
-    ...textStyles.labelLarge,
-    color: roles.textPrimary,
   },
 });
