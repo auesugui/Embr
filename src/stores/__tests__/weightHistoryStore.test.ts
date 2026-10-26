@@ -2,6 +2,8 @@
 // IronQuest Weight History Store Unit Tests (TDD)
 // =============================================================================
 
+import { prefillWeight } from '@/lib/last-time';
+import type { WorkoutLog } from '@/types';
 import { appStorage } from '@/utils/storage';
 import { useWeightHistoryStore } from '../weightHistoryStore';
 
@@ -302,6 +304,86 @@ describe('Weight History Store', () => {
       const { getLastWeightInUnit } = useWeightHistoryStore.getState();
       expect(getLastWeightInUnit('bench-press', 'lb')).toBe(135);
       expect(getLastWeightInUnit('bench-press', 'kg')).toBeNull();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // When the cache has rolled over (issue #85 step 2)
+  // ---------------------------------------------------------------------------
+  // The cache holds five entries per movement. Five sets logged in the other
+  // unit evict a real session from it, and the field would then open empty
+  // although the session it should read is still saved. `prefillWeight` reads
+  // the workouts behind the cache for exactly this case.
+
+  describe('the pre-fill behind the cache', () => {
+    const SESSION_START = Date.parse('2026-10-26T18:00:00.000Z');
+
+    /** A saved kg session of the bench at 100 kg. */
+    const kgSession = (): WorkoutLog =>
+      ({
+        id: 'kg-session',
+        timestamp: '2026-10-20T12:00:00.000Z',
+        claimedAt: '2026-10-20T12:30:00.000Z',
+        durationSeconds: 1800,
+        streakDays: 1,
+        sessionIntent: 'normal',
+        weightUnit: 'kg',
+        exercises: [
+          {
+            id: 'bench_press-0',
+            name: 'Bench Press',
+            muscleGroups: ['chest'],
+            restSeconds: 90,
+            completed: true,
+            sets: [{ reps: 5, weight: 100, logged: true, isPR: false, isRepPR: false }],
+          },
+        ],
+      }) as WorkoutLog;
+
+    const fill = (logs: WorkoutLog[], units: 'lb' | 'kg') =>
+      prefillWeight({
+        cached: useWeightHistoryStore.getState().getLastWeightInUnit('bench_press-0', units),
+        logs,
+        exerciseId: 'bench_press-0',
+        before: SESSION_START,
+        units,
+      });
+
+    it('still finds the kg weight after five lb writes push it out of the cache', () => {
+      const { saveWeight } = useWeightHistoryStore.getState();
+
+      saveWeight('bench_press-0', 100, 'kg');
+      for (const weight of [185, 190, 195, 200, 205]) {
+        saveWeight('bench_press-0', weight, 'lb');
+      }
+
+      // The cache itself has lost it — that is the defect this guards.
+      expect(
+        useWeightHistoryStore.getState().getLastWeightInUnit('bench_press-0', 'kg')
+      ).toBeNull();
+      // The saved session has not, so the field opens on it.
+      expect(fill([kgSession()], 'kg')).toBe(100);
+      // And the lb side still answers from the cache.
+      expect(fill([kgSession()], 'lb')).toBe(205);
+    });
+
+    it('opens empty when no session in that unit exists either', () => {
+      const { saveWeight } = useWeightHistoryStore.getState();
+
+      for (const weight of [185, 190, 195, 200, 205, 210]) {
+        saveWeight('bench_press-0', weight, 'lb');
+      }
+
+      expect(fill([], 'kg')).toBeNull();
+    });
+
+    it('reads a saved workout with no unit of its own as the setting', () => {
+      const legacy = { ...kgSession(), id: 'legacy' } as WorkoutLog;
+      // biome-ignore lint/performance/noDelete: the point is a log without the field
+      delete (legacy as { weightUnit?: 'lb' | 'kg' }).weightUnit;
+
+      expect(fill([legacy], 'kg')).toBe(100);
+      expect(fill([legacy], 'lb')).toBe(100);
     });
   });
 

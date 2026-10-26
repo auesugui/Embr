@@ -15,8 +15,19 @@
 // is one line, varied work keeps every number. A hold reads in seconds, and a
 // weight is labelled with the unit THAT WORKOUT was logged in (#85 step 2) —
 // the caption reports a past session, so it prints what was recorded and
-// converts nothing. The number already carries its unit, so no tail saying
-// "logged in lb" is added.
+// converts nothing.
+//
+// The uniform forms carry the unit inside the line, so nothing is added to
+// them. The varied form is History's detail spelling, `55×12 · 60×10`, which
+// has no room for a unit on each number and never carried one. It gains one at
+// the end ONLY when the session was logged in the other unit — that is the
+// reading that is otherwise false, because every other number on the screen is
+// in the setting. A lifter who has only ever used one unit reads the line it
+// has always read.
+//
+// THE PRE-FILL reads the same history (`prefillWeight`), because the weight
+// cache behind it is five entries deep and a unit switch can push a real
+// session out of it.
 
 import { isPerformedSet } from '@/lib/exercise-progress';
 import { getClaimedLogs } from '@/lib/history-stats';
@@ -46,7 +57,9 @@ export function findLastPerformed(
   logs: WorkoutLog[],
   exerciseId: string,
   before: number,
-  setting: WeightUnit
+  setting: WeightUnit,
+  /** Skip sessions logged in the other unit. Absent means any unit. */
+  inUnit?: WeightUnit
 ): LastPerformed | null {
   const base = baseExerciseId(exerciseId);
 
@@ -54,6 +67,7 @@ export function findLastPerformed(
   for (const log of getClaimedLogs(logs)) {
     const at = Date.parse(log.timestamp);
     if (Number.isNaN(at) || at >= before) continue;
+    if (inUnit !== undefined && effectiveWeightUnit(log, setting) !== inUnit) continue;
 
     const entries = log.exercises.filter((e) => !e.cardio && baseExerciseId(e.id) === base);
     // Repeated entries of one movement in one workout are one session of it —
@@ -71,8 +85,14 @@ export function findLastPerformed(
   return null;
 }
 
-/** The numbers alone: `3 × 10 @ 135 lb`, `45s, 60s`, `135×10 · 145×8`. */
-function describeSets(sets: LoggedSet[], units: WeightUnit, metric: Metric): string {
+/** The numbers alone: `3 × 10 @ 135 lb`, `45s, 60s`, `135×10 · 145×8 in lb`. */
+function describeSets(
+  sets: LoggedSet[],
+  units: WeightUnit,
+  metric: Metric,
+  /** Name the unit on the varied form. See the header. */
+  nameUnit: boolean
+): string {
   const first = sets[0];
   const counts = sets.map((s) => formatCompact(s.reps ?? 0, metric));
 
@@ -89,7 +109,52 @@ function describeSets(sets: LoggedSet[], units: WeightUnit, metric: Metric): str
     return first.weight ? `${first.weight} ${units} × ${counts.join(', ')}` : counts.join(', ');
   }
 
-  return sets.map((s) => compactEntry(s, metric)).join(' · ');
+  // Bodyweight work has no load for a unit to be about, so it never gains one.
+  const loaded = sets.some((s) => (s.weight ?? 0) > 0);
+  const tail = nameUnit && loaded ? ` in ${units}` : '';
+  return `${sets.map((s) => compactEntry(s, metric)).join(' · ')}${tail}`;
+}
+
+/**
+ * The weight a new set opens with: the last one you used IN `units`, or null.
+ *
+ * `cached` is weightHistoryStore's answer and is the usual one — it is written
+ * on every logged set, so inside a session the second set opens on the first.
+ * But it keeps five entries per movement, so five sets logged in the other
+ * unit push a real session out of it, and then the field would open empty
+ * although the session it should read is still saved. The workouts do not
+ * expire, so they are the record when the cache has nothing.
+ *
+ * It never crosses units and never converts: filling 275 into a kg field loads
+ * 275 kg onto a bar that held 275 lb. A session logged with no unit of its own
+ * is in the setting, which is `units` here, so it answers for the pre-fill the
+ * way it answers everywhere else.
+ */
+export function prefillWeight(args: {
+  /** weightHistoryStore's remembered weight in this unit, or null. */
+  cached: number | null;
+  logs: WorkoutLog[];
+  exerciseId: string;
+  /** ms epoch the current session started. */
+  before: number;
+  /** The unit being logged in, which is the setting. */
+  units: WeightUnit;
+}): number | null {
+  if (args.cached !== null && args.cached > 0) return args.cached;
+
+  // The unit being logged in is the setting, so it answers twice: once for a
+  // workout that carries no unit, and once as the unit being looked for.
+  const last = findLastPerformed(args.logs, args.exerciseId, args.before, args.units, args.units);
+  if (!last) return null;
+
+  // The last set that carried a load, which is what the cache would have
+  // remembered: a drop set opens on the weight you finished on, not the one
+  // you started with.
+  for (let index = last.sets.length - 1; index >= 0; index--) {
+    const weight = last.sets[index].weight ?? 0;
+    if (weight > 0) return weight;
+  }
+  return null;
 }
 
 /**
@@ -107,6 +172,8 @@ export function lastTimeLine(args: {
   const last = findLastPerformed(args.logs, args.exerciseId, args.before, args.setting);
   if (!last) return 'First time';
   // That workout's unit, not the setting: the line is what you did, and
-  // relabelling 275 lb as 275 kg is a world record nobody set.
-  return `Last time: ${describeSets(last.sets, last.unit, last.metric)}`;
+  // relabelling 275 lb as 275 kg is a world record nobody set. The varied form
+  // has no unit of its own, so it is told to name one when the session was
+  // logged in the unit the screen is NOT in.
+  return `Last time: ${describeSets(last.sets, last.unit, last.metric, last.unit !== args.setting)}`;
 }

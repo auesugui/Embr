@@ -13,7 +13,7 @@ import { useState } from 'react';
 
 import { isOpenEnded, usesRestTimer } from '@/lib/blocks';
 import { useWorkoutStore } from '@/stores';
-import type { BlockMode, Exercise, WeightUnit } from '@/types';
+import type { BlockMode, Exercise } from '@/types';
 import { haptics } from '@/utils/haptics';
 
 interface SetEditState {
@@ -28,9 +28,13 @@ interface UseSetLoggingArgs {
   memberIndexes: number[];
   mode: BlockMode;
   timed: boolean;
-  units: WeightUnit;
-  /** The last remembered weight IN `units`, or null. Never converts (#42, #85). */
-  getLastWeightInUnit: (exerciseId: string, unit: WeightUnit) => number | null;
+  /**
+   * The weight to open a set on, already in the unit being logged in.
+   *
+   * The caller owns the unit, so nothing here has to know one: the pre-fill
+   * never crosses units and never converts (#42, #85 step 2).
+   */
+  getLastWeight: (exerciseId: string) => number | null;
   logSet: (exerciseIndex: number, setIndex: number, reps: number, weight?: number) => void;
   editSet: (exerciseIndex: number, setIndex: number, reps: number, weight?: number) => void;
   clearSet: (exerciseIndex: number, setIndex: number) => void;
@@ -43,8 +47,7 @@ export function useSetLogging({
   memberIndexes,
   mode,
   timed,
-  units,
-  getLastWeightInUnit,
+  getLastWeight,
   logSet,
   editSet,
   clearSet,
@@ -115,7 +118,7 @@ export function useSetLogging({
     const exercise = exercises[exerciseIndex];
     if (!exercise) return;
 
-    const lastWeight = getLastWeightInUnit(exercise.id, units);
+    const lastWeight = getLastWeight(exercise.id);
     const quickWeight = lastWeight && lastWeight > 0 ? lastWeight : undefined;
 
     haptics.success();
@@ -154,7 +157,7 @@ export function useSetLogging({
   // The last weight recorded in the unit being logged in, never the other
   // one's number: 275 pre-filled into a kg field loads 275 kg onto a bar that
   // held 275 lb.
-  const suggestedWeight = editingExercise ? getLastWeightInUnit(editingExercise.id, units) : null;
+  const suggestedWeight = editingExercise ? getLastWeight(editingExercise.id) : null;
 
   return {
     setEdit,

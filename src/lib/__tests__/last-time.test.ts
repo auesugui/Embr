@@ -8,7 +8,7 @@
 
 import type { Exercise, LoggedSet, WorkoutLog } from '@/types';
 
-import { findLastPerformed, lastTimeLine } from '../last-time';
+import { findLastPerformed, lastTimeLine, prefillWeight } from '../last-time';
 
 const SESSION_START = Date.parse('2026-10-23T18:00:00.000Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -176,6 +176,50 @@ describe('lastTimeLine', () => {
     expect(line(logs)).toBe('Last time: 55×12 · 60×10');
   });
 
+  // The varied form is the one spelling with no unit inside it, so the numbers
+  // would read as the setting's unit when they are not (#85 step 2).
+  it('names the unit on a varied load logged in the other unit', () => {
+    const logs = [
+      log(
+        at(9),
+        [exercise({ sets: [set({ weight: 55, reps: 12 }), set({ weight: 60, reps: 10 })] })],
+        { weightUnit: 'lb' }
+      ),
+    ];
+
+    expect(line(logs, 'bench_press-0', 'kg')).toBe('Last time: 55×12 · 60×10 in lb');
+  });
+
+  it('leaves the varied form alone when the session is in the unit on screen', () => {
+    const varied = [set({ weight: 55, reps: 12 }), set({ weight: 60, reps: 10 })];
+
+    // Stamped with the setting, and carrying no unit at all: both read as the
+    // unit every other number on the screen is already in.
+    expect(
+      line([log(at(9), [exercise({ sets: varied })], { weightUnit: 'kg' })], 'bench_press-0', 'kg')
+    ).toBe('Last time: 55×12 · 60×10');
+    expect(line([log(at(9), [exercise({ sets: varied })])], 'bench_press-0', 'kg')).toBe(
+      'Last time: 55×12 · 60×10'
+    );
+  });
+
+  it('names no unit on varied bodyweight work, which has no load', () => {
+    const logs = [
+      log(
+        at(9),
+        [
+          exercise({
+            id: 'pull_up-0',
+            sets: [set({ weight: null, reps: 8 }), set({ weight: null, reps: 6 })],
+          }),
+        ],
+        { weightUnit: 'lb' }
+      ),
+    ];
+
+    expect(line(logs, 'pull_up-0', 'kg')).toBe('Last time: 8, 6');
+  });
+
   it('reads a hold in seconds, never as reps', () => {
     const logs = [
       log(at(3), [
@@ -244,5 +288,81 @@ describe('lastTimeLine', () => {
     ];
 
     expect(line(logs, 'custom-bike')).toBe('First time');
+  });
+});
+
+// -----------------------------------------------------------------------------
+// The pre-fill (issue #85 step 2)
+// -----------------------------------------------------------------------------
+// The weight cache answers first, but it keeps five entries per movement, so a
+// run of sets in the other unit can push a real session out of it. The saved
+// workouts do not expire, which is why they are read behind it.
+
+describe('prefillWeight', () => {
+  const fill = (
+    logs: WorkoutLog[],
+    cached: number | null = null,
+    units: 'lb' | 'kg' = 'lb',
+    exerciseId = 'bench_press-0'
+  ) => prefillWeight({ cached, logs, exerciseId, before: SESSION_START, units });
+
+  it('takes the remembered weight when the cache has one', () => {
+    expect(fill([], 135)).toBe(135);
+  });
+
+  it('reads the last session in this unit when the cache has nothing', () => {
+    const logs = [log(at(2), [exercise({ sets: [set({ weight: 100 })] })], { weightUnit: 'kg' })];
+
+    expect(fill(logs, null, 'kg')).toBe(100);
+  });
+
+  it('never hands back the other unit\u2019s number', () => {
+    const logs = [log(at(2), [exercise({ sets: [set({ weight: 275 })] })], { weightUnit: 'lb' })];
+
+    expect(fill(logs, null, 'kg')).toBeNull();
+  });
+
+  it('reaches past a session in the other unit to the last one in this unit', () => {
+    const logs = [
+      log(at(1), [exercise({ sets: [set({ weight: 275 })] })], { id: 'lb', weightUnit: 'lb' }),
+      log(at(5), [exercise({ sets: [set({ weight: 100 })] })], { id: 'kg', weightUnit: 'kg' }),
+    ];
+
+    expect(fill(logs, null, 'kg')).toBe(100);
+  });
+
+  it('reads a workout with no unit of its own as the setting', () => {
+    const logs = [log(at(2), [exercise({ sets: [set({ weight: 135 })] })])];
+
+    expect(fill(logs, null, 'lb')).toBe(135);
+    expect(fill(logs, null, 'kg')).toBe(135);
+  });
+
+  it('opens empty when nothing was ever logged in this unit', () => {
+    expect(fill([], null, 'kg')).toBeNull();
+  });
+
+  it('opens on the weight a drop set finished on, as the cache would have', () => {
+    const logs = [
+      log(at(2), [
+        exercise({ sets: [set({ weight: 185 }), set({ weight: 155 }), set({ weight: 135 })] }),
+      ]),
+    ];
+
+    expect(fill(logs)).toBe(135);
+  });
+
+  it('opens empty on a session that carried no load at all', () => {
+    const logs = [
+      log(at(2), [exercise({ id: 'pull_up-0', sets: [set({ weight: null, reps: 8 })] })]),
+    ];
+
+    expect(fill(logs, null, 'lb', 'pull_up-0')).toBeNull();
+  });
+
+  it('ignores a session that has not been saved', () => {
+    const logs = [log(at(2), [exercise({ sets: [set({ weight: 135 })] })], { claimedAt: null })];
+
+    expect(fill(logs)).toBeNull();
   });
 });
