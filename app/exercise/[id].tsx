@@ -17,6 +17,7 @@ import { ProgressChart } from '@/components/progress/ProgressChart';
 import { ProgressEmpty } from '@/components/progress/ProgressEmpty';
 import { RangeChips } from '@/components/progress/RangeChips';
 import { RecordList } from '@/components/progress/RecordList';
+import { useLocalDay } from '@/hooks/useLocalDay';
 import {
   DEFAULT_PROGRESS_RANGE,
   type ProgressRange,
@@ -36,6 +37,9 @@ export default function ExerciseProgressScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const logs = useWorkoutHistoryStore((s) => s.logs);
   const units = useSettingsStore((s) => s.units);
+  // The range chips are windows ending today, so the screen has to re-render
+  // when today changes. See useLocalDay.
+  const today = useLocalDay();
   const [range, setRange] = useState<ProgressRange>(DEFAULT_PROGRESS_RANGE);
 
   const progress = useMemo(() => (id ? findExerciseProgress(logs, id) : null), [logs, id]);
@@ -63,8 +67,10 @@ export default function ExerciseProgressScreen() {
   // the records are the series metric only — see exercise-progress.ts.
   const latest = points[points.length - 1];
   const records = progressRecords(comparable);
+  // Empty when a hold was only ever recorded as a weight: there is nothing it
+  // can honestly hold a seconds record against. See exercise-progress.ts.
   const currentPR = records[0];
-  const charted = rangePoints(comparable, range);
+  const charted = rangePoints(comparable, range, today);
   const chartable = comparable.length >= 2;
   const headline = splitHeadline(latest.value, latest.metric, units);
 
@@ -101,25 +107,31 @@ export default function ExerciseProgressScreen() {
           body="A line needs two points. Log this one again and the chart starts here."
         />
       ) : (
-        /* Logged more than once, but only one of those is in the series metric
-           — the others were a weight against reps, or the reverse. */
+        /* Logged more than once, but fewer than two of those are in the series
+           metric — the rest were a weight against reps, or against seconds. */
         <ProgressEmpty
           title="Not enough to chart yet"
           body="Weights and reps are not compared, so the chart needs two sessions logged the same way."
         />
       )}
 
-      <View style={styles.prCallout}>
-        <Text style={styles.prCalloutKey}>Current PR</Text>
-        <Text style={styles.prCalloutValue}>
-          {`${formatProgressValue(currentPR.value, metric, units)} · ${formatProgressDate(currentPR.timestamp)}`}
-        </Text>
-      </View>
+      {/* No records at all when nothing was measured in the series metric.
+          A callout reading "Current PR —" would be worse than its absence. */}
+      {currentPR !== undefined && (
+        <>
+          <View style={styles.prCallout}>
+            <Text style={styles.prCalloutKey}>Current PR</Text>
+            <Text style={styles.prCalloutValue}>
+              {`${formatProgressValue(currentPR.value, metric, units)} · ${formatProgressDate(currentPR.timestamp)}`}
+            </Text>
+          </View>
 
-      <View>
-        <Text style={styles.sectionTitle}>Personal records</Text>
-        <RecordList records={records} metric={metric} units={units} />
-      </View>
+          <View>
+            <Text style={styles.sectionTitle}>Personal records</Text>
+            <RecordList records={records} metric={metric} units={units} />
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }

@@ -17,6 +17,7 @@ import { ChevronRight } from '@/components/icons';
 import { ExerciseProgressRow } from '@/components/progress/ExerciseProgressRow';
 import { ProgressEmpty } from '@/components/progress/ProgressEmpty';
 import { PressableScale } from '@/components/ui';
+import { useLocalDay } from '@/hooks/useLocalDay';
 import { buildExerciseProgress, formatProgressDate, hasRecentPR } from '@/lib/exercise-progress';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
@@ -25,6 +26,10 @@ import { radius, roles, spacing, textStyles } from '@/theme';
 export default function ProgressScreen() {
   const logs = useWorkoutHistoryStore((s) => s.logs);
   const units = useSettingsStore((s) => s.units);
+  // The PR badge has a 14-day window, so this screen has to know when the day
+  // changed. A tab left open past midnight would otherwise keep badging an
+  // exercise whose record has aged out.
+  const today = useLocalDay();
 
   // Derived in render so a workout saved or imported while the tab is mounted
   // shows up immediately, the same way History does it.
@@ -73,7 +78,7 @@ export default function ProgressScreen() {
               key={exercise.exerciseId}
               progress={exercise}
               units={units}
-              showPR={hasRecentPR(exercise.points)}
+              showPR={hasRecentPR(exercise.points, today)}
               last={index === progress.length - 1}
               onPress={() => router.push(`/exercise/${encodeURIComponent(exercise.exerciseId)}`)}
             />

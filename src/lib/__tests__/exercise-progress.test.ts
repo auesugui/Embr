@@ -8,7 +8,7 @@
 import type { Exercise, LoggedSet, WorkoutLog } from '@/types';
 import { describe, expect, it } from '@jest/globals';
 
-import type { ProgressMetric } from '../exercise-progress';
+import type { ProgressMetric, ProgressRange } from '../exercise-progress';
 import {
   buildExerciseProgress,
   chartAxis,
@@ -28,6 +28,13 @@ const at = (daysAgo: number): string => new Date(NOW_MS - daysAgo * DAY_MS).toIS
 
 /** The metric the bare point fixtures below are in. */
 const weight: ProgressMetric = 'weight';
+
+/** The fixed clock the window helpers are measured against. */
+const NOW = new Date(NOW_MS);
+
+/** The same moment one local calendar day later. */
+const tomorrow = (from: Date): Date =>
+  new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1, 9);
 
 const set = (over: Partial<LoggedSet> = {}): LoggedSet => ({
   reps: 5,
@@ -381,9 +388,32 @@ describe('buildExerciseProgress — metric choice', () => {
     const [progress] = buildExerciseProgress(logs);
     expect(progress.name).toBe('Plank');
     expect(progress.points).toHaveLength(1);
-    // One session and one comparable point, so the chart cannot draw a line.
-    expect(progress.comparable).toHaveLength(1);
-    expect(progress.metric).toBe('weight');
+    // A hold is charted in seconds, and this session has none.
+    expect(progress.metric).toBe('time');
+    expect(progress.comparable).toEqual([]);
+  });
+
+  it('never charts a hold in weights, however many weight-only sessions it has', () => {
+    // The defect: two weight-only sessions passed the two-point threshold and
+    // the movement was charted as a lift, inventing weight PRs for a plank.
+    const logs = [
+      log(at(9), [plank([set({ weight: 35, reps: null, isPR: true })])], 'a'),
+      log(at(2), [plank([set({ weight: 45, reps: null, isPR: true })])], 'b'),
+    ];
+
+    const [progress] = buildExerciseProgress(logs);
+    expect(progress.metric).toBe('time');
+    // Both sessions count — for the date, the order and the session count.
+    expect(progress.points).toHaveLength(2);
+    expect(progress.points[1].timestamp).toBe(at(2));
+    // Nothing to plot and no records, so no sparkline and no PR callout.
+    expect(progress.comparable).toEqual([]);
+    expect(progressRecords(progress.comparable)).toEqual([]);
+    // The row still names the latest session in its own terms.
+    const latest = progress.points[1];
+    expect(summarizePoint(latest, latest.metric, 'lb')).toBe(
+      `45 lb · ${formatProgressDate(at(2))}`
+    );
   });
 
   it('leaves cardio entries out of the list entirely', () => {
@@ -462,14 +492,53 @@ describe('rangePoints', () => {
   ];
 
   it('keeps only the sessions inside the window', () => {
-    expect(rangePoints(points, '8W', NOW_MS).map((p) => p.logId)).toEqual(['d']);
-    expect(rangePoints(points, '3M', NOW_MS).map((p) => p.logId)).toEqual(['c', 'd']);
-    expect(rangePoints(points, '6M', NOW_MS).map((p) => p.logId)).toEqual(['b', 'c', 'd']);
-    expect(rangePoints(points, '1Y', NOW_MS).map((p) => p.logId)).toEqual(['a', 'b', 'c', 'd']);
+    expect(rangePoints(points, '8W', NOW).map((p) => p.logId)).toEqual(['d']);
+    expect(rangePoints(points, '3M', NOW).map((p) => p.logId)).toEqual(['c', 'd']);
+    expect(rangePoints(points, '6M', NOW).map((p) => p.logId)).toEqual(['b', 'c', 'd']);
+    expect(rangePoints(points, '1Y', NOW).map((p) => p.logId)).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('keeps everything on All', () => {
-    expect(rangePoints(points, 'All', NOW_MS)).toHaveLength(4);
+    expect(rangePoints(points, 'All', NOW)).toHaveLength(4);
+  });
+
+  // The windows are calendar days ending with today, so today is the first of
+  // the 56, and the 56th day back is the oldest one still shown.
+  it('includes the oldest day of the window and excludes the day before it', () => {
+    const edge = [
+      { logId: 'in', timestamp: at(55), metric: weight, value: 100, reps: 5, hasPR: false },
+      { logId: 'out', timestamp: at(56), metric: weight, value: 100, reps: 5, hasPR: false },
+    ];
+
+    expect(rangePoints(edge, '8W', NOW).map((p) => p.logId)).toEqual(['in']);
+  });
+
+  it('holds each window at its own boundary day', () => {
+    const edges: Array<[ProgressRange, number]> = [
+      ['8W', 56],
+      ['3M', 91],
+      ['6M', 182],
+      ['1Y', 365],
+    ];
+
+    for (const [range, days] of edges) {
+      const pair = [
+        { logId: 'in', timestamp: at(days - 1), metric: weight, value: 100, reps: 5, hasPR: false },
+        { logId: 'out', timestamp: at(days), metric: weight, value: 100, reps: 5, hasPR: false },
+      ];
+      expect(rangePoints(pair, range, NOW).map((p) => p.logId)).toEqual(['in']);
+    }
+  });
+
+  // The screens re-render at local midnight (useLocalDay), and the window has
+  // to move with it rather than with the time of day a set was logged.
+  it('drops a session when the day turns over, with no change to the points', () => {
+    const edge = [
+      { logId: 'edge', timestamp: at(55), metric: weight, value: 100, reps: 5, hasPR: false },
+    ];
+
+    expect(rangePoints(edge, '8W', NOW)).toHaveLength(1);
+    expect(rangePoints(edge, '8W', tomorrow(NOW))).toHaveLength(0);
   });
 });
 
@@ -524,15 +593,32 @@ describe('hasRecentPR', () => {
   });
 
   it('badges a PR logged inside the 14-day window', () => {
-    expect(hasRecentPR([flagged(13)], NOW_MS)).toBe(true);
+    expect(hasRecentPR([flagged(13)], NOW)).toBe(true);
   });
 
   it('does not badge a PR logged outside it', () => {
-    expect(hasRecentPR([flagged(15)], NOW_MS)).toBe(false);
+    expect(hasRecentPR([flagged(15)], NOW)).toBe(false);
   });
 
   it('does not badge a session with no flagged set', () => {
-    expect(hasRecentPR([{ ...flagged(1), hasPR: false }], NOW_MS)).toBe(false);
+    expect(hasRecentPR([{ ...flagged(1), hasPR: false }], NOW)).toBe(false);
+  });
+
+  // The window is 14 calendar days with today as the first, so the PR from 13
+  // days ago is the oldest one badged and the one from 14 days ago is not.
+  it('holds the badge at its boundary day', () => {
+    expect(hasRecentPR([flagged(13)], NOW)).toBe(true);
+    expect(hasRecentPR([flagged(14)], NOW)).toBe(false);
+  });
+
+  // The defect this guards: a PWA left open across midnight kept the badge,
+  // because the only clock read was the one taken when the screen first
+  // rendered. The history does not change here — only the day does.
+  it('expires the badge at midnight without the history changing', () => {
+    const points = [flagged(13)];
+
+    expect(hasRecentPR(points, NOW)).toBe(true);
+    expect(hasRecentPR(points, tomorrow(NOW))).toBe(false);
   });
 });
 

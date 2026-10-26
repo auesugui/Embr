@@ -52,9 +52,11 @@ import { getClaimedLogs } from '@/lib/history-stats';
 import { baseExerciseId, exerciseMetric, formatSeconds } from '@/lib/metric';
 import type { LoggedSet, WeightUnit, WorkoutLog } from '@/types';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** How long after a logged PR the list still badges the exercise. */
+/**
+ * How many calendar days the list badges an exercise for after a logged PR.
+ * Today counts as the first of them, so a PR logged 13 days ago is the oldest
+ * one still badged.
+ */
 const PR_BADGE_DAYS = 14;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -107,6 +109,7 @@ export const PROGRESS_RANGES: ProgressRange[] = ['8W', '3M', '6M', '1Y', 'All'];
 
 export const DEFAULT_PROGRESS_RANGE: ProgressRange = '3M';
 
+/** Each chip's window in calendar days, today included. */
 const RANGE_DAYS: Record<Exclude<ProgressRange, 'All'>, number> = {
   '8W': 56,
   '3M': 91,
@@ -255,16 +258,17 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
     if (points.length === 0) continue;
 
     // A hold is a property of the MOVEMENT, not of one session's numbers, so a
-    // weighted plank recorded without seconds does not turn the series into
-    // weights. Otherwise weight wins over reps wherever both were logged. Each
-    // branch requires a point of its own metric, so `comparable` is never empty.
-    const hasSeconds = points.some((point) => point.metric === 'time');
-    const metric: ProgressMetric =
-      latestIsHold && hasSeconds
-        ? 'time'
-        : points.some((point) => point.metric === 'weight')
-          ? 'weight'
-          : 'reps';
+    // hold is charted in seconds unconditionally. A plank you only ever
+    // recorded as a weight has no seconds to chart, and the honest answer there
+    // is an empty series — not a weight series, which would hand the movement
+    // weight PRs it never measured. That is the one case where `comparable`
+    // comes back empty; the other two branches each require a point of their
+    // own metric. Otherwise weight wins over reps wherever both were logged.
+    const metric: ProgressMetric = latestIsHold
+      ? 'time'
+      : points.some((point) => point.metric === 'weight')
+        ? 'weight'
+        : 'reps';
 
     progress.push({
       exerciseId: group.exerciseId,
@@ -292,18 +296,35 @@ export function findExerciseProgress(
 }
 
 /**
+ * The first instant of the window that ends with `now`'s own calendar day and
+ * is `days` calendar days long.
+ *
+ * Calendar days, not 24-hour blocks: the screens refresh at local midnight
+ * (useLocalDay), so a window measured in elapsed milliseconds would move
+ * against a boundary that does not, and a badge would expire at whatever time
+ * of day the set happened to be logged.
+ */
+function startOfWindow(now: Date, days: number): number {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1)).getTime();
+}
+
+/**
  * The points inside a range chip's window.
  *
- * The window is counted back from now, not from the last session, so a chip on
- * an exercise you stopped doing can legitimately come back empty.
+ * The window is counted back from today, not from the last session, so a chip
+ * on an exercise you stopped doing can legitimately come back empty.
+ *
+ * `now` is a required argument rather than a `Date.now()` default: a screen
+ * that reads the clock implicitly during render keeps rendering yesterday's
+ * answer for as long as it stays mounted, which in a PWA is days.
  */
 export function rangePoints(
   points: ProgressPoint[],
   range: ProgressRange,
-  nowMs: number = Date.now()
+  now: Date
 ): ProgressPoint[] {
   if (range === 'All') return points;
-  const since = nowMs - RANGE_DAYS[range] * DAY_MS;
+  const since = startOfWindow(now, RANGE_DAYS[range]);
   return points.filter((point) => Date.parse(point.timestamp) >= since);
 }
 
@@ -330,9 +351,15 @@ export function progressRecords(points: ProgressPoint[]): ProgressRecord[] {
   return records.reverse();
 }
 
-/** True when a set logged in the badge window was flagged a PR at the time. */
-export function hasRecentPR(points: ProgressPoint[], nowMs: number = Date.now()): boolean {
-  const since = nowMs - PR_BADGE_DAYS * DAY_MS;
+/**
+ * True when a set logged in the badge window was flagged a PR at the time.
+ *
+ * `now` is required for the same reason it is on `rangePoints`: the badge has
+ * to go out at midnight on an open tab, not whenever the screen next happens
+ * to re-render.
+ */
+export function hasRecentPR(points: ProgressPoint[], now: Date): boolean {
+  const since = startOfWindow(now, PR_BADGE_DAYS);
   return points.some((point) => point.hasPR && Date.parse(point.timestamp) >= since);
 }
 
