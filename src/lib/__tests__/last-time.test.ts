@@ -298,107 +298,178 @@ describe('lastTimeLine', () => {
 // run of sets in the other unit can push a real session out of it. The saved
 // workouts do not expire, which is why they are read behind it.
 
-describe('prefillWeight', () => {
+describe('prefillWeight — the decision table', () => {
+  // ONE rule: the most recent evidence about this movement in this unit wins.
+  // Three defects came out of preferring one record over the other (the cache
+  // evicting a session, a workout added through History, and a newer session
+  // that carried no load), so the whole class is enumerated here rather than
+  // one row per defect.
+
   /** A remembered weight, written `daysAgo` before this session started. */
-  const remembered = (weight: number, daysAgo = 3) => ({ weight, recordedAt: at(daysAgo) });
+  const cache = (weight: number, daysAgo: number) => ({ weight, recordedAt: at(daysAgo) });
 
-  const fill = (
-    logs: WorkoutLog[],
-    cached: { weight: number; recordedAt: string } | null = null,
-    units: 'lb' | 'kg' = 'lb',
-    exerciseId = 'bench_press-0'
-  ) => prefillWeight({ cached, logs, exerciseId, before: SESSION_START, units });
-
-  it('takes the remembered weight when the cache has one', () => {
-    expect(fill([], remembered(135))).toBe(135);
+  /** A weight written by a set of the session running right now. */
+  const thisSession = (weight: number) => ({
+    weight,
+    recordedAt: new Date(SESSION_START + 60_000).toISOString(),
   });
 
-  it('prefers a saved session logged after the cache was last written', () => {
-    // A workout added through History writes no cache entry, so the cache can
-    // hold an older weight for a movement that has since been trained.
-    const logs = [log(at(1), [exercise({ sets: [set({ weight: 100 })] })], { weightUnit: 'kg' })];
+  /** A saved session of the bench, `daysAgo`, in `weightUnit` unless absent. */
+  const session = (
+    daysAgo: number,
+    sets: LoggedSet[],
+    weightUnit?: 'lb' | 'kg',
+    over: Partial<WorkoutLog> = {}
+  ) => log(at(daysAgo), [exercise({ sets })], { weightUnit, ...over });
 
-    expect(fill(logs, remembered(85, 9), 'kg')).toBe(100);
-  });
+  const loaded = (weight: number) => [set({ weight, reps: 5 })];
+  const bodyweight = () => [set({ weight: null, reps: 8 })];
 
-  it('keeps the remembered weight when it is the newer of the two', () => {
-    const logs = [log(at(9), [exercise({ sets: [set({ weight: 85 })] })], { weightUnit: 'kg' })];
+  const cases: Array<{
+    name: string;
+    cached: { weight: number; recordedAt: string } | null;
+    logs: WorkoutLog[];
+    expected: number | null;
+  }> = [
+    // --- one record only ----------------------------------------------------
+    { name: 'no evidence at all opens empty', cached: null, logs: [], expected: null },
+    {
+      name: 'the remembered weight decides when no session is saved in this unit',
+      cached: cache(85, 9),
+      logs: [],
+      expected: 85,
+    },
+    {
+      name: 'the saved session decides when the cache has nothing',
+      cached: null,
+      logs: [session(1, loaded(100), 'kg')],
+      expected: 100,
+    },
+    // --- both records, ranked by time ---------------------------------------
+    {
+      name: 'a newer saved session beats an older remembered weight',
+      cached: cache(85, 9),
+      logs: [session(1, loaded(100), 'kg')],
+      expected: 100,
+    },
+    {
+      name: 'an older saved session loses to a newer remembered weight',
+      cached: cache(100, 1),
+      logs: [session(9, loaded(85), 'kg')],
+      expected: 100,
+    },
+    {
+      name: 'the remembered weight wins on the same instant, being the more specific record',
+      cached: { weight: 85, recordedAt: at(1) },
+      logs: [session(1, loaded(100), 'kg')],
+      expected: 85,
+    },
+    // --- a session that carried no load is evidence of "no weight" ----------
+    {
+      name: 'a newer session with no load opens the field empty',
+      cached: cache(85, 9),
+      logs: [session(1, bodyweight(), 'kg')],
+      expected: null,
+    },
+    {
+      name: 'an older session with no load leaves the remembered weight standing',
+      cached: cache(85, 1),
+      logs: [session(9, bodyweight(), 'kg')],
+      expected: 85,
+    },
+    {
+      name: 'a newer hold, which logs seconds and no weight, opens empty too',
+      cached: cache(85, 9),
+      logs: [
+        log(at(1), [exercise({ metric: 'time', sets: [set({ weight: null, reps: 45 })] })], {
+          weightUnit: 'kg',
+        }),
+      ],
+      expected: null,
+    },
+    // --- the running session always wins ------------------------------------
+    {
+      name: 'a weight logged in this session beats a saved session',
+      cached: thisSession(125),
+      logs: [session(1, loaded(100), 'kg')],
+      expected: 125,
+    },
+    {
+      name: 'a weight logged in this session beats a saved session with no load',
+      cached: thisSession(125),
+      logs: [session(1, bodyweight(), 'kg')],
+      expected: 125,
+    },
+    // --- a remembered weight that cannot say when ---------------------------
+    {
+      name: 'an unreadable cache time loses to a saved session',
+      cached: { weight: 85, recordedAt: 'not a date' },
+      logs: [session(9, loaded(100), 'kg')],
+      expected: 100,
+    },
+    {
+      name: 'an unreadable cache time loses to a saved session with no load',
+      cached: { weight: 85, recordedAt: 'not a date' },
+      logs: [session(9, bodyweight(), 'kg')],
+      expected: null,
+    },
+    {
+      name: 'an unreadable cache time still decides when nothing is saved',
+      cached: { weight: 85, recordedAt: 'not a date' },
+      logs: [],
+      expected: 85,
+    },
+    // --- which sessions count -----------------------------------------------
+    {
+      name: 'a newer session in the other unit is not evidence',
+      cached: cache(85, 9),
+      logs: [session(1, loaded(225), 'lb')],
+      expected: 85,
+    },
+    {
+      name: 'a workout with no unit of its own follows the setting',
+      cached: cache(85, 9),
+      logs: [session(1, loaded(100))],
+      expected: 100,
+    },
+    {
+      name: 'a newer session whose sets were never logged is not evidence',
+      cached: cache(85, 9),
+      logs: [session(1, [set({ weight: 100, logged: false })], 'kg')],
+      expected: 85,
+    },
+    {
+      name: 'a newer session of empty rows is not evidence',
+      cached: cache(85, 9),
+      logs: [session(1, [set({ weight: null, reps: null })], 'kg')],
+      expected: 85,
+    },
+    {
+      name: 'a newer session that was never saved is not evidence',
+      cached: cache(85, 9),
+      logs: [session(1, loaded(100), 'kg', { claimedAt: null })],
+      expected: 85,
+    },
+    // --- within one session --------------------------------------------------
+    {
+      name: 'a drop set opens on the weight it finished on',
+      cached: null,
+      logs: [session(1, [set({ weight: 185 }), set({ weight: 155 }), set({ weight: 135 })], 'kg')],
+      expected: 135,
+    },
+  ];
 
-    expect(fill(logs, remembered(100, 1), 'kg')).toBe(100);
-  });
-
-  it('keeps a weight written during this session, which is newer than any log', () => {
-    // Set 1 of the session being logged right now: `recordedAt` is after the
-    // session start, and every saved workout read here is before it.
-    const logs = [log(at(1), [exercise({ sets: [set({ weight: 100 })] })], { weightUnit: 'kg' })];
-    const justNow = { weight: 125, recordedAt: new Date(SESSION_START + 60_000).toISOString() };
-
-    expect(fill(logs, justNow, 'kg')).toBe(125);
-  });
-
-  it('lets a saved session win over a remembered weight with no readable time', () => {
-    const logs = [log(at(1), [exercise({ sets: [set({ weight: 100 })] })], { weightUnit: 'kg' })];
-
-    expect(fill(logs, { weight: 85, recordedAt: 'not a date' }, 'kg')).toBe(100);
-  });
-
-  it('keeps an unreadable remembered weight when there is no session to rank it against', () => {
-    expect(fill([], { weight: 85, recordedAt: 'not a date' }, 'kg')).toBe(85);
-  });
-
-  it('reads the last session in this unit when the cache has nothing', () => {
-    const logs = [log(at(2), [exercise({ sets: [set({ weight: 100 })] })], { weightUnit: 'kg' })];
-
-    expect(fill(logs, null, 'kg')).toBe(100);
-  });
-
-  it('never hands back the other unit\u2019s number', () => {
-    const logs = [log(at(2), [exercise({ sets: [set({ weight: 275 })] })], { weightUnit: 'lb' })];
-
-    expect(fill(logs, null, 'kg')).toBeNull();
-  });
-
-  it('reaches past a session in the other unit to the last one in this unit', () => {
-    const logs = [
-      log(at(1), [exercise({ sets: [set({ weight: 275 })] })], { id: 'lb', weightUnit: 'lb' }),
-      log(at(5), [exercise({ sets: [set({ weight: 100 })] })], { id: 'kg', weightUnit: 'kg' }),
-    ];
-
-    expect(fill(logs, null, 'kg')).toBe(100);
-  });
-
-  it('reads a workout with no unit of its own as the setting', () => {
-    const logs = [log(at(2), [exercise({ sets: [set({ weight: 135 })] })])];
-
-    expect(fill(logs, null, 'lb')).toBe(135);
-    expect(fill(logs, null, 'kg')).toBe(135);
-  });
-
-  it('opens empty when nothing was ever logged in this unit', () => {
-    expect(fill([], null, 'kg')).toBeNull();
-  });
-
-  it('opens on the weight a drop set finished on, as the cache would have', () => {
-    const logs = [
-      log(at(2), [
-        exercise({ sets: [set({ weight: 185 }), set({ weight: 155 }), set({ weight: 135 })] }),
-      ]),
-    ];
-
-    expect(fill(logs)).toBe(135);
-  });
-
-  it('opens empty on a session that carried no load at all', () => {
-    const logs = [
-      log(at(2), [exercise({ id: 'pull_up-0', sets: [set({ weight: null, reps: 8 })] })]),
-    ];
-
-    expect(fill(logs, null, 'lb', 'pull_up-0')).toBeNull();
-  });
-
-  it('ignores a session that has not been saved', () => {
-    const logs = [log(at(2), [exercise({ sets: [set({ weight: 135 })] })], { claimedAt: null })];
-
-    expect(fill(logs)).toBeNull();
-  });
+  for (const row of cases) {
+    it(row.name, () => {
+      expect(
+        prefillWeight({
+          cached: row.cached,
+          logs: row.logs,
+          exerciseId: 'bench_press-0',
+          before: SESSION_START,
+          units: 'kg',
+        })
+      ).toBe(row.expected);
+    });
+  }
 });

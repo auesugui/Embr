@@ -292,6 +292,26 @@ describe('Weight History Store', () => {
       expect(useWeightHistoryStore.getState().getLastWeightInUnit('deadlift', 'lb')).toBeNull();
     });
 
+    it('falls back to the entries when a restored record has no lastWeight', () => {
+      // Nothing the app writes leaves this gap, but a restored backup can, and
+      // dropping the entries over it would throw away a weight the cache has.
+      useWeightHistoryStore.setState({
+        history: {
+          'bench-press': {
+            exerciseId: 'bench-press',
+            lastWeight: null,
+            lastUnit: 'kg',
+            recentWeights: [{ weight: 100, timestamp: '2026-10-20T12:00:00.000Z', unit: 'kg' }],
+            updatedAt: '2026-10-20T12:00:00.000Z',
+          },
+        },
+      });
+
+      const { getLastWeightInUnit } = useWeightHistoryStore.getState();
+      expect(getLastWeightInUnit('bench-press', 'kg')?.weight).toBe(100);
+      expect(getLastWeightInUnit('bench-press', 'lb')).toBeNull();
+    });
+
     it('reads a pre-#42 entry, which carries no unit, as lb', () => {
       useWeightHistoryStore.setState({
         history: {

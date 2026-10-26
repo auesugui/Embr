@@ -75,11 +75,12 @@ export function lastWeightInUnit(
 ): CachedWeight | null {
   if (!history) return null;
   // Pre-#42 entries carry no unit — they were all logged in lb.
-  if ((history.lastUnit ?? 'lb') === unit) {
-    return history.lastWeight === null
-      ? null
-      : { weight: history.lastWeight, recordedAt: history.updatedAt };
+  if ((history.lastUnit ?? 'lb') === unit && history.lastWeight !== null) {
+    return { weight: history.lastWeight, recordedAt: history.updatedAt };
   }
+  // Also the fallback for a record whose `lastWeight` is missing while its
+  // entries are not: a restored backup can hold one, and dropping the entries
+  // because of it would throw away a weight the cache still has.
   const match = history.recentWeights.find((entry) => (entry.unit ?? 'lb') === unit);
   return match === undefined ? null : { weight: match.weight, recordedAt: match.timestamp };
 }

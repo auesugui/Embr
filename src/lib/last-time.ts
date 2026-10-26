@@ -120,9 +120,12 @@ function describeSets(
 }
 
 /**
- * The last set that carried a load, which is what the weight cache would have
- * remembered: a drop set opens on the weight you finished on, not the one you
- * started with.
+ * The last set that carried a load, or null when the session carried none.
+ *
+ * Null is an answer, not a gap: a bodyweight session of a movement you used to
+ * load is evidence that you last did it unloaded. The LAST loaded set rather
+ * than the heaviest, which is what the weight cache would have remembered — a
+ * drop set opens on the weight you finished on.
  */
 function finishingLoad(sets: LoggedSet[]): number | null {
   for (let index = sets.length - 1; index >= 0; index--) {
@@ -132,21 +135,38 @@ function finishingLoad(sets: LoggedSet[]): number | null {
   return null;
 }
 
+/** One answer about what this movement was last done with, and when. */
+interface WeightEvidence {
+  /** The weight, or null for "no weight" — a bodyweight or unloaded session. */
+  weight: number | null;
+  /** ms epoch. `-Infinity` for a record that cannot say when it was made. */
+  at: number;
+}
+
 /**
- * The weight a new set opens with: the last one you used IN `units`, or null.
+ * The weight a new set opens with: what the MOST RECENT evidence says, or null.
  *
- * TWO RECORDS, RANKED BY TIME. `cached` is weightHistoryStore's answer, which
- * is written on every logged set — so inside a session the second set opens on
- * the first, and that reuse always wins here because every saved workout this
- * reads is older than the session's own start. But the cache is neither
- * complete nor authoritative: it keeps five weights per movement, so sets in
- * the other unit can push a real session out of it, and a workout added
- * through history never writes it at all. So the saved session is read too and
- * the NEWER of the two is the answer. Trusting the cache first left a movement
- * opening on last month's number after a workout was typed in.
+ * There are two records of what you last lifted and neither is authoritative,
+ * so the rule is one comparison between them rather than a preference for
+ * either. Three defects came out of preferring one:
  *
- * A cached weight with an unreadable time loses to a saved session, which
- * carries its own date.
+ *   the remembered weight   weightHistoryStore, written on every logged set.
+ *                           Five entries deep per movement, so sets in the
+ *                           other unit push a real session out of it, and a
+ *                           workout added through History never writes it.
+ *   the last saved session  in this unit, with a performed set of the
+ *                           movement. A session that carried no load is
+ *                           evidence of "no weight", not an absence of
+ *                           evidence, so a newer bodyweight session opens the
+ *                           field empty rather than on last month's number.
+ *
+ * The newer wins. A weight logged in the running session always wins, because
+ * it is stamped now and every workout read here is older than the session's
+ * own start. On the same instant the remembered weight wins: it is the more
+ * specific record, the exact load of one set rather than a whole session, and
+ * it is written during the session the log is only stamped at the end of. A
+ * remembered weight that cannot say when it was written loses to any saved
+ * session, which carries its own date.
  *
  * It never crosses units and never converts: filling 275 into a kg field loads
  * 275 kg onto a bar that held 275 lb. A session logged with no unit of its own
@@ -163,20 +183,29 @@ export function prefillWeight(args: {
   /** The unit being logged in, which is the setting. */
   units: WeightUnit;
 }): number | null {
-  const remembered = args.cached !== null && args.cached.weight > 0 ? args.cached : null;
+  // A non-positive remembered weight is not a load anybody lifted, so it is no
+  // evidence at all rather than evidence of "no weight".
+  const remembered: WeightEvidence | null =
+    args.cached !== null && args.cached.weight > 0
+      ? { weight: args.cached.weight, at: parseInstant(args.cached.recordedAt) }
+      : null;
 
   // The unit being logged in is the setting, so it answers twice: once for a
   // workout that carries no unit, and once as the unit being looked for.
   const last = findLastPerformed(args.logs, args.exerciseId, args.before, args.units, args.units);
-  const saved = last === null ? null : finishingLoad(last.sets);
-
-  if (saved === null || last === null) return remembered?.weight ?? null;
-  if (remembered === null) return saved;
-
   // findLastPerformed has already dropped a log with an unreadable timestamp.
-  const rememberedAt = Date.parse(remembered.recordedAt);
-  if (Number.isNaN(rememberedAt) || rememberedAt < Date.parse(last.timestamp)) return saved;
-  return remembered.weight;
+  const session: WeightEvidence | null =
+    last === null ? null : { weight: finishingLoad(last.sets), at: Date.parse(last.timestamp) };
+
+  if (session === null) return remembered === null ? null : remembered.weight;
+  if (remembered === null) return session.weight;
+  return (session.at > remembered.at ? session : remembered).weight;
+}
+
+/** ms epoch, or `-Infinity` for a time that cannot be read. */
+function parseInstant(iso: string): number {
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? Number.NEGATIVE_INFINITY : at;
 }
 
 /**
