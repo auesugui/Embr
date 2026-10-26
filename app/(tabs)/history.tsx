@@ -17,11 +17,13 @@ import { useLayoutEffect, useMemo, useState } from 'react';
 import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type ViewStyle,
 } from 'react-native';
 
 import { ClipboardList } from '@/components/icons';
@@ -31,9 +33,11 @@ import { WeeklyVolumeStrip } from '@/components/workout/history/WeeklyVolumeStri
 import { WorkoutRow } from '@/components/workout/history/WorkoutRow';
 import { useLocalDay } from '@/hooks/useLocalDay';
 import {
+  COLLAPSE_AT,
   canStepBack,
   canStepForward,
   earliestMonth,
+  isCollapsed,
   logsForDay,
   monthGrid,
   monthName,
@@ -51,8 +55,17 @@ import { colors, radius, roles, spacing, textStyles } from '@/theme';
 
 import { RevealRow } from '@/components/celebration';
 
-/** Scroll past this and the grid drops to the week holding the day in view. */
-const COLLAPSE_AT = 80;
+/**
+ * Web only, and not cosmetic: the browser holds the content still when
+ * something above the viewport changes height, by moving the scroll offset by
+ * the same amount. The collapse takes 132 px of grid away, so the offset would
+ * drop back under the threshold and the next scroll event would expand the
+ * calendar again — a header that flapped between 80 px and 212 px of scroll.
+ * With anchoring off, the list slides up once as the grid shrinks and the
+ * collapse holds.
+ */
+const NO_SCROLL_ANCHOR =
+  Platform.OS === 'web' ? ({ overflowAnchor: 'none' } as unknown as ViewStyle) : null;
 
 export default function HistoryScreen() {
   const logs = useWorkoutHistoryStore((s) => s.logs);
@@ -74,9 +87,10 @@ export default function HistoryScreen() {
   // The chevron is a manual override for the visit; once used, scrolling no
   // longer decides. Component state, not a setting.
   const [folded, setFolded] = useState<boolean | null>(null);
+  const [openedByStep, setOpenedByStep] = useState(false);
 
   const viewedMonth = month ?? monthOfDay(todayKey);
-  const collapsed = folded ?? scrolled;
+  const collapsed = isCollapsed({ folded, scrolled, openedByStep });
   // The day the collapsed row is about. It survives stepping to another month,
   // so collapsed the card is labelled by this day's month rather than by the
   // month being browsed — the row and its title have to agree.
@@ -114,13 +128,23 @@ export default function HistoryScreen() {
   const handleToggle = (id: string) => setExpandedId((current) => (current === id ? null : id));
   const handleSelectDay = (key: string) =>
     setSelectedDay((current) => (current === key ? null : key));
-  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) =>
-    setScrolled(event.nativeEvent.contentOffset.y > COLLAPSE_AT);
-  // Stepping a month expands: collapsed, the card shows the selected day's own
-  // week, so a step that left it collapsed would change nothing you can see.
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const past = event.nativeEvent.contentOffset.y > COLLAPSE_AT;
+    setScrolled(past);
+    // Passing the threshold ends a step's expansion and hands the collapse
+    // back to the scroll, which is the state the screen was in before the step.
+    if (past) setOpenedByStep(false);
+  };
+  // Stepping a month opens the grid: collapsed, the card shows the selected
+  // day's own week, so a step would change nothing you can see.
   const handleStep = (delta: number) => {
     setMonth(shiftMonth(viewedMonth, delta));
-    setFolded(false);
+    setOpenedByStep(true);
+  };
+  // The chevron is the deliberate choice, so it always wins over a step's.
+  const handleFold = () => {
+    setFolded(!collapsed);
+    setOpenedByStep(false);
   };
 
   // ---- Loading (store hydrating from AsyncStorage) ----
@@ -156,7 +180,7 @@ export default function HistoryScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, NO_SCROLL_ANCHOR]}
       onScroll={handleScroll}
       scrollEventThrottle={16}
       // Pinned only while a day is selected, and only once it has collapsed:
@@ -177,7 +201,7 @@ export default function HistoryScreen() {
           }
           onPrevious={() => handleStep(-1)}
           onNext={() => handleStep(1)}
-          onToggleCollapsed={() => setFolded(!collapsed)}
+          onToggleCollapsed={handleFold}
           onSelectDay={handleSelectDay}
         />
         {strip !== null && <WeeklyVolumeStrip strip={strip} units={units} />}

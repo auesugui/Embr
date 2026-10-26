@@ -14,6 +14,7 @@ import {
   earliestMonth,
   formatDayLabel,
   formatMonthDay,
+  isCollapsed,
   logsForDay,
   monthGrid,
   monthName,
@@ -169,6 +170,33 @@ describe('weekRowForDay', () => {
     expect(row[0].isToday).toBe(true);
     expect(row[1].isFuture).toBe(true);
     expect(row.map((cell) => cell.id)).toHaveLength(7);
+  });
+});
+
+describe('isCollapsed', () => {
+  const fold = (folded: boolean | null, scrolled: boolean, openedByStep = false) =>
+    isCollapsed({ folded, scrolled, openedByStep });
+
+  it('follows the scroll while the chevron has not been used', () => {
+    expect(fold(null, false)).toBe(false);
+    expect(fold(null, true)).toBe(true);
+  });
+
+  it('keeps the chevron’s choice through a scroll in either direction', () => {
+    expect(fold(true, false)).toBe(true);
+    expect(fold(false, true)).toBe(false);
+  });
+
+  it('opens on a month step, whatever the scroll and the chevron say', () => {
+    expect(fold(null, true, true)).toBe(false);
+    expect(fold(true, true, true)).toBe(false);
+  });
+
+  it('collapses again once the step’s expansion is given up', () => {
+    // What handleScroll does when the list passes the threshold after a step.
+    expect(fold(null, true, false)).toBe(true);
+    // And the chevron's choice is what it goes back to, when there was one.
+    expect(fold(true, false, false)).toBe(true);
   });
 });
 

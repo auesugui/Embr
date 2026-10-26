@@ -165,6 +165,34 @@ export function weekRowForDay(key: string, options: GridOptions): CalendarDay[] 
 }
 
 // -----------------------------------------------------------------------------
+// The collapse
+// -----------------------------------------------------------------------------
+
+/** Scroll past this many pixels and the grid drops to one week. */
+export const COLLAPSE_AT = 80;
+
+export interface FoldState {
+  /** The chevron's choice, kept for the visit. Null while scrolling decides. */
+  folded: boolean | null;
+  /** The list is scrolled past COLLAPSE_AT. */
+  scrolled: boolean;
+  /** A month step opened the grid, until the list passes the threshold again. */
+  openedByStep: boolean;
+}
+
+/**
+ * Whether the calendar shows one week instead of the whole month.
+ *
+ * Three inputs, in order of who wins. A month step opens the grid, because
+ * collapsed a step would change nothing you can see — but only until the list
+ * is scrolled past the threshold again, which hands control back rather than
+ * leaving the screen stuck open until the chevron is touched. The chevron is a
+ * deliberate choice and keeps for the visit. Otherwise the scroll decides.
+ */
+export const isCollapsed = ({ folded, scrolled, openedByStep }: FoldState): boolean =>
+  openedByStep ? false : (folded ?? scrolled);
+
+// -----------------------------------------------------------------------------
 // What the logs say
 // -----------------------------------------------------------------------------
 
