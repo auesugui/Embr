@@ -11,9 +11,9 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { FieldFlag, MovementFlag } from '@/components/workout/photo-import/ReviewFlags';
 import type { ParsedRow } from '@/lib/card-import/parse-card';
-import { isCutOffName } from '@/lib/card-import/parse-card';
+import { isCutOffName, missingValues, readReps } from '@/lib/card-import/parse-card';
 import type { Disagreement } from '@/lib/card-import/reconcile';
-import { readReps } from '@/lib/card-import/review';
+
 import { radius, roles, spacing, textStyles } from '@/theme';
 
 /** How a movement on the card lines up with the library. */
@@ -61,6 +61,9 @@ export function ReviewRow({
   // movement is settled, the way a disagreed value does.
   const cutOff = match.kind === 'unmatched' && isCutOffName(row.name);
   const faint = match.kind === 'skipped';
+  // A value the card never gave is flagged like one the readings disagree on: the
+  // field is where it gets settled, and nothing is copied until it is.
+  const missing = missingValues(row);
 
   return (
     <View style={styles.wrap}>
@@ -116,8 +119,8 @@ export function ReviewRow({
         <Figure
           label="Sets"
           accessibilityLabel={`${movement} sets`}
-          value={String(row.sets)}
-          flagged={setsFlag !== undefined}
+          value={row.sets === null ? '' : String(row.sets)}
+          flagged={setsFlag !== undefined || missing.includes('sets')}
           faint={faint}
           onChangeText={(text) => onEdit(`rows.${index}.sets`, text)}
         />
@@ -128,7 +131,7 @@ export function ReviewRow({
           // The one text field on the screen: a rep range is not something a number pad types.
           text
           wide={plan}
-          flagged={repsFlag !== undefined}
+          flagged={repsFlag !== undefined || missing.includes('reps')}
           faint={faint}
           onChangeText={(text) => onEdit(`rows.${index}.reps`, text)}
         />

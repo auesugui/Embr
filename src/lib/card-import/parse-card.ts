@@ -15,11 +15,17 @@ export interface ParsedRow {
   /** Stable for the life of the reading, so the review screen can key rows that get edited. */
   id: string;
   name: string;
-  /** Sets prescribed or performed. A finished card shows only its best set, so this is a check, not data. */
-  sets: number;
+  /**
+   * Sets prescribed or performed, or null when the card did not name one. A finished
+   * card shows only its best set, so this is a check, not data.
+   */
+  sets: number | null;
   /** Best-set weight in lb. Null for a bodyweight movement and for every plan row. */
   weightLb: number | null;
-  /** A count ("8") or a range ("3-12"), as the card writes it. Copied into a template as written. */
+  /**
+   * A count ("8") or a range ("3-12"), as the card writes it, or "" when the card did
+   * not name one. Copied into a template as written.
+   */
   reps: string;
 }
 
@@ -82,6 +88,27 @@ export function normalizeLine(line: string): string {
     .replace(/lbx/gi, 'lb x')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+const REPS = /^(?<low>\d{1,2})(?:\s*(?:-|–|to)\s*(?<high>\d{1,2}))?$/i;
+
+/**
+ * A rep count or a rep range as a template stores it, or null when the text is
+ * neither. A range is two whole numbers from 1 to 99, low first; a count is one of
+ * them. Spacing, an en dash and the word "to" all come out of OCR on the same card,
+ * so each reads as the same range and is written back as "3-12".
+ *
+ * One rule for both ways a value arrives: read off the card, or typed by the person
+ * on the review screen. A reading it refuses is a value nobody has given yet.
+ */
+export function readReps(text: string): string | null {
+  const found = text.trim().match(REPS)?.groups;
+  if (!found) return null;
+  const low = Number(found.low);
+  if (low < 1) return null;
+  if (found.high === undefined) return String(low);
+  const high = Number(found.high);
+  return high > low ? `${low}-${high}` : null;
 }
 
 /**
@@ -174,7 +201,7 @@ export function cardWarnings(card: ParsedCard): string[] {
       'No workout found in this photo. Embr reads two Boostcamp cards: the summary after you finish a workout, and the “Next up” card on the program screen.'
     );
   }
-  const sets = card.rows.reduce((sum, row) => sum + row.sets, 0);
+  const sets = card.rows.reduce((sum, row) => sum + (row.sets ?? 0), 0);
   if (card.totalSets !== null && sets !== card.totalSets) {
     warnings.push(`The movements add up to ${sets} sets, but the card says ${card.totalSets}.`);
   }
@@ -186,19 +213,36 @@ function parseRow(line: string, index: number): ParsedRow | null {
   const groups = line.match(ROW)?.groups;
   if (!groups) return null;
 
-  const reps =
-    groups.weightReps ?? (groups.low ? `${groups.low}-${groups.high}` : (groups.count ?? null));
+  const counted = groups.weightReps ?? (groups.low ? `${groups.low}-${groups.high}` : groups.count);
   // A bare set count on its own is any number at all; only a worded one is a row.
-  if (reps === null && (groups.sets === undefined || groups.worded === undefined)) return null;
+  if (counted === undefined && (groups.sets === undefined || groups.worded === undefined)) {
+    return null;
+  }
+  // The card named a rep count, but a reading readReps refuses is not one the copy can
+  // use ("10 reps" read as "1 0 reps"), so it is left for the person like any gap.
+  const reps = counted === undefined ? null : readReps(counted);
 
   return {
     id: `r${index}`,
     name: capitalize(groups.name.trim().replace(/\s+[-–·•|x]$/i, '')),
-    // A plan row that names no set count is one set until the person says otherwise.
-    sets: groups.sets === undefined ? 1 : Number(groups.sets),
+    // A value the card did not name is left empty rather than filled in. The review
+    // screen asks for it, and nothing is copied until it is there.
+    sets: groups.sets === undefined ? null : Number(groups.sets),
     weightLb: groups.weight === undefined ? null : Number(groups.weight),
     reps: reps ?? '',
   };
+}
+
+/**
+ * The values a copy is built from that this row does not have. One rule, used by the
+ * review screen to flag the field, to count what still needs checking, and to hold the
+ * copy back: a movement is never copied on a value nobody read.
+ */
+export function missingValues(row: ParsedRow): ('sets' | 'reps')[] {
+  const missing: ('sets' | 'reps')[] = [];
+  if (row.sets === null) missing.push('sets');
+  if (readReps(row.reps) === null) missing.push('reps');
+  return missing;
 }
 
 /**

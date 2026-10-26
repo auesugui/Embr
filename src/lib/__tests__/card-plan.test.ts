@@ -8,9 +8,15 @@
 // reading exists to catch.
 
 import { describe, expect, it } from '@jest/globals';
-import { cardWarnings, isCutOffName, parseCard } from '../card-import/parse-card';
-import { reconcile } from '../card-import/reconcile';
-import { readReps, setField } from '../card-import/review';
+import {
+  cardWarnings,
+  isCutOffName,
+  missingValues,
+  parseCard,
+  readReps,
+} from '../card-import/parse-card';
+import { type Reading, reconcile } from '../card-import/reconcile';
+import { saveProblems, setField } from '../card-import/review';
 
 const PLAN_CARD_PASSES: [string[], string[]] = [
   [
@@ -58,6 +64,12 @@ describe('the real plan card', () => {
       expect.objectContaining({ name: 'Standing Calf Raise', sets: 3, reps: '3-12' }),
       expect.objectContaining({ name: 'Hanging Leg Raise', sets: 3, reps: '3-12' }),
     ]);
+    // The garbled pass reads the same five and nothing else: no header line, progress
+    // bar or button on this card is a movement by accident.
+    expect(parseCard(PLAN_CARD_PASSES[0]).rows).toHaveLength(5);
+    expect(
+      parseCard(PLAN_CARD_PASSES[0]).rows.every((row) => missingValues(row).length === 0)
+    ).toBe(true);
   });
 
   it('names the workout, the program and the week, and reads no date and no weights', () => {
@@ -130,7 +142,56 @@ describe('the row rule', () => {
     expect(planRow('Goblet Squat 3 sets 3-12')).toEqual(
       expect.objectContaining({ sets: 3, reps: '3-12' })
     );
+  });
+
+  it('leaves a value the card did not name empty, rather than filling it in', () => {
     expect(planRow('Goblet Squat 3 sets')).toEqual(expect.objectContaining({ sets: 3, reps: '' }));
+    expect(planRow('Goblet Squat 8 reps')).toEqual(
+      expect.objectContaining({ sets: null, reps: '8' })
+    );
+    expect(missingValues(planRow('Goblet Squat 3 sets'))).toEqual(['reps']);
+    expect(missingValues(planRow('Goblet Squat 8 reps'))).toEqual(['sets']);
+    expect(missingValues(planRow('Goblet Squat 3 sets · 3-12 reps'))).toEqual([]);
+    // Neither a set count nor a rep count is not a movement at all, as before.
+    expect(parseCard(['Goblet Squat 3']).rows).toEqual([]);
+  });
+
+  it('leaves a rep count the card gave but the field would refuse for the person', () => {
+    // "10 reps" read as "1 0 reps": the movement is still a movement, and 0 is not a
+    // rep count, so the field is empty and flagged rather than holding a 0.
+    expect(planRow('Hanging Leg Raise 1 0 reps')).toEqual(
+      expect.objectContaining({ sets: 1, reps: '' })
+    );
+    expect(planRow('Goblet Squat 3 sets · 12-3 reps')).toEqual(
+      expect.objectContaining({ sets: 3, reps: '' })
+    );
+  });
+
+  it('holds the copy back until the person types the missing value in', () => {
+    const reading = { card: parseCard(['Goblet Squat 3 sets']), disagreements: [] };
+
+    expect(saveProblems(reading)).toEqual(['1 value needs checking.']);
+    expect(saveProblems(setField(reading, 'rows.0.reps', '3-12'))).toEqual([]);
+    expect(setField(reading, 'rows.0.reps', '3-12').card.rows[0].reps).toBe('3-12');
+
+    const noSets = { card: parseCard(['Goblet Squat 8 reps']), disagreements: [] };
+
+    expect(saveProblems(noSets)).toEqual(['1 value needs checking.']);
+    expect(saveProblems(setField(noSets, 'rows.0.sets', '3'))).toEqual([]);
+    expect(setField(noSets, 'rows.0.sets', '3').card.rows[0].sets).toBe(3);
+  });
+
+  it('counts a movement with no set count as none against the card total', () => {
+    const card = parseCard([
+      'Workout A Oct 6,2026',
+      'EXERCISE SETS BEST SET',
+      'Goblet Squat 8 reps',
+      'Hanging Leg Raise 3 10 reps',
+      '43 m 4,610 lb 18',
+    ]);
+
+    expect(card.rows.map((row) => row.sets)).toEqual([null, 3]);
+    expect(cardWarnings(card)).toEqual(['The movements add up to 3 sets, but the card says 18.']);
   });
 
   it('still reads through the glitches normalizeLine undoes', () => {
@@ -189,14 +250,31 @@ describe('reps as a string', () => {
     expect(readReps('ten')).toBeNull();
   });
 
-  it('keeps the last good value when a typed reading is not a rep count', () => {
-    const reading = {
-      card: parseCard(PLAN_CARD_PASSES[1]),
-      disagreements: [{ path: 'rows.0.reps', first: '3-12', second: '3-1 2' }],
-    };
+  it('keeps a range typable, one character at a time', () => {
+    // The field is the reading, so every keystroke passes through setField. "3-12" is
+    // reached through "3-", which is not a rep range on its own.
+    let reading: Reading = { card: parseCard(['Goblet Squat 3 sets']), disagreements: [] };
+    for (const typed of ['3', '3-', '3-1', '3-12']) {
+      reading = setField(reading, 'rows.0.reps', typed);
+    }
 
-    expect(setField(reading, 'rows.0.reps', '3-1 2').card.rows[0].reps).toBe('3-12');
-    expect(setField(reading, 'rows.0.reps', '8').card.rows[0].reps).toBe('8');
+    expect(reading.card.rows[0].reps).toBe('3-12');
+    expect(saveProblems(reading)).toEqual([]);
+  });
+
+  it('flags a typed value that is not a rep count, and copies none', () => {
+    const reading: Reading = { card: parseCard(['Goblet Squat 3 sets']), disagreements: [] };
+
+    for (const typed of ['3-1 2', '3--12', '12-3', '0', '100-120', 'ten', '']) {
+      const next = setField(reading, 'rows.0.reps', typed);
+
+      expect(missingValues(next.card.rows[0])).toEqual(['reps']);
+      expect(saveProblems(next)).toEqual(['1 value needs checking.']);
+    }
+    // What the person typed stays in the field, so they can see what to correct.
+    expect(setField(reading, 'rows.0.reps', '3-1 2').card.rows[0].reps).toBe('3-1 2');
+    // A reading they choose from the flag clears it.
     expect(setField(reading, 'rows.0.reps', '3 to 12').disagreements).toEqual([]);
+    expect(readReps(setField(reading, 'rows.0.reps', '3 to 12').card.rows[0].reps)).toBe('3-12');
   });
 });

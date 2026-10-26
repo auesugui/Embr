@@ -153,9 +153,18 @@ describe('setField', () => {
   });
 
   it('ignores text that is not a number for a number field', () => {
+    const next = setField(clean(), 'rows.0.weightLb', 'ten');
+
+    expect(next.card.rows[0].weightLb).toBe(60);
+  });
+
+  it('keeps reps as typed, and holds the copy back while they are not a rep count', () => {
+    // The field is a text field, so "3-12" arrives through "3-". What it holds is
+    // checked before anything is copied, not on every keystroke.
     const next = setField(clean(), 'rows.0.reps', 'ten');
 
-    expect(next.card.rows[0].reps).toBe('10');
+    expect(next.card.rows[0].reps).toBe('ten');
+    expect(saveProblems(next)).toEqual(['1 value needs checking.']);
   });
 
   it('ignores a zero or fractional count', () => {

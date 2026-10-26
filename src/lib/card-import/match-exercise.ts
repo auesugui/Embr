@@ -6,9 +6,30 @@
 // library cannot name clearly is left for the person to choose, or to skip, rather
 // than being guessed at.
 
-import { allExercises } from '@/data';
+import { type Equipment, type ExerciseDefinition, allExercises } from '@/data';
 
-const EQUIPMENT = /^(dumbbells?|db|barbells?|bb|kettlebells?|kb|cables?|machines?|bodyweight|bw)$/;
+/** Every way a card or a library name writes a piece of equipment. */
+const EQUIPMENT_WORDS: Record<string, Equipment> = {
+  dumbbell: 'dumbbell',
+  dumbbells: 'dumbbell',
+  db: 'dumbbell',
+  barbell: 'barbell',
+  barbells: 'barbell',
+  bb: 'barbell',
+  kettlebell: 'kettlebell',
+  kettlebells: 'kettlebell',
+  kb: 'kettlebell',
+  cable: 'cable',
+  cables: 'cable',
+  machine: 'machine',
+  machines: 'machine',
+  bodyweight: 'bodyweight',
+  bw: 'bodyweight',
+  band: 'band',
+  bands: 'band',
+};
+
+const EQUIPMENT = new RegExp(`^(${Object.keys(EQUIPMENT_WORDS).join('|')})$`);
 
 const words = (name: string): string[] =>
   name
@@ -46,10 +67,18 @@ function baseKey(name: string): string {
 }
 
 /** The equipment a name names, from the words the base key drops. */
-const equipmentIn = (name: string): string[] =>
-  words(name)
-    .filter((word) => EQUIPMENT.test(word))
-    .map((word) => (word.startsWith('d') ? 'db' : word.replace(/s$/, '')));
+const equipmentIn = (name: string): Equipment[] =>
+  words(name).flatMap((word) => (word in EQUIPMENT_WORDS ? [EQUIPMENT_WORDS[word]] : []));
+
+/**
+ * The equipment an exercise can be done with: what the library records, plus what its
+ * own name says. "Pull-ups" names none and is recorded as bodyweight; "DB Shrugs" says
+ * dumbbell in both places.
+ */
+const equipmentOf = (exercise: ExerciseDefinition): Equipment[] => [
+  ...exercise.equipment,
+  ...equipmentIn(exercise.name),
+];
 
 /**
  * Card names the rule below cannot reach, because the library calls the movement
@@ -67,9 +96,14 @@ const CARD_ALIASES = new Map<string, string>(
  * no clear match. Undefined is a choice for the person, not an error.
  *
  * The name as the library writes it wins first, so "Overhead Press" stays the barbell
- * one. Failing that, the movement is compared without its equipment and its plurals,
- * and only one candidate counts as clear. Where several fit, an equipment hint on the
- * card — "Shrug (Dumbbell)" — picks between them; without one the person chooses.
+ * one. Failing that, the movement is compared without its equipment and its plurals.
+ *
+ * An equipment hint on the card — "Squat (Barbell)" — has to agree with the candidate
+ * before it can be a match, so a hint the only candidate contradicts leaves the
+ * movement for the person rather than matching it anyway. Where the hint agrees with
+ * several, the one that carries it in its own name wins ("Shrug (Dumbbell)" is
+ * DB Shrugs, not Shrugs). Without a hint nothing is checked, and only a single
+ * candidate is clear.
  */
 export function matchExercise(cardName: string): string | undefined {
   const key = movementKey(cardName);
@@ -83,15 +117,17 @@ export function matchExercise(cardName: string): string | undefined {
   const alias = CARD_ALIASES.get(key);
   if (alias) return alias;
 
-  const candidates = library.filter((exercise) => baseKey(exercise.name) === base);
+  const hint = equipmentIn(cardName);
+  const candidates = library
+    .filter((exercise) => baseKey(exercise.name) === base)
+    .filter((exercise) => hint.every((piece) => equipmentOf(exercise).includes(piece)));
   if (candidates.length === 1) return candidates[0].id;
 
-  const hint = equipmentIn(cardName);
   if (candidates.length > 1 && hint.length > 0) {
-    const fitting = candidates.filter((exercise) =>
-      hint.every((word) => equipmentIn(exercise.name).includes(word))
+    const named = candidates.filter((exercise) =>
+      hint.every((piece) => equipmentIn(exercise.name).includes(piece))
     );
-    if (fitting.length === 1) return fitting[0].id;
+    if (named.length === 1) return named[0].id;
   }
 
   return undefined;

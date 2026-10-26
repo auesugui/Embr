@@ -19,6 +19,7 @@ import type { MovementMatch } from '@/components/workout/photo-import/ReviewRow'
 import { getExerciseById } from '@/data';
 import { matchExercise } from '@/lib/card-import/match-exercise';
 import type { ParsedRow } from '@/lib/card-import/parse-card';
+import { readReps } from '@/lib/card-import/parse-card';
 import { readPhotos } from '@/lib/card-import/read-photos';
 import type { Reading } from '@/lib/card-import/reconcile';
 import { clearFlag, removeRow, saveProblems, setField } from '@/lib/card-import/review';
@@ -106,14 +107,20 @@ export default function ImportPhotosScreen() {
   for (const row of rows) {
     const { exerciseId, skipped } = resolve(row);
     if (skipped || !exerciseId || inDay.has(exerciseId) || queued.has(exerciseId)) continue;
+    // A movement still missing a value it would be copied with is not copied at all.
+    // saveProblems holds the whole card back until the person types it in.
+    const reps = readReps(row.reps);
+    if (row.sets === null || reps === null) continue;
     queued.add(exerciseId);
-    additions.push({ exerciseId, sets: row.sets, reps: row.reps });
+    // Copied as the rep scheme a template holds: "3 to 12" typed is stored "3-12".
+    additions.push({ exerciseId, sets: row.sets, reps });
   }
 
+  const problems = onlyCard ? saveProblems(onlyCard) : [];
   const allClear =
     !reading &&
     onlyCard !== null &&
-    saveProblems(onlyCard).length === 0 &&
+    problems.length === 0 &&
     unsettled === 0 &&
     additions.length > 0 &&
     template !== undefined &&
@@ -173,16 +180,17 @@ export default function ImportPhotosScreen() {
         ? `Remove the extra ${cards.length === 2 ? 'card' : 'cards'}. One workout goes into one day.`
         : unsettled > 0
           ? `${unsettled} ${unsettled === 1 ? 'movement needs' : 'movements need'} an exercise, or a skip.`
-          : // A photo with no movements is not a card at all, so it is neither skipped nor
-            // already here. It is checked before the skipped-or-present note, which would
-            // otherwise claim a photo of a wall held movements.
+          : // A photo with no movements is not a card at all, and a movement still
+            // missing a value was not skipped. Both are checked before the
+            // skipped-or-present note, which would otherwise claim a photo of a wall
+            // held movements, and that a movement nobody has settled is settled.
             rows.length === 0 && onlyCard !== null
             ? 'Remove this photo and take one of those two cards.'
-            : additions.length === 0 && onlyCard !== null
-              ? 'Every movement is skipped or already in this workout. Nothing to add.'
-              : allClear
-                ? ''
-                : 'Resolve the highlighted values first.';
+            : problems.length > 0
+              ? 'Resolve the highlighted values first.'
+              : additions.length === 0 && onlyCard !== null
+                ? 'Every movement is skipped or already in this workout. Nothing to add.'
+                : '';
 
   return (
     <View style={styles.screen}>

@@ -7,29 +7,15 @@
 //
 // A flag is cleared the moment its field is set, whichever reading the value came
 // from. Text that does not parse for its field is ignored, so a number field never
-// holds something that is not a number.
+// holds something that is not a number. The two free-text fields, the movement name
+// and its reps, keep what is typed: both are reached through text that is not valid
+// yet, and both are checked again before anything is copied.
 
+import { missingValues } from './parse-card';
 import type { Reading } from './reconcile';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const REPS = /^(?<low>\d{1,2})(?:\s*(?:-|–|to)\s*(?<high>\d{1,2}))?$/i;
-
-/**
- * A rep count or a rep range as a template stores it, or null when the text is
- * neither. A range is two whole numbers from 1 to 99, low first; a count is one of
- * them. Spacing, an en dash and the word "to" all come out of OCR on the same card,
- * so each reads as the same range and is written back as "3-12".
- */
-export function readReps(text: string): string | null {
-  const found = text.trim().match(REPS)?.groups;
-  if (!found) return null;
-  const low = Number(found.low);
-  if (low < 1) return null;
-  if (found.high === undefined) return String(low);
-  const high = Number(found.high);
-  return high > low ? `${low}-${high}` : null;
-}
 
 /** "2026-10-07" becomes "Oct 7, 2026", the way the card shows it. */
 export function formatCardDate(iso: string): string {
@@ -55,10 +41,9 @@ export function setField(reading: Reading, path: string, text: string): Reading 
     // Names are kept as typed, so a space between two words can be typed. Saving trims them.
     if (movement[2] === 'name' && trimmed !== '') row.name = text;
     if (movement[2] === 'sets' && whole !== null) row.sets = whole;
-    if (movement[2] === 'reps') {
-      const reps = readReps(trimmed);
-      if (reps !== null) row.reps = reps;
-    }
+    // Reps are kept as typed, because "3-12" is reached through "3-", which is not a
+    // rep range yet. A value readReps cannot read stays flagged and is never copied.
+    if (movement[2] === 'reps') row.reps = text;
     if (movement[2] === 'weightLb') {
       if (absent) row.weightLb = null;
       else if (Number.isFinite(number) && number >= 0) row.weightLb = number;
@@ -129,7 +114,11 @@ export function removeRow(reading: Reading, index: number): Reading {
 export function saveProblems(reading: Reading): string[] {
   const problems: string[] = [];
   if (reading.card.rows.length === 0) problems.push('Keep at least one movement.');
-  const blocking = reading.disagreements.filter((flag) => isStoredField(flag.path)).length;
+  // A value the readings disagree on and a value neither of them found are the same
+  // thing to the person: a field to settle before the movement can be copied.
+  const blocking =
+    reading.disagreements.filter((flag) => isStoredField(flag.path)).length +
+    reading.card.rows.reduce((count, row) => count + missingValues(row).length, 0);
   if (blocking > 0) {
     problems.push(`${blocking} ${blocking === 1 ? 'value needs' : 'values need'} checking.`);
   }

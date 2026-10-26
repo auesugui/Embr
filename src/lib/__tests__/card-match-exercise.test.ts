@@ -57,6 +57,20 @@ describe('matchExercise', () => {
     expect(matchExercise('Shrug')).toBeUndefined();
   });
 
+  it('refuses the only candidate when the card says other equipment', () => {
+    // Bodyweight Squat is the only movement that reads as "Squat", and it is not a barbell one.
+    expect(matchExercise('Squat (Barbell)')).toBeUndefined();
+    expect(matchExercise('Squat (Bodyweight)')).toBe('bodyweight_squat');
+    // Pull-ups carries no equipment word in its name, only in what the library records.
+    expect(matchExercise('Pull-Up (Bodyweight)')).toBe('pull_ups');
+    expect(matchExercise('Pull-Up (Machine)')).toBeUndefined();
+  });
+
+  it('refuses a hint that fits none of several candidates', () => {
+    // Shrugs is barbell or dumbbell, DB Shrugs is dumbbell. Neither is a cable movement.
+    expect(matchExercise('Shrug (Cable)')).toBeUndefined();
+  });
+
   it('matches an exercise the person created, as the picker lists it', () => {
     setCustomExercises([
       {
@@ -75,6 +89,8 @@ describe('matchExercise', () => {
     ]);
 
     expect(matchExercise('Sled Push (Machine)')).toBe('custom_sled_push');
+    expect(matchExercise('Sled Push')).toBe('custom_sled_push');
+    expect(matchExercise('Sled Push (Barbell)')).toBeUndefined();
   });
 });
 
