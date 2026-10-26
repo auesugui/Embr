@@ -50,6 +50,8 @@ export interface CreateLogInput {
    */
   templateId?: string;
   dayKey?: string;
+  /** What to call the workout, snapshotted when the session started. */
+  workoutName?: string;
 }
 
 interface WorkoutHistoryState {
@@ -114,6 +116,7 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
     blockTimes,
     templateId,
     dayKey,
+    workoutName,
   }) => {
     const id = generateId();
     const log: WorkoutLog = {
@@ -129,6 +132,10 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
       ...(blocks?.length ? { blocks } : {}),
       ...(blockTimes && Object.keys(blockTimes).length ? { blockTimes } : {}),
       ...(templateId && dayKey ? { templateId, dayKey } : {}),
+      // Separate from the identity above: a session that was already running
+      // when the name started being recorded has the ids and no name, and the
+      // summary leaves its sentence out rather than inventing one.
+      ...(workoutName ? { workoutName } : {}),
     };
 
     set((state) => {

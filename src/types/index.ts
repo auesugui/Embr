@@ -226,6 +226,8 @@ export interface WorkoutSession {
   blocks?: WorkoutBlock[];
   /** The template day being run. Absent on sessions started before #80. */
   dayKey?: string;
+  /** What to call this workout in the summary. See `WorkoutLog.workoutName`. */
+  workoutName?: string;
 }
 
 /**
@@ -286,6 +288,16 @@ export interface WorkoutLog {
   templateId?: string;
   /** The day's own id, stable across renames. See `templateId`. */
   dayKey?: string;
+  /**
+   * What to call this workout, snapshotted when the session started.
+   *
+   * Stored rather than looked up, for the same reason a session already stores
+   * each exercise's metric: a log has to read back correctly after the template
+   * is renamed, edited or deleted. A log without it gets no comparison
+   * sentence, because an unnamed comparison reads as "against your last
+   * workout", which on a split is a different day entirely.
+   */
+  workoutName?: string;
 }
 
 export interface PRRecord {

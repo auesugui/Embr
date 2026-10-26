@@ -203,6 +203,39 @@ describe('sessionRecords', () => {
     ]);
   });
 
+  it('ignores a later session that beat the record', () => {
+    // Reopening an old summary must still report what that session did.
+    const earlier = log(at(14), [exercise({ sets: [set({ weight: 195 })] })]);
+    const today = log(at(7), [exercise({ sets: [set({ weight: 200 })] })]);
+    const since = log(at(0), [exercise({ sets: [set({ weight: 225 })] })], 'since');
+
+    expect(sessionRecords([since, today, earlier], today)).toEqual([
+      {
+        exerciseId: 'bench_press',
+        name: 'Bench Press',
+        metric: 'weight',
+        previous: 195,
+        value: 200,
+      },
+    ]);
+  });
+
+  it('keeps a reps record that a later weighted session would have hidden', () => {
+    // The series metric is a property of the whole history: one later session
+    // with a weight on the bar turns the pull-up series into weights, and the
+    // old session's reps record would vanish from a summary that had shown it.
+    const pullUp = (reps: number, weight: number | null = null) =>
+      exercise({ id: 'pull_ups-0', name: 'Pull-up', sets: [set({ weight, reps })] });
+
+    const earlier = log(at(14), [pullUp(11)]);
+    const today = log(at(7), [pullUp(13)]);
+    const weighted = log(at(0), [pullUp(5, 45)], 'weighted');
+
+    expect(sessionRecords([weighted, today, earlier], today)).toEqual([
+      { exerciseId: 'pull_ups', name: 'Pull-up', metric: 'reps', previous: 11, value: 13 },
+    ]);
+  });
+
   it('treats a movement logged twice in one session as one record', () => {
     // A heavy entry and a back-off entry are one session of the movement.
     const earlier = log(at(7), [exercise({ sets: [set({ weight: 195 })] })]);

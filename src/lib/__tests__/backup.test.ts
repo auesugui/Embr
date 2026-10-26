@@ -201,6 +201,7 @@ describe('parseBackup', () => {
           sessionIntent: 'normal',
           templateId: 'ppl_6day',
           dayKey: 'ppl_push_a',
+          workoutName: 'Push A',
         },
         {
           id: 'w1',
@@ -227,9 +228,14 @@ describe('parseBackup', () => {
         ([key]) => key === 'workout_history.full_state'
       )?.[1] as string
     );
-    expect(restored.logs[0]).toMatchObject({ templateId: 'ppl_6day', dayKey: 'ppl_push_a' });
+    expect(restored.logs[0]).toMatchObject({
+      templateId: 'ppl_6day',
+      dayKey: 'ppl_push_a',
+      workoutName: 'Push A',
+    });
     expect(restored.logs[1]).not.toHaveProperty('templateId');
     expect(restored.logs[1]).not.toHaveProperty('dayKey');
+    expect(restored.logs[1]).not.toHaveProperty('workoutName');
   });
 
   it('rejects a newer format version rather than guessing at it', () => {

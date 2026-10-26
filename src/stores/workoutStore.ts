@@ -65,6 +65,8 @@ interface WorkoutState {
   templateId: string | null;
   /** The template day being run, so the log can record which workout this was. */
   dayKey: string | null;
+  /** What to call this workout, snapshotted here and written onto the log. */
+  workoutName: string | null;
   startedAt: number | null;
   currentExerciseIndex: number;
   exercises: Exercise[];
@@ -89,8 +91,11 @@ interface WorkoutActions {
     exercises: Exercise[],
     intent?: SessionIntent,
     blocks?: WorkoutBlock[],
-    /** The day's id. Omitted by callers that have no day to name. */
-    dayKey?: string
+    /**
+     * Which day of the template this is: its id, and what to call it. Omitted
+     * by callers that have no day to name.
+     */
+    day?: { key: string; name: string }
   ) => void;
   endSession: () => void;
   cancelSession: () => void;
@@ -198,6 +203,7 @@ const initialState: WorkoutState = {
   active: false,
   templateId: null,
   dayKey: null,
+  workoutName: null,
   startedAt: null,
   currentExerciseIndex: 0,
   exercises: [],
@@ -334,14 +340,15 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
   ...initialState,
 
   // Session lifecycle
-  startSession: (templateId, exercises, intent = 'normal', blocks = [], dayKey = undefined) => {
+  startSession: (templateId, exercises, intent = 'normal', blocks = [], day = undefined) => {
     const startedAt = Date.now();
 
     const newState: WorkoutState = {
       ...initialState,
       active: true,
       templateId,
-      dayKey: dayKey ?? null,
+      dayKey: day?.key ?? null,
+      workoutName: day?.name ?? null,
       startedAt,
       currentExerciseIndex: 0,
       exercises,
@@ -821,6 +828,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
           templateId: stored.templateId ?? null,
           // Sessions persisted before #80 carry no day, and resume without one.
           dayKey: stored.dayKey ?? null,
+          workoutName: stored.workoutName ?? null,
           startedAt: stored.startedAt ?? null,
           currentExerciseIndex: stored.currentExerciseIndex ?? 0,
           exercises: stored.exercises ?? [],

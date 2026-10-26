@@ -20,7 +20,7 @@ import { SummaryPRs } from '@/components/workout/summary/SummaryPRs';
 import { SummaryStats } from '@/components/workout/summary/SummaryStats';
 import { SummaryVolumeChange } from '@/components/workout/summary/SummaryVolumeChange';
 import { useLocalDay } from '@/hooks';
-import { volumeComparison, workoutLabel } from '@/lib/summary-comparison';
+import { volumeComparison } from '@/lib/summary-comparison';
 import { sessionRecords } from '@/lib/summary-records';
 import { goalInEffect } from '@/lib/weekly-goal';
 import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
@@ -28,7 +28,6 @@ import {
   useBaselineStore,
   usePlayerStore,
   useSettingsStore,
-  useTemplateStore,
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
@@ -75,18 +74,15 @@ export default function WorkoutSummaryScreen() {
   // Both new blocks read the saved history around this log, so they are
   // recomputed when it is claimed — which is also when the streak line moves.
   const logs = useWorkoutHistoryStore((s) => s.logs);
-  const personalTemplates = useTemplateStore((s) => s.templates);
 
   const records = useMemo(() => (log ? sessionRecords(logs, log) : []), [logs, log]);
 
   const comparison = useMemo(() => (log ? volumeComparison(logs, log) : null), [logs, log]);
 
-  // Naming the reference is the point of the sentence, so a workout that can no
-  // longer be named gets no sentence rather than an unattributed number.
-  const comparedTo = useMemo(
-    () => workoutLabel(log?.templateId, log?.dayKey, personalTemplates),
-    [log?.templateId, log?.dayKey, personalTemplates]
-  );
+  // The name this workout had when the session ran. Naming the reference is the
+  // point of the sentence, so a log that carries no name gets no sentence
+  // rather than an unattributed number.
+  const comparedTo = log?.workoutName;
 
   const handleFinish = () => {
     if (!summary || !log) return;

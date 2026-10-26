@@ -19,8 +19,12 @@
 // Logs carry no weight unit, so the delta is labelled with the current setting,
 // exactly as the Volume figure and every other weight in the app already is. It
 // converts nothing (#85 covers recording the unit).
+//
+// The workout's NAME is stored on the log too, not looked up when the summary
+// renders. Renaming or deleting a template must not change what an old session
+// says it was.
 
-import { type WorkoutTemplateDefinition, getTemplateById } from '@/data';
+import type { TemplateDay, WorkoutTemplateDefinition } from '@/data';
 import { formatProgressDate } from '@/lib/exercise-progress';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { formatWeight, totalVolume } from '@/lib/workout-summary';
@@ -94,29 +98,18 @@ export function volumeComparison(logs: WorkoutLog[], log: WorkoutLog): VolumeCom
 }
 
 /**
- * What the comparison calls the workout, or null when it cannot name it.
+ * What to call a workout, read at session start and stored on the log.
  *
  * The day's name for a program, because "your last Push A" is what the person
  * ran. The template's own name for a one-day workout, where the day name is a
- * placeholder ("Day 1") and the template name is the thing they built. A
- * template that is no longer installed cannot be named, and an unnamed
- * comparison would read as "against your last workout" — so the sentence is
- * left out instead.
+ * placeholder ("Day 1") and the template name is the thing they built.
+ *
+ * Called ONCE, when the session starts. Resolving it again at render would
+ * make the name of a session you logged in October depend on what the template
+ * is called today — a rename would rewrite the old sentence, and deleting the
+ * template would take it away.
  */
-export function workoutLabel(
-  templateId: string | undefined,
-  dayKey: string | undefined,
-  personalTemplates: WorkoutTemplateDefinition[]
-): string | null {
-  if (!templateId || !dayKey) return null;
-
-  const template =
-    getTemplateById(templateId) ?? personalTemplates.find((t) => t.id === templateId);
-  if (!template) return null;
-
-  const day = template.days.find((d) => d.id === dayKey);
-  if (!day) return null;
-
+export function workoutDisplayName(template: WorkoutTemplateDefinition, day: TemplateDay): string {
   return template.days.length > 1 ? day.name : template.name;
 }
 

@@ -18,6 +18,7 @@ import {
   usesRestTimer,
 } from '@/lib/blocks';
 import { estimateDayMinutes } from '@/lib/duration';
+import { workoutDisplayName } from '@/lib/summary-comparison';
 import { useTemplateStore, useWorkoutStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import type { Exercise, SessionIntent, WorkoutBlock } from '@/types';
@@ -166,7 +167,12 @@ export default function WorkoutLoadoutScreen() {
     if (isEmptyDay) return;
     haptics.success();
     const exercises = buildExercises(day);
-    startSession(template.id, exercises, intent, buildBlocks(day), day.id);
+    // The name goes with the session so the log can say what this workout was
+    // called today, whatever the template is called later.
+    startSession(template.id, exercises, intent, buildBlocks(day), {
+      key: day.id,
+      name: workoutDisplayName(template, day),
+    });
     router.replace('/workout/session');
   };
 

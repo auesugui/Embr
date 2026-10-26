@@ -5,15 +5,16 @@
 // it stays silent are the whole feature. Both are tested here rather than
 // through a render.
 
-import type { WorkoutTemplateDefinition } from '@/data';
+import type { TemplateDay, WorkoutTemplateDefinition } from '@/data';
 import type { Exercise, LoggedSet, WorkoutLog } from '@/types';
 import { describe, expect, it } from '@jest/globals';
 
+import type { VolumeComparison } from '../summary-comparison';
 import {
   comparisonSentence,
   previousSession,
   volumeComparison,
-  workoutLabel,
+  workoutDisplayName,
 } from '../summary-comparison';
 
 const NOW_MS = Date.parse('2026-10-23T18:00:00.000Z');
@@ -56,6 +57,7 @@ interface LogOver {
   id?: string;
   templateId?: string;
   dayKey?: string;
+  workoutName?: string;
   claimedAt?: string | null;
   exercises?: Exercise[];
 }
@@ -70,6 +72,7 @@ const log = (timestamp: string, volume: number, over: LogOver = {}): WorkoutLog 
   claimedAt: over.claimedAt === undefined ? timestamp : over.claimedAt,
   ...(over.templateId === undefined ? {} : { templateId: over.templateId }),
   ...(over.dayKey === undefined ? {} : { dayKey: over.dayKey }),
+  ...(over.workoutName === undefined ? {} : { workoutName: over.workoutName }),
 });
 
 /** A saved Push A session. */
@@ -233,39 +236,61 @@ describe('comparisonSentence', () => {
 // Naming the workout
 // -----------------------------------------------------------------------------
 
-describe('workoutLabel', () => {
-  const personal: WorkoutTemplateDefinition[] = [
-    {
-      id: 'mine',
-      name: 'Garage Session',
-      description: '',
-      category: 'full_body',
-      daysPerWeek: 1,
-      difficulty: 'beginner',
-      estimatedDuration: 45,
-      days: [{ id: 'mine__day0', name: 'Day 1', shortName: 'Day 1', exercises: [] }],
-      isCustom: true,
-    },
-  ];
+describe('workoutDisplayName', () => {
+  const day = (id: string, name: string): TemplateDay => ({
+    id,
+    name,
+    shortName: name,
+    exercises: [],
+  });
+
+  const template = (name: string, days: TemplateDay[], id = 'tpl'): WorkoutTemplateDefinition => ({
+    id,
+    name,
+    description: '',
+    category: 'full_body',
+    daysPerWeek: days.length,
+    difficulty: 'beginner',
+    estimatedDuration: 45,
+    days,
+  });
 
   it('names the day of a program', () => {
-    expect(workoutLabel('ppl_6day', 'ppl_push_a', [])).toBe('Push A');
+    const program = template('Push / Pull / Legs', [
+      day('ppl_push_a', 'Push A'),
+      day('ppl_pull_a', 'Pull A'),
+    ]);
+
+    expect(workoutDisplayName(program, program.days[0])).toBe('Push A');
   });
 
   it('names a one-day workout after itself, not after "Day 1"', () => {
-    expect(workoutLabel('mine', 'mine__day0', personal)).toBe('Garage Session');
+    const mine = template('Garage Session', [day('mine__day0', 'Day 1')]);
+
+    expect(workoutDisplayName(mine, mine.days[0])).toBe('Garage Session');
+  });
+});
+
+// -----------------------------------------------------------------------------
+// The name survives the template
+// -----------------------------------------------------------------------------
+
+describe('the stored name', () => {
+  it('still reads the same after the template is renamed or deleted', () => {
+    // Nothing here consults a template at all: the sentence is built from what
+    // the log recorded, so editing or deleting the template cannot reach it.
+    const today = pushA(at(0), 10_970, { workoutName: 'Push A' });
+    const earlier = pushA(at(3), 10_490, { id: 'earlier', workoutName: 'Push A' });
+
+    const comparison = volumeComparison([today, earlier], today);
+    expect(comparison).not.toBeNull();
+    expect(
+      comparisonSentence(comparison as VolumeComparison, today.workoutName as string, 'lb')
+    ).toBe('Up 480 lb from your last Push A, Oct 20.');
   });
 
-  it('cannot name a template that is no longer installed', () => {
-    expect(workoutLabel('deleted', 'deleted__day0', personal)).toBeNull();
-  });
-
-  it('cannot name a day that is no longer on the template', () => {
-    expect(workoutLabel('ppl_6day', 'ppl_push_z', [])).toBeNull();
-  });
-
-  it('cannot name a log that carries no identity', () => {
-    expect(workoutLabel(undefined, undefined, [])).toBeNull();
-    expect(workoutLabel('ppl_6day', undefined, [])).toBeNull();
+  it('is absent on a log saved before the name was recorded', () => {
+    const today = pushA(at(0), 10_970);
+    expect(today.workoutName).toBeUndefined();
   });
 });

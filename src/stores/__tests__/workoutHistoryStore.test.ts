@@ -112,11 +112,30 @@ describe('Workout History Store', () => {
         sessionIntent: 'normal',
         templateId: 'ppl_6day',
         dayKey: 'ppl_push_a',
+        workoutName: 'Push A',
       });
 
       const log = useWorkoutHistoryStore.getState().getLog(id);
       expect(log?.templateId).toBe('ppl_6day');
       expect(log?.dayKey).toBe('ppl_push_a');
+      expect(log?.workoutName).toBe('Push A');
+    });
+
+    it('keeps the ids of a session that was running before names were stored', () => {
+      // A session already in progress when the app updated has a day and no
+      // name. The summary leaves its sentence out rather than inventing one.
+      const id = useWorkoutHistoryStore.getState().createLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+        sessionIntent: 'normal',
+        templateId: 'ppl_6day',
+        dayKey: 'ppl_push_a',
+      });
+
+      const log = useWorkoutHistoryStore.getState().getLog(id);
+      expect(log?.dayKey).toBe('ppl_push_a');
+      expect(log).not.toHaveProperty('workoutName');
     });
 
     it('omits both identity fields when either is missing', () => {
@@ -140,6 +159,7 @@ describe('Workout History Store', () => {
         const log = useWorkoutHistoryStore.getState().getLog(id);
         expect(log).not.toHaveProperty('templateId');
         expect(log).not.toHaveProperty('dayKey');
+        expect(log).not.toHaveProperty('workoutName');
       }
     });
   });

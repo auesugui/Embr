@@ -117,6 +117,7 @@ export function useSessionActions({
       // anything.
       templateId: workoutStoreState.templateId ?? undefined,
       dayKey: workoutStoreState.dayKey ?? undefined,
+      workoutName: workoutStoreState.workoutName ?? undefined,
     });
 
     router.replace({

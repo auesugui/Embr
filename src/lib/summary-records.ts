@@ -59,9 +59,19 @@ export interface SessionRecord {
  * `log` does not have to be saved yet — the summary shows the block before the
  * Save button is pressed — so it is folded into the history as a claimed
  * session regardless of its own `claimedAt`.
+ *
+ * ONLY WHAT WAS TRUE THEN. The series is built from sessions strictly earlier
+ * than this one plus this one, never from what came after. A later session is
+ * not just a bigger number to ignore: the series metric is a property of the
+ * whole history, so one later weighted session turns a bodyweight movement's
+ * series into weights, and reopening an old summary would lose a reps record
+ * it correctly showed at the time. A summary states what that session did.
  */
 export function sessionRecords(logs: WorkoutLog[], log: WorkoutLog): SessionRecord[] {
-  const earlier = getClaimedLogs(logs).filter((l) => l.id !== log.id);
+  const at = Date.parse(log.timestamp);
+  const earlier = getClaimedLogs(logs).filter(
+    (l) => l.id !== log.id && (Number.isNaN(at) || Date.parse(l.timestamp) < at)
+  );
   const series = buildExerciseProgress([
     ...earlier,
     { ...log, claimedAt: log.claimedAt ?? log.timestamp },
