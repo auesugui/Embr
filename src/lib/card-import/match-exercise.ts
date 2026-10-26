@@ -7,6 +7,7 @@
 // than being guessed at.
 
 import { type Equipment, type ExerciseDefinition, allExercises } from '@/data';
+import { isCutOffName } from './parse-card';
 
 /** Every way a card or a library name writes a piece of equipment. */
 const EQUIPMENT_WORDS: Record<string, Equipment> = {
@@ -131,4 +132,15 @@ export function matchExercise(cardName: string): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * The match the review screen makes for the person, rather than the one the library
+ * can make. A name Boostcamp cut off is never one of them, however well what is left
+ * of it reads: "Hanging Leg Raise (Dumbb…" is not Hanging Leg Raise, and the rest of
+ * the name is not in the photo to tell them apart. Those stay for the person to choose
+ * or to skip, which is what the row asks them to do.
+ */
+export function autoMatch(cardName: string): string | undefined {
+  return isCutOffName(cardName) ? undefined : matchExercise(cardName);
 }

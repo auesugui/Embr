@@ -63,12 +63,25 @@ const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%/;
  *
  *     row     := name figures
  *     name    := the text before the first digit, holding at least one letter
- *     figures := sets? separator? (weight | range | count)?
+ *     figures := sets? separator (weight | range | count)?
  *     sets    := number "sets"?          — the bare count a finished card prints
  *     weight  := number "lb"? "x" number — a best set, giving the weight and the reps
- *     range   := number ("-"|"to") number "reps"?
+ *                (the number may be a half, "12.5 lb x 8")
+ *     range   := number ("-"|"–"|"to") number "reps"?
  *     count   := number "reps"
- *     separator := one of  x · • * | - –
+ *     separator := one of  x · • | - –, or a spaced . , : ~, or nothing
+ *
+ * Two rules settle what a figure is when it could be read twice:
+ *
+ *   1. A dash or "to" BETWEEN TWO NUMBERS is a range, never a separator. So
+ *      "3-12 reps" is a rep range with no set count, not three sets of twelve,
+ *      and "3 sets - 3-12 reps" is three sets of "3-12" because the dash there
+ *      follows the word "sets" rather than a number.
+ *   2. A period, comma, colon or tilde is the separator only with a space on each
+ *      side, which is how OCR renders the card's middle dot. A decimal weight
+ *      ("12.5 lb") and a thousands comma have none, so neither is split in two.
+ *   3. Every number is read whole. "70 lb x 8" with no set count is a 70 lb best
+ *      set, not 7 sets of a 0 lb one.
  *
  * A row needs a set count or a rep count, and a lone bare number is neither: it
  * could be a week, a percentage or a total. Everything the grammar does not
@@ -76,7 +89,7 @@ const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%/;
  * progress bar, "Show less" and the finished card's footer stay out of the table.
  */
 const ROW =
-  /^(?<name>[^\d]*[A-Za-z][^\d]*?)\s*(?:(?<sets>\d{1,2})\s*(?<worded>sets?\b)?)?\s*(?:[x·•*|]|-|–)?\s*(?:(?<weight>\d{1,4})\s*(?:lbs?)?\s*x\s*(?<weightReps>\d{1,3})|(?<low>\d{1,3})\s*(?:-|–|to)\s*(?<high>\d{1,3})\s*(?:reps?\b)?|(?<count>\d{1,3})\s*reps?\b)?\s*$/i;
+  /^(?<name>[^\d]*[A-Za-z][^\d]*?)\s*(?:(?<sets>\d{1,2})(?!\d)(?!\s*(?:-|–|to)\s*\d)\s*(?<worded>sets?\b)?)?(?:\s*[x·•|]\s*|\s*[-–]\s*|\s+[.,:~]\s+|\s*)(?:(?<weight>\d{1,4}(?:\.\d)?)\s*(?:lbs?)?\s*x\s*(?<weightReps>\d{1,3})|(?<low>\d{1,3})\s*(?:-|–|to)\s*(?<high>\d{1,3})\s*(?:reps?\b)?|(?<count>\d{1,3})\s*reps?\b)?\s*$/i;
 
 /** Undoes the OCR glitches that show up on Boostcamp cards. */
 export function normalizeLine(line: string): string {

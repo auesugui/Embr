@@ -17,7 +17,7 @@ import { ExercisePickerModal } from '@/components/workout/ExercisePickerModal';
 import { ReviewCardView } from '@/components/workout/photo-import/ReviewCardView';
 import type { MovementMatch } from '@/components/workout/photo-import/ReviewRow';
 import { getExerciseById } from '@/data';
-import { matchExercise } from '@/lib/card-import/match-exercise';
+import { autoMatch } from '@/lib/card-import/match-exercise';
 import type { ParsedRow } from '@/lib/card-import/parse-card';
 import { readReps } from '@/lib/card-import/parse-card';
 import { readPhotos } from '@/lib/card-import/read-photos';
@@ -77,7 +77,7 @@ export default function ImportPhotosScreen() {
     const choice = choices[row.id];
     if (choice === 'skip') return { exerciseId: undefined, skipped: true };
     if (choice) return { exerciseId: choice.exerciseId, skipped: false };
-    return { exerciseId: matchExercise(row.name), skipped: false };
+    return { exerciseId: autoMatch(row.name), skipped: false };
   };
 
   const matchFor = (row: ParsedRow): MovementMatch => {

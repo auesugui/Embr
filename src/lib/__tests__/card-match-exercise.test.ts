@@ -6,7 +6,7 @@
 
 import { EXERCISE_DATABASE, setCustomExercises } from '@/data';
 import { afterEach, describe, expect, it } from '@jest/globals';
-import { matchExercise, movementKey } from '../card-import/match-exercise';
+import { autoMatch, matchExercise, movementKey } from '../card-import/match-exercise';
 
 describe('matchExercise', () => {
   it('matches a movement the card names the way the library does', () => {
@@ -95,6 +95,25 @@ describe('matchExercise', () => {
 });
 
 afterEach(() => setCustomExercises([]));
+
+describe('autoMatch', () => {
+  it('never matches a name the card cut off, however well what is left reads', () => {
+    expect(matchExercise('Hanging Leg Raise...')).toBe('hanging_leg_raise');
+    expect(autoMatch('Hanging Leg Raise...')).toBeUndefined();
+    expect(autoMatch('Pull-Up…')).toBeUndefined();
+    expect(autoMatch('Single Leg Romanian Deadlift (Dumbb...')).toBeUndefined();
+  });
+
+  it('matches once the name is whole again, the way the library would', () => {
+    expect(autoMatch('Hanging Leg Raise')).toBe('hanging_leg_raise');
+    expect(autoMatch('Lunge (Dumbbell)')).toBe('db_lunges');
+  });
+
+  it('leaves a cut-off name the library does not have unmatched either', () => {
+    expect(autoMatch('Single Leg Romanian Deadlift (Dumbb…')).toBeUndefined();
+    expect(autoMatch('Chest Press (Dumbbell)')).toBeUndefined();
+  });
+});
 
 describe('movementKey', () => {
   it('reads the same movement whatever the order of its words and however the equipment is written', () => {

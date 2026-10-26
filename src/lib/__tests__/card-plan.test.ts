@@ -129,19 +129,53 @@ describe('the row rule', () => {
     );
   });
 
-  it('reads a plan row however the card separates its figures', () => {
-    expect(planRow('Goblet Squat 3 sets · 3-12 reps')).toEqual(
-      expect.objectContaining({ name: 'Goblet Squat', sets: 3, reps: '3-12' })
-    );
-    expect(planRow('Goblet Squat 3 sets - 3-12 reps')).toEqual(
-      expect.objectContaining({ sets: 3, reps: '3-12' })
-    );
-    expect(planRow('Goblet Squat 3 x 8 reps')).toEqual(
-      expect.objectContaining({ sets: 3, reps: '8' })
-    );
-    expect(planRow('Goblet Squat 3 sets 3-12')).toEqual(
-      expect.objectContaining({ sets: 3, reps: '3-12' })
-    );
+  // One table for the whole grammar: what a line gives, and what it must not.
+  // A dash between two numbers is a range, so a row that names one names no sets.
+  const ROWS: [string, number | null, string, number | null][] = [
+    // line                                        sets   reps     weight
+    ['Goblet Squat 3 12 reps', 3, '12', null],
+    ['Goblet Squat 3 sets 12 reps', 3, '12', null],
+    ['Goblet Squat 3 sets · 3-12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 sets - 3-12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 sets . 3-12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 sets , 3-12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 sets : 3-12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 sets ~ 3-12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 sets * 3-12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 sets | 3-12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 sets 3-12', 3, '3-12', null],
+    ['Goblet Squat 3 sets · 3 to 12 reps', 3, '3-12', null],
+    ['Goblet Squat 3 x 8 reps', 3, '8', null],
+    // A range and no set count: the set count is missing, not three.
+    ['Goblet Squat 3-12 reps', null, '3-12', null],
+    ['Goblet Squat 3-12', null, '3-12', null],
+    ['Goblet Squat 3 - 12 reps', null, '3-12', null],
+    ['Goblet Squat 3–12 reps', null, '3-12', null],
+    ['Goblet Squat 3 to 12 reps', null, '3-12', null],
+    ['Goblet Squat 8 reps', null, '8', null],
+    ['Goblet Squat 3 sets', 3, '', null],
+    // Weight rows, including the decimal a period must not split.
+    ['Bent Over Row (Dumbbell) 3 70 lb x 8', 3, '8', 70],
+    ['Bent Over Row (Dumbbell) 70 lb x 8', null, '8', 70],
+    ['Bent Over Row (Dumbbell) 3 12.5 lb x 8', 3, '8', 12.5],
+  ];
+
+  it.each(ROWS)('reads "%s"', (line, sets, reps, weightLb) => {
+    expect(planRow(line)).toEqual(expect.objectContaining({ sets, reps, weightLb }));
+  });
+
+  const NOT_ROWS = [
+    'Goblet Squat 3',
+    'Goblet Squat 3 sets 12',
+    'NEXT UP - WEEK 8 - DAY 3',
+    'ES 96%',
+    'Show less ~',
+    '48 m 12,480 lb 18',
+    'Workout A Oct 10.2026',
+  ];
+
+  it.each(NOT_ROWS)('does not read "%s" as a movement', (line) => {
+    expect(parseCard([line]).rows).toEqual([]);
   });
 
   it('leaves a value the card did not name empty, rather than filling it in', () => {
