@@ -42,6 +42,14 @@ export interface CreateLogInput {
   blocks?: WorkoutBlock[];
   /** `for_time` finishing times, keyed by block key. */
   blockTimes?: Record<string, number>;
+  /**
+   * Which workout this was: the template's id and the day within it.
+   *
+   * Recorded together or not at all — the summary's comparison matches on both,
+   * so half an identity is no identity.
+   */
+  templateId?: string;
+  dayKey?: string;
 }
 
 interface WorkoutHistoryState {
@@ -97,7 +105,16 @@ const persistLogs = async (logs: WorkoutLog[]) => {
 export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => ({
   ...initialState,
 
-  createLog: ({ exercises, durationSeconds, streakDays, sessionIntent, blocks, blockTimes }) => {
+  createLog: ({
+    exercises,
+    durationSeconds,
+    streakDays,
+    sessionIntent,
+    blocks,
+    blockTimes,
+    templateId,
+    dayKey,
+  }) => {
     const id = generateId();
     const log: WorkoutLog = {
       id,
@@ -111,6 +128,7 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
       // shape it had before blocks existed and old backups stay comparable.
       ...(blocks?.length ? { blocks } : {}),
       ...(blockTimes && Object.keys(blockTimes).length ? { blockTimes } : {}),
+      ...(templateId && dayKey ? { templateId, dayKey } : {}),
     };
 
     set((state) => {

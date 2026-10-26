@@ -97,6 +97,8 @@ export interface ExerciseProgress {
 }
 
 export interface ProgressRecord {
+  /** The claimed log that set this record. */
+  logId: string;
   timestamp: string;
   value: number;
   /** The record this one beat, or null for the first one. */
@@ -341,6 +343,7 @@ export function progressRecords(points: ProgressPoint[]): ProgressRecord[] {
   for (const point of points) {
     if (point.value <= max) continue;
     records.push({
+      logId: point.logId,
       timestamp: point.timestamp,
       value: point.value,
       previous: records.length === 0 ? null : max,

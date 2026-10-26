@@ -166,7 +166,7 @@ export default function WorkoutLoadoutScreen() {
     if (isEmptyDay) return;
     haptics.success();
     const exercises = buildExercises(day);
-    startSession(template.id, exercises, intent, buildBlocks(day));
+    startSession(template.id, exercises, intent, buildBlocks(day), day.id);
     router.replace('/workout/session');
   };
 

@@ -224,6 +224,8 @@ export interface WorkoutSession {
   gymRushActive: boolean;
   /** Blocks referenced by `exercises[].blockId`. Absent on pre-block sessions. */
   blocks?: WorkoutBlock[];
+  /** The template day being run. Absent on sessions started before #80. */
+  dayKey?: string;
 }
 
 /**
@@ -273,6 +275,17 @@ export interface WorkoutLog {
    * workout card carries no streak, so history shows the streak as unknown.
    */
   importedFrom?: 'photo';
+  /**
+   * Which workout this session was: the template's id and the day within it.
+   *
+   * Written together at finish time or not at all, because a comparison needs
+   * both — Push A is only ever compared with Push A. Absent on every log
+   * written before #80, on imported photos, and on typed-in workouts; those get
+   * no comparison rather than one guessed from the exercise list.
+   */
+  templateId?: string;
+  /** The day's own id, stable across renames. See `templateId`. */
+  dayKey?: string;
 }
 
 export interface PRRecord {

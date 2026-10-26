@@ -63,6 +63,8 @@ interface WorkoutState {
   // Session state
   active: boolean;
   templateId: string | null;
+  /** The template day being run, so the log can record which workout this was. */
+  dayKey: string | null;
   startedAt: number | null;
   currentExerciseIndex: number;
   exercises: Exercise[];
@@ -86,7 +88,9 @@ interface WorkoutActions {
     templateId: string,
     exercises: Exercise[],
     intent?: SessionIntent,
-    blocks?: WorkoutBlock[]
+    blocks?: WorkoutBlock[],
+    /** The day's id. Omitted by callers that have no day to name. */
+    dayKey?: string
   ) => void;
   endSession: () => void;
   cancelSession: () => void;
@@ -193,6 +197,7 @@ const initialBlockTimer: BlockTimerState = {
 const initialState: WorkoutState = {
   active: false,
   templateId: null,
+  dayKey: null,
   startedAt: null,
   currentExerciseIndex: 0,
   exercises: [],
@@ -329,13 +334,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
   ...initialState,
 
   // Session lifecycle
-  startSession: (templateId, exercises, intent = 'normal', blocks = []) => {
+  startSession: (templateId, exercises, intent = 'normal', blocks = [], dayKey = undefined) => {
     const startedAt = Date.now();
 
     const newState: WorkoutState = {
       ...initialState,
       active: true,
       templateId,
+      dayKey: dayKey ?? null,
       startedAt,
       currentExerciseIndex: 0,
       exercises,
@@ -813,6 +819,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
         set({
           active: stored.active,
           templateId: stored.templateId ?? null,
+          // Sessions persisted before #80 carry no day, and resume without one.
+          dayKey: stored.dayKey ?? null,
           startedAt: stored.startedAt ?? null,
           currentExerciseIndex: stored.currentExerciseIndex ?? 0,
           exercises: stored.exercises ?? [],

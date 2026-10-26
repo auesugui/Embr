@@ -184,6 +184,54 @@ describe('parseBackup', () => {
     expect(entries).toContainEqual(['workout_history.full_state', historyBlob]);
   });
 
+  it('round-trips logs with and without the workout identity (#80)', async () => {
+    // Two logs in one file: one written after #80, carrying the template id and
+    // the day key, and one written before it, carrying neither. A restore must
+    // hand both back byte-for-byte, so the older log keeps reading as a log
+    // with no comparison rather than one with a guessed match.
+    const historyBlob = JSON.stringify({
+      logs: [
+        {
+          id: 'w2',
+          timestamp: '2026-10-23T18:00:00.000Z',
+          claimedAt: '2026-10-23T18:05:00.000Z',
+          exercises: [],
+          durationSeconds: 1800,
+          streakDays: 3,
+          sessionIntent: 'normal',
+          templateId: 'ppl_6day',
+          dayKey: 'ppl_push_a',
+        },
+        {
+          id: 'w1',
+          timestamp: '2026-09-01T18:00:00.000Z',
+          claimedAt: '2026-09-01T18:05:00.000Z',
+          exercises: [],
+          durationSeconds: 1500,
+          streakDays: 1,
+          sessionIntent: 'normal',
+        },
+      ],
+    });
+
+    mockMultiGet.mockResolvedValue([['workout_history.full_state', historyBlob]]);
+    const exported = await createBackup(FIXED_NOW);
+
+    await restoreBackup(parseBackup(JSON.stringify(exported)));
+
+    const entries = mockMultiSet.mock.calls[0][0];
+    expect(entries).toContainEqual(['workout_history.full_state', historyBlob]);
+
+    const restored = JSON.parse(
+      (entries as Array<[string, string]>).find(
+        ([key]) => key === 'workout_history.full_state'
+      )?.[1] as string
+    );
+    expect(restored.logs[0]).toMatchObject({ templateId: 'ppl_6day', dayKey: 'ppl_push_a' });
+    expect(restored.logs[1]).not.toHaveProperty('templateId');
+    expect(restored.logs[1]).not.toHaveProperty('dayKey');
+  });
+
   it('rejects a newer format version rather than guessing at it', () => {
     const future = validBackup({ formatVersion: BACKUP_FORMAT_VERSION + 1 });
     expect(() => parseBackup(JSON.stringify(future))).toThrow(/newer version/);

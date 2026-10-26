@@ -106,6 +106,22 @@ describe('Workout Store', () => {
         expect(state.exercises[0].name).toBe('Bench Press');
       });
 
+      it('carries the template day so the log can say which workout this was', () => {
+        const { startSession } = useWorkoutStore.getState();
+
+        startSession('ppl_6day', createTestExercises(), 'normal', [], 'ppl_push_a');
+
+        expect(useWorkoutStore.getState().dayKey).toBe('ppl_push_a');
+      });
+
+      it('starts without a day when the caller has none to name', () => {
+        const { startSession } = useWorkoutStore.getState();
+
+        startSession('template-1', createTestExercises());
+
+        expect(useWorkoutStore.getState().dayKey).toBeNull();
+      });
+
       it('should reset current exercise index to 0', () => {
         const { startSession, setCurrentExercise } = useWorkoutStore.getState();
 
@@ -662,6 +678,20 @@ describe('Workout Store', () => {
         const state = useWorkoutStore.getState();
         expect(state.active).toBe(true);
         expect(state.exercises).toHaveLength(1);
+        // Sessions persisted before #80 carry no day and resume without one.
+        expect(state.dayKey).toBeNull();
+      });
+
+      it('restores the template day of a session that recorded one', async () => {
+        (appStorage.getJSON as jest.Mock).mockResolvedValue({
+          active: true,
+          exercises: [],
+          dayKey: 'ppl_push_a',
+        });
+
+        await useWorkoutStore.getState().hydrate();
+
+        expect(useWorkoutStore.getState().dayKey).toBe('ppl_push_a');
       });
 
       it('should handle empty storage gracefully', async () => {

@@ -103,6 +103,45 @@ describe('Workout History Store', () => {
 
       expect(a).not.toBe(b);
     });
+
+    it('records which workout the session came from (#80)', () => {
+      const id = useWorkoutHistoryStore.getState().createLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+        sessionIntent: 'normal',
+        templateId: 'ppl_6day',
+        dayKey: 'ppl_push_a',
+      });
+
+      const log = useWorkoutHistoryStore.getState().getLog(id);
+      expect(log?.templateId).toBe('ppl_6day');
+      expect(log?.dayKey).toBe('ppl_push_a');
+    });
+
+    it('omits both identity fields when either is missing', () => {
+      // The summary matches on both, so half an identity is no identity — and
+      // a log without them keeps exactly the shape it had before #80.
+      const partial = useWorkoutHistoryStore.getState().createLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+        sessionIntent: 'normal',
+        templateId: 'ppl_6day',
+      });
+      const none = useWorkoutHistoryStore.getState().createLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+        sessionIntent: 'normal',
+      });
+
+      for (const id of [partial, none]) {
+        const log = useWorkoutHistoryStore.getState().getLog(id);
+        expect(log).not.toHaveProperty('templateId');
+        expect(log).not.toHaveProperty('dayKey');
+      }
+    });
   });
 
   // ---------------------------------------------------------------------------

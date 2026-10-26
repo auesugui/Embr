@@ -16,14 +16,19 @@ import { RevealRow } from '@/components/celebration';
 import { WeeklyGoalPrompt } from '@/components/goal';
 import { Flame } from '@/components/icons';
 import { SummaryExercises } from '@/components/workout/summary/SummaryExercises';
+import { SummaryPRs } from '@/components/workout/summary/SummaryPRs';
+import { SummaryStats } from '@/components/workout/summary/SummaryStats';
+import { SummaryVolumeChange } from '@/components/workout/summary/SummaryVolumeChange';
 import { useLocalDay } from '@/hooks';
-import { uniformMetric } from '@/lib/metric';
+import { volumeComparison, workoutLabel } from '@/lib/summary-comparison';
+import { sessionRecords } from '@/lib/summary-records';
 import { goalInEffect } from '@/lib/weekly-goal';
-import { type WorkoutSummary, calculateWorkoutSummary, formatWeight } from '@/lib/workout-summary';
+import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
 import {
   useBaselineStore,
   usePlayerStore,
   useSettingsStore,
+  useTemplateStore,
   useWorkoutHistoryStore,
   useWorkoutStore,
 } from '@/stores';
@@ -66,6 +71,22 @@ export default function WorkoutSummaryScreen() {
     if (!log) return null;
     return calculateWorkoutSummary(log.exercises, log.durationSeconds);
   }, [log]);
+
+  // Both new blocks read the saved history around this log, so they are
+  // recomputed when it is claimed — which is also when the streak line moves.
+  const logs = useWorkoutHistoryStore((s) => s.logs);
+  const personalTemplates = useTemplateStore((s) => s.templates);
+
+  const records = useMemo(() => (log ? sessionRecords(logs, log) : []), [logs, log]);
+
+  const comparison = useMemo(() => (log ? volumeComparison(logs, log) : null), [logs, log]);
+
+  // Naming the reference is the point of the sentence, so a workout that can no
+  // longer be named gets no sentence rather than an unattributed number.
+  const comparedTo = useMemo(
+    () => workoutLabel(log?.templateId, log?.dayKey, personalTemplates),
+    [log?.templateId, log?.dayKey, personalTemplates]
+  );
 
   const handleFinish = () => {
     if (!summary || !log) return;
@@ -115,12 +136,6 @@ export default function WorkoutSummaryScreen() {
     setJustClaimed(true);
   };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}m ${secs}s`;
-  };
-
   // Loading state while the history store rehydrates from storage (reload path).
   if (!hydrated) {
     return (
@@ -168,8 +183,12 @@ export default function WorkoutSummaryScreen() {
           </View>
         </RevealRow>
 
+        {/* The one thing that is true of this session and no other, so it
+            leads — above the streak, which is true of the week. */}
+        <SummaryPRs records={records} units={units} revealIndex={1} />
+
         {/* Streak state + milestone celebration */}
-        <RevealRow index={1} style={styles.streakCard}>
+        <RevealRow index={2} style={styles.streakCard}>
           <Flame size={18} color={roles.accent} strokeWidth={2} />
           <Text style={styles.streakText}>
             {log.streakDays} day streak
@@ -177,38 +196,21 @@ export default function WorkoutSummaryScreen() {
           </Text>
         </RevealRow>
 
-        {/* Stats, two by two so the duration fits on one line */}
-        <RevealRow index={2} style={styles.statsCard}>
-          <View style={styles.statRow}>
-            <View style={[styles.statItem, styles.statItemLeft]}>
-              <Text style={styles.statValue}>{formatDuration(summary.duration)}</Text>
-              <Text style={styles.statLabel}>Duration</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{formatWeight(summary.totalVolume, units)}</Text>
-              <Text style={styles.statLabel}>Volume</Text>
-            </View>
-          </View>
+        <SummaryStats summary={summary} units={units} revealIndex={3} />
 
-          <View style={[styles.statRow, styles.statRowBottom]}>
-            <View style={[styles.statItem, styles.statItemLeft]}>
-              <Text style={styles.statValue}>{summary.totalSets}</Text>
-              <Text style={styles.statLabel}>Sets</Text>
-            </View>
-            <View style={styles.statItem}>
-              {/* A workout of nothing but holds counts seconds, not reps. A
-                  mixed one sums both and keeps the older label — one word cannot
-                  say "reps and seconds", and "Reps" is what the bulk of it is. */}
-              <Text style={styles.statValue}>{summary.totalReps}</Text>
-              <Text style={styles.statLabel}>
-                {uniformMetric(summary.exercises) === 'time' ? 'Seconds' : 'Reps'}
-              </Text>
-            </View>
-          </View>
-        </RevealRow>
+        {/* Attached to the Volume figure it comments on. */}
+        {comparison && comparedTo && (
+          <SummaryVolumeChange
+            comparison={comparison}
+            label={comparedTo}
+            units={units}
+            revealIndex={4}
+          />
+        )}
 
         {/* Under the numbers they just earned, above the set-by-set detail:
-            the ask lands once the session has been read, not before it. */}
+            the ask lands once the session has been read, not before it. The ask
+            goes after everything the session is reporting. */}
         {goalPromptOpen && (
           <RevealRow index={0}>
             <WeeklyGoalPrompt
@@ -224,7 +226,7 @@ export default function WorkoutSummaryScreen() {
           blocks={log.blocks}
           blockTimes={log.blockTimes}
           units={units}
-          revealIndex={3}
+          revealIndex={5}
         />
       </ScrollView>
 
@@ -300,35 +302,6 @@ const styles = StyleSheet.create({
     ...textStyles.displayLarge,
     color: roles.textPrimary,
     textAlign: 'center',
-  },
-  statsCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.lg,
-    marginBottom: spacing[4],
-  },
-  statRow: {
-    flexDirection: 'row',
-  },
-  statRowBottom: {
-    borderTopWidth: 1,
-    borderTopColor: colors.ui.border,
-  },
-  statItem: {
-    flex: 1,
-    padding: spacing[4],
-  },
-  statItemLeft: {
-    borderRightWidth: 1,
-    borderRightColor: colors.ui.border,
-  },
-  statValue: {
-    ...textStyles.h3,
-    color: colors.text.primary,
-  },
-  statLabel: {
-    ...textStyles.caption,
-    color: colors.text.muted,
-    marginTop: spacing[1],
   },
   footer: {
     paddingHorizontal: spacing[4],
