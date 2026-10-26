@@ -2,6 +2,8 @@
 // IronQuest Weight History Store Unit Tests (TDD)
 // =============================================================================
 
+import { prefillWeight } from '@/lib/last-time';
+import type { WorkoutLog } from '@/types';
 import { appStorage } from '@/utils/storage';
 import { useWeightHistoryStore } from '../weightHistoryStore';
 
@@ -236,6 +238,202 @@ describe('Weight History Store', () => {
       expect(consoleSpy).toHaveBeenCalled();
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // The pre-fill never crosses units (issue #85 step 2)
+  // ---------------------------------------------------------------------------
+  // Pre-filling 275 into a kg field loads 275 kg onto a bar that held 275 lb.
+  // This is the one read in the app with a physical consequence, so it falls
+  // back to the last weight in the unit being logged in and nothing else.
+
+  describe('getLastWeightInUnit', () => {
+    it('returns the last weight when it was logged in that unit', () => {
+      const { saveWeight, getLastWeightInUnit } = useWeightHistoryStore.getState();
+
+      saveWeight('bench-press', 135, 'lb');
+
+      const cached = getLastWeightInUnit('bench-press', 'lb');
+      expect(cached?.weight).toBe(135);
+      // The time comes with it, so a saved session can be ranked against it.
+      expect(Number.isNaN(Date.parse(cached?.recordedAt ?? ''))).toBe(false);
+    });
+
+    it('does not hand the other unit’s number to the field', () => {
+      const { saveWeight, getLastWeightInUnit } = useWeightHistoryStore.getState();
+
+      saveWeight('back-squat', 275, 'lb');
+
+      expect(getLastWeightInUnit('back-squat', 'kg')).toBeNull();
+    });
+
+    it('falls back to the last weight recorded in that unit', () => {
+      const { saveWeight, getLastWeightInUnit } = useWeightHistoryStore.getState();
+
+      saveWeight('bench-press', 100, 'kg');
+      saveWeight('bench-press', 195, 'lb');
+
+      expect(getLastWeightInUnit('bench-press', 'kg')?.weight).toBe(100);
+      expect(getLastWeightInUnit('bench-press', 'lb')?.weight).toBe(195);
+    });
+
+    it('takes the most recent entry in that unit, not the oldest', () => {
+      const { saveWeight, getLastWeightInUnit } = useWeightHistoryStore.getState();
+
+      saveWeight('bench-press', 85, 'kg');
+      saveWeight('bench-press', 90, 'kg');
+      saveWeight('bench-press', 195, 'lb');
+
+      expect(getLastWeightInUnit('bench-press', 'kg')?.weight).toBe(90);
+    });
+
+    it('is null for a movement with no history at all', () => {
+      expect(useWeightHistoryStore.getState().getLastWeightInUnit('deadlift', 'lb')).toBeNull();
+    });
+
+    it('falls back to the entries when a restored record has no lastWeight', () => {
+      // Nothing the app writes leaves this gap, but a restored backup can, and
+      // dropping the entries over it would throw away a weight the cache has.
+      useWeightHistoryStore.setState({
+        history: {
+          'bench-press': {
+            exerciseId: 'bench-press',
+            lastWeight: null,
+            lastUnit: 'kg',
+            recentWeights: [{ weight: 100, timestamp: '2026-10-20T12:00:00.000Z', unit: 'kg' }],
+            updatedAt: '2026-10-20T12:00:00.000Z',
+          },
+        },
+      });
+
+      const { getLastWeightInUnit } = useWeightHistoryStore.getState();
+      expect(getLastWeightInUnit('bench-press', 'kg')?.weight).toBe(100);
+      expect(getLastWeightInUnit('bench-press', 'lb')).toBeNull();
+    });
+
+    it('reads a pre-#42 entry, which carries no unit, as lb', () => {
+      useWeightHistoryStore.setState({
+        history: {
+          'bench-press': {
+            exerciseId: 'bench-press',
+            lastWeight: 135,
+            recentWeights: [{ weight: 135, timestamp: '2026-01-01T00:00:00.000Z' }],
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        },
+      });
+
+      const { getLastWeightInUnit } = useWeightHistoryStore.getState();
+      expect(getLastWeightInUnit('bench-press', 'lb')?.weight).toBe(135);
+      expect(getLastWeightInUnit('bench-press', 'kg')).toBeNull();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // When the cache has rolled over (issue #85 step 2)
+  // ---------------------------------------------------------------------------
+  // The cache holds five entries per movement. Five sets logged in the other
+  // unit evict a real session from it, and the field would then open empty
+  // although the session it should read is still saved. `prefillWeight` reads
+  // the workouts behind the cache for exactly this case.
+
+  describe('the pre-fill behind the cache', () => {
+    const SESSION_START = Date.parse('2026-10-26T18:00:00.000Z');
+
+    /** A saved kg session of the bench at 100 kg. */
+    const kgSession = (): WorkoutLog =>
+      ({
+        id: 'kg-session',
+        timestamp: '2026-10-20T12:00:00.000Z',
+        claimedAt: '2026-10-20T12:30:00.000Z',
+        durationSeconds: 1800,
+        streakDays: 1,
+        sessionIntent: 'normal',
+        weightUnit: 'kg',
+        exercises: [
+          {
+            id: 'bench_press-0',
+            name: 'Bench Press',
+            muscleGroups: ['chest'],
+            restSeconds: 90,
+            completed: true,
+            sets: [{ reps: 5, weight: 100, logged: true, isPR: false, isRepPR: false }],
+          },
+        ],
+      }) as WorkoutLog;
+
+    const fill = (logs: WorkoutLog[], units: 'lb' | 'kg') =>
+      prefillWeight({
+        cached: useWeightHistoryStore.getState().getLastWeightInUnit('bench_press-0', units),
+        logs,
+        exerciseId: 'bench_press-0',
+        before: SESSION_START,
+        units,
+      });
+
+    it('still finds the kg weight after five lb writes push it out of the cache', () => {
+      const { saveWeight } = useWeightHistoryStore.getState();
+
+      saveWeight('bench_press-0', 100, 'kg');
+      for (const weight of [185, 190, 195, 200, 205]) {
+        saveWeight('bench_press-0', weight, 'lb');
+      }
+
+      // The cache itself has lost it — that is the defect this guards.
+      expect(
+        useWeightHistoryStore.getState().getLastWeightInUnit('bench_press-0', 'kg')
+      ).toBeNull();
+      // The saved session has not, so the field opens on it.
+      expect(fill([kgSession()], 'kg')).toBe(100);
+      // And the lb side still answers from the cache, which is newer than the
+      // saved kg session it is ranked against.
+      expect(fill([kgSession()], 'lb')).toBe(205);
+    });
+
+    it('lets a workout added through History beat an older remembered weight', () => {
+      // A workout typed in or imported writes no cache entry, so the cache can
+      // hold a weight from before a session the lifter has since trained.
+      useWeightHistoryStore.setState({
+        history: {
+          'bench_press-0': {
+            exerciseId: 'bench_press-0',
+            lastWeight: 85,
+            lastUnit: 'kg',
+            recentWeights: [{ weight: 85, timestamp: '2026-10-10T12:00:00.000Z', unit: 'kg' }],
+            updatedAt: '2026-10-10T12:00:00.000Z',
+          },
+        },
+      });
+
+      // The saved session is ten days newer than the remembered weight.
+      expect(fill([kgSession()], 'kg')).toBe(100);
+    });
+
+    it('keeps a weight logged in this session over an earlier saved one', () => {
+      // saveWeight stamps now, which is after every workout this reads.
+      useWeightHistoryStore.getState().saveWeight('bench_press-0', 125, 'kg');
+
+      expect(fill([kgSession()], 'kg')).toBe(125);
+    });
+
+    it('opens empty when no session in that unit exists either', () => {
+      const { saveWeight } = useWeightHistoryStore.getState();
+
+      for (const weight of [185, 190, 195, 200, 205, 210]) {
+        saveWeight('bench_press-0', weight, 'lb');
+      }
+
+      expect(fill([], 'kg')).toBeNull();
+    });
+
+    it('reads a saved workout with no unit of its own as the setting', () => {
+      const legacy = { ...kgSession(), id: 'legacy' } as WorkoutLog;
+      // biome-ignore lint/performance/noDelete: the point is a log without the field
+      delete (legacy as { weightUnit?: 'lb' | 'kg' }).weightUnit;
+
+      expect(fill([legacy], 'kg')).toBe(100);
+      expect(fill([legacy], 'lb')).toBe(100);
     });
   });
 

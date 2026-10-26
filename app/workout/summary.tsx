@@ -23,6 +23,7 @@ import { useLocalDay } from '@/hooks';
 import { volumeComparison } from '@/lib/summary-comparison';
 import { sessionRecords } from '@/lib/summary-records';
 import { goalInEffect } from '@/lib/weekly-goal';
+import { effectiveWeightUnit } from '@/lib/weight-unit';
 import { type WorkoutSummary, calculateWorkoutSummary } from '@/lib/workout-summary';
 import {
   useBaselineStore,
@@ -49,8 +50,11 @@ export default function WorkoutSummaryScreen() {
     workoutId ? s.logs.find((l) => l.id === workoutId) : undefined
   );
   const hydrated = useWorkoutHistoryStore((s) => s.hydrated);
-  // Logs store no unit, so like History this reads the current setting.
-  const units = useSettingsStore((s) => s.units);
+  const setting = useSettingsStore((s) => s.units);
+  // Every number on this screen is this session's own, so it is labelled with
+  // the unit the session was logged in (#85). The setting only answers for a
+  // log written before that unit was recorded.
+  const units = log ? effectiveWeightUnit(log, setting) : setting;
 
   // A workout finished at 23:58 is still on screen at 00:02, and the goal the
   // prompt offers belongs to whichever week it is now.
@@ -75,9 +79,18 @@ export default function WorkoutSummaryScreen() {
   // recomputed when it is claimed — which is also when the streak line moves.
   const logs = useWorkoutHistoryStore((s) => s.logs);
 
-  const records = useMemo(() => (log ? sessionRecords(logs, log) : []), [logs, log]);
+  // Both read the saved history in THIS session's unit: a kg set is only ever
+  // measured against kg, and a volume delta across a unit change would be
+  // arithmetic on two different scales.
+  const records = useMemo(
+    () => (log ? sessionRecords(logs, log, setting) : []),
+    [logs, log, setting]
+  );
 
-  const comparison = useMemo(() => (log ? volumeComparison(logs, log) : null), [logs, log]);
+  const comparison = useMemo(
+    () => (log ? volumeComparison(logs, log, setting) : null),
+    [logs, log, setting]
+  );
 
   // The name this workout had when the session ran. Naming the reference is the
   // point of the sentence, so a log that carries no name gets no sentence

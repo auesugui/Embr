@@ -16,9 +16,12 @@
 // from the exercise list — which would find Push A for most people and quietly
 // compare the wrong two sessions for anyone who edits their templates.
 //
-// Logs carry no weight unit, so the delta is labelled with the current setting,
-// exactly as the Volume figure and every other weight in the app already is. It
-// converts nothing (#85 covers recording the unit).
+// AND THE SAME UNIT. Across a unit change the subtraction is meaningless, so
+// it does not happen: the comparison looks for the last same-workout session in
+// the same unit as this one and reaches past a session in the other unit to
+// find it. When there is none the line is simply absent — the same treatment a
+// workout you have never run already gets, with no placeholder saying so
+// (#85 step 2, Q4). Nothing is converted.
 //
 // The workout's NAME is stored on the log too, not looked up when the summary
 // renders. Renaming or deleting a template must not change what an old session
@@ -27,6 +30,7 @@
 import type { TemplateDay, WorkoutTemplateDefinition } from '@/data';
 import { formatProgressDate } from '@/lib/exercise-progress';
 import { getClaimedLogs } from '@/lib/history-stats';
+import { effectiveWeightUnit } from '@/lib/weight-unit';
 import { formatWeight, totalVolume } from '@/lib/workout-summary';
 import type { WeightUnit, WorkoutLog } from '@/types';
 
@@ -56,11 +60,16 @@ function sameWorkout(log: WorkoutLog, other: WorkoutLog): boolean {
  * Earlier by the workout's own timestamp, so a session typed in for a past date
  * lands where it belongs. A session with no volume at all is skipped rather
  * than compared against — "down 7,410 lb from a day of planks" is arithmetic,
- * not information.
+ * not information — and so is one logged in the other unit.
  */
-export function previousSession(logs: WorkoutLog[], log: WorkoutLog): WorkoutLog | null {
+export function previousSession(
+  logs: WorkoutLog[],
+  log: WorkoutLog,
+  setting: WeightUnit
+): WorkoutLog | null {
   const at = Date.parse(log.timestamp);
   if (Number.isNaN(at)) return null;
+  const unit = effectiveWeightUnit(log, setting);
 
   // getClaimedLogs is newest-first, so the first match is the most recent one.
   return (
@@ -68,6 +77,7 @@ export function previousSession(logs: WorkoutLog[], log: WorkoutLog): WorkoutLog
       (other) =>
         other.id !== log.id &&
         sameWorkout(log, other) &&
+        effectiveWeightUnit(other, setting) === unit &&
         Date.parse(other.timestamp) < at &&
         totalVolume(other.exercises) > 0
     ) ?? null
@@ -78,13 +88,18 @@ export function previousSession(logs: WorkoutLog[], log: WorkoutLog): WorkoutLog
  * How this session's volume compares, or null when there is nothing to say.
  *
  * Null covers a first session, a workout never run before, a session that moved
- * no weight, and every log written before the workout identity was recorded.
+ * no weight, the first run of a workout in a new unit, and every log written
+ * before the workout identity was recorded.
  */
-export function volumeComparison(logs: WorkoutLog[], log: WorkoutLog): VolumeComparison | null {
+export function volumeComparison(
+  logs: WorkoutLog[],
+  log: WorkoutLog,
+  setting: WeightUnit
+): VolumeComparison | null {
   const volume = totalVolume(log.exercises);
   if (volume <= 0) return null;
 
-  const previous = previousSession(logs, log);
+  const previous = previousSession(logs, log, setting);
   if (!previous) return null;
 
   const before = totalVolume(previous.exercises);

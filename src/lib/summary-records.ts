@@ -20,15 +20,23 @@
 // metric — weight for a weighted movement — so that session does not beat its
 // earlier best and gets no row. The block is the old number and the new one in
 // a single number space; a rep PR at an unchanged weight has no such pair.
+//
+// AND NEVER ACROSS UNITS. A kg set is only ever measured against the kg
+// series, so the arrow in a row can never read 195 → 90. The first session in
+// a new unit therefore sets first records, and a first record is not a row —
+// after a switch the block goes quiet for one cycle and the row tags do the
+// talking (#85 step 2, Q2).
 
 import {
   type ProgressMetric,
   buildExerciseProgress,
   progressRecords,
+  seriesForUnit,
 } from '@/lib/exercise-progress';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { baseExerciseId } from '@/lib/metric';
-import type { WorkoutLog } from '@/types';
+import { effectiveWeightUnit } from '@/lib/weight-unit';
+import type { WeightUnit, WorkoutLog } from '@/types';
 
 /** How many PRs the block lists before it collapses the rest. */
 export const PR_ROWS_SHOWN = 3;
@@ -67,15 +75,20 @@ export interface SessionRecord {
  * series into weights, and reopening an old summary would lose a reps record
  * it correctly showed at the time. A summary states what that session did.
  */
-export function sessionRecords(logs: WorkoutLog[], log: WorkoutLog): SessionRecord[] {
+export function sessionRecords(
+  logs: WorkoutLog[],
+  log: WorkoutLog,
+  setting: WeightUnit
+): SessionRecord[] {
   const at = Date.parse(log.timestamp);
   const earlier = getClaimedLogs(logs).filter(
     (l) => l.id !== log.id && (Number.isNaN(at) || Date.parse(l.timestamp) < at)
   );
-  const series = buildExerciseProgress([
-    ...earlier,
-    { ...log, claimedAt: log.claimedAt ?? log.timestamp },
-  ]);
+  const series = buildExerciseProgress(
+    [...earlier, { ...log, claimedAt: log.claimedAt ?? log.timestamp }],
+    setting
+  );
+  const unit = effectiveWeightUnit(log, setting);
 
   const order = new Map<string, number>();
   log.exercises.forEach((exercise, index) => {
@@ -89,7 +102,12 @@ export function sessionRecords(logs: WorkoutLog[], log: WorkoutLog): SessionReco
     const position = order.get(exercise.exerciseId);
     if (position === undefined) continue;
 
-    const beaten = progressRecords(exercise.comparable).find((r) => r.logId === log.id);
+    // This session's own unit, and only it. The other unit's series holds a
+    // bigger-looking number that this set never competed with.
+    const side = seriesForUnit(exercise, unit);
+    if (side === null) continue;
+
+    const beaten = progressRecords(side.comparable).find((r) => r.logId === log.id);
     if (!beaten || beaten.previous === null) continue;
 
     records.push({
@@ -97,7 +115,7 @@ export function sessionRecords(logs: WorkoutLog[], log: WorkoutLog): SessionReco
       record: {
         exerciseId: exercise.exerciseId,
         name: exercise.name,
-        metric: exercise.metric,
+        metric: side.metric,
         previous: beaten.previous,
         value: beaten.value,
       },

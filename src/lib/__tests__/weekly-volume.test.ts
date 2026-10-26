@@ -6,7 +6,7 @@
 // at all, and the in-progress week, which is a running total and is never the
 // subject of a comparison.
 
-import type { Exercise, LoggedSet, WorkoutLog } from '@/types';
+import type { Exercise, LoggedSet, WeightUnit, WorkoutLog } from '@/types';
 
 import {
   STRIP_WEEKS,
@@ -60,16 +60,18 @@ const worth = (volume: number) => [lift([set({ weight: volume / 10 })])];
 // Sat 24 October 2026, inside the week of Mon 19 October.
 const TODAY = new Date(2026, 9, 24, 11, 0);
 
-const strip = (logs: WorkoutLog[], now: Date = TODAY) => {
-  const value = volumeStrip(logs, now);
+const strip = (logs: WorkoutLog[], setting: WeightUnit = 'lb', now: Date = TODAY) => {
+  const value = volumeStrip(logs, now, setting);
   if (value === null) throw new Error('expected a strip');
   return value;
 };
 
 describe('volumeStrip', () => {
   it('is null for someone with no saved workouts', () => {
-    expect(volumeStrip([], TODAY)).toBeNull();
-    expect(volumeStrip([{ ...log(2026, 10, 20, worth(1000)), claimedAt: null }], TODAY)).toBeNull();
+    expect(volumeStrip([], TODAY, 'lb')).toBeNull();
+    expect(
+      volumeStrip([{ ...log(2026, 10, 20, worth(1000)), claimedAt: null }], TODAY, 'lb')
+    ).toBeNull();
   });
 
   it('ends with the week holding today and never runs past twelve', () => {
@@ -134,13 +136,13 @@ describe('volumeStrip', () => {
 
 describe('describeWindow', () => {
   it('counts the weeks it is showing, singular included', () => {
-    expect(describeWindow(strip([log(2026, 10, 20, worth(1000))]), 'lb')).toBe('lb · 1 week');
-    expect(describeWindow(strip([log(2026, 10, 13, worth(1000))]), 'kg')).toBe('kg · 2 weeks');
+    expect(describeWindow(strip([log(2026, 10, 20, worth(1000))]))).toBe('lb · 1 week');
+    expect(describeWindow(strip([log(2026, 10, 13, worth(1000))], 'kg'))).toBe('kg · 2 weeks');
   });
 });
 
 describe('volumeReading', () => {
-  const read = (logs: WorkoutLog[]) => volumeReading(strip(logs), 'lb');
+  const read = (logs: WorkoutLog[]) => volumeReading(strip(logs));
 
   it('has no comparison in the first week, only a running total', () => {
     expect(read([log(2026, 10, 20, worth(12400))])).toBe(
@@ -193,14 +195,215 @@ describe('volumeReading', () => {
   });
 
   it('labels the figures with the unit setting', () => {
-    expect(volumeReading(strip([log(2026, 10, 20, worth(12400))]), 'kg')).toContain('12,400 kg');
+    expect(volumeReading(strip([log(2026, 10, 20, worth(12400))], 'kg'))).toContain('12,400 kg');
   });
 
   it('sets the figures apart from the words', () => {
-    const segments = volumeReadingSegments(strip([log(2026, 10, 20, worth(12400))]), 'lb');
+    const segments = volumeReadingSegments(strip([log(2026, 10, 20, worth(12400))]));
 
     expect(segments.filter((segment) => segment.strong).map((segment) => segment.text)).toEqual([
       '12,400 lb',
     ]);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// One unit per strip (issue #85 step 2)
+// -----------------------------------------------------------------------------
+// A week with sessions in both units has no honest total, so the strip counts
+// the current unit only. What has to hold: a lifter with one unit gets today's
+// strip, and a trained week whose sessions were all excluded is still a trained
+// week rather than an empty track.
+
+describe('volumeStrip — units', () => {
+  /** A log worth `volume`, stamped with the unit it was logged in. */
+  const inUnit = (
+    year: number,
+    month: number,
+    day: number,
+    volume: number,
+    weightUnit: WeightUnit,
+    hour = 9
+  ): WorkoutLog => ({ ...log(year, month, day, worth(volume), hour), weightUnit });
+
+  it('counts the current unit and leaves the other out of the total', () => {
+    const value = strip(
+      [inUnit(2026, 10, 20, 4980, 'kg'), inUnit(2026, 10, 20, 21300, 'lb', 18)],
+      'kg'
+    );
+    const week = value.weeks[value.weeks.length - 1];
+
+    expect(week.volume).toBe(4980);
+    expect(week.excluded).toBe(1);
+    expect(week.trained).toBe(true);
+  });
+
+  it('starts the window at the first week in this unit', () => {
+    const value = strip(
+      [
+        inUnit(2025, 1, 6, 1000, 'lb'),
+        inUnit(2026, 10, 12, 4980, 'kg'),
+        inUnit(2026, 10, 20, 5270, 'kg'),
+      ],
+      'kg'
+    );
+
+    expect(value.weeks.map((week) => week.weekKey)).toEqual(['2026-10-12', '2026-10-19']);
+    expect(value.split).toBe(true);
+  });
+
+  it('keeps a week whose only sessions were in the other unit as trained', () => {
+    const value = strip(
+      [
+        inUnit(2026, 10, 5, 4000, 'kg'),
+        inUnit(2026, 10, 13, 21300, 'lb'),
+        inUnit(2026, 10, 20, 4000, 'kg'),
+      ],
+      'kg'
+    );
+    const mixed = value.weeks.find((week) => week.weekKey === '2026-10-12');
+
+    expect(mixed?.trained).toBe(true);
+    expect(mixed?.volume).toBe(0);
+    expect(mixed?.excluded).toBe(1);
+  });
+
+  it('is null when no saved workout is in this unit', () => {
+    expect(volumeStrip([inUnit(2026, 10, 20, 4980, 'kg')], TODAY, 'lb')).toBeNull();
+  });
+
+  it('moves the logs that carry no unit with the setting', () => {
+    const logs = [log(2026, 10, 20, worth(4980)), inUnit(2026, 10, 20, 21300, 'lb', 18)];
+
+    // On lb both read as lb, so nothing is excluded and the window is whole.
+    expect(strip(logs, 'lb').weeks[0].excluded).toBe(0);
+    expect(strip(logs, 'lb').split).toBe(false);
+    // On kg the legacy session is kg and the stamped one is left out.
+    expect(strip(logs, 'kg').weeks[0].excluded).toBe(1);
+  });
+
+  it('leaves a one-unit lifter’s strip exactly as it was', () => {
+    const logs = [log(2026, 10, 13, worth(48900)), log(2026, 10, 20, worth(10000))];
+    const value = strip(logs);
+
+    expect(value.split).toBe(false);
+    expect(value.weeks.every((week) => week.excluded === 0)).toBe(true);
+    expect(describeWindow(value)).toBe('lb · 2 weeks');
+  });
+});
+
+describe('describeWindow — units', () => {
+  it('carries the window’s start once the history holds both units', () => {
+    const logs = [
+      { ...log(2026, 10, 12, worth(4980)), weightUnit: 'kg' as WeightUnit },
+      { ...log(2026, 10, 20, worth(5270)), weightUnit: 'lb' as WeightUnit },
+    ];
+
+    expect(describeWindow(strip(logs, 'kg'))).toBe('kg · since Oct 12');
+  });
+});
+
+describe('volumeReading — units', () => {
+  const inUnit = (
+    year: number,
+    month: number,
+    day: number,
+    volume: number,
+    weightUnit: WeightUnit,
+    hour = 9
+  ): WorkoutLog => ({ ...log(year, month, day, worth(volume), hour), weightUnit });
+
+  it('names the excluded session instead of comparing', () => {
+    const logs = [
+      inUnit(2026, 10, 12, 41450, 'kg'),
+      inUnit(2026, 10, 15, 21300, 'lb'),
+      inUnit(2026, 10, 20, 32900, 'kg'),
+    ];
+
+    expect(volumeReading(strip(logs, 'kg'))).toBe(
+      '32,900 kg so far this week. Last full week 41,450 kg, with one lb session not counted.'
+    );
+  });
+
+  it('counts more than one excluded session in the plural', () => {
+    const logs = [
+      inUnit(2026, 10, 12, 41450, 'kg'),
+      inUnit(2026, 10, 15, 21300, 'lb'),
+      inUnit(2026, 10, 16, 20000, 'lb'),
+      inUnit(2026, 10, 20, 32900, 'kg'),
+    ];
+
+    expect(volumeReading(strip(logs, 'kg'))).toContain('with 2 lb sessions not counted.');
+  });
+
+  // The comparison reads the last full week AND the one before it, so a
+  // session left out of either leaves the percentage resting on part of a
+  // week. The window here is the weeks of Oct 5, Oct 12 and Oct 19 (today).
+  describe('a comparison with a session left out of it', () => {
+    const weeks = (over: { baseline?: WorkoutLog[]; lastFull?: WorkoutLog[] } = {}) => [
+      inUnit(2026, 10, 5, 100000, 'kg'),
+      ...(over.baseline ?? []),
+      inUnit(2026, 10, 12, 104000, 'kg'),
+      ...(over.lastFull ?? []),
+      inUnit(2026, 10, 20, 61750, 'kg'),
+    ];
+
+    it('prints the percentage when neither compared week left anything out', () => {
+      // The lb session is in the week in progress, which is never compared.
+      const logs = [...weeks(), inUnit(2026, 10, 21, 21300, 'lb')];
+
+      expect(volumeReading(strip(logs, 'kg'))).toBe(
+        '61,750 kg so far this week. Last full week 104,000 kg, up 4 % on the one before.'
+      );
+    });
+
+    it('drops the percentage when the week being compared left one out', () => {
+      const logs = weeks({ lastFull: [inUnit(2026, 10, 14, 21300, 'lb')] });
+
+      expect(volumeReading(strip(logs, 'kg'))).toBe(
+        '61,750 kg so far this week. Last full week 104,000 kg, with one lb session not counted.'
+      );
+    });
+
+    it('drops it when the week it is measured AGAINST left one out', () => {
+      const logs = weeks({ baseline: [inUnit(2026, 10, 7, 21300, 'lb')] });
+
+      expect(volumeReading(strip(logs, 'kg'))).toBe(
+        '61,750 kg so far this week. Last full week 104,000 kg, with one lb session not counted.'
+      );
+    });
+
+    it('counts both weeks together when each left one out', () => {
+      const logs = weeks({
+        baseline: [inUnit(2026, 10, 7, 21300, 'lb')],
+        lastFull: [inUnit(2026, 10, 14, 20000, 'lb')],
+      });
+
+      expect(volumeReading(strip(logs, 'kg'))).toBe(
+        '61,750 kg so far this week. Last full week 104,000 kg, with 2 lb sessions not counted.'
+      );
+    });
+
+    it('still reads as one when both left-out sessions fall in one week', () => {
+      const logs = weeks({
+        baseline: [inUnit(2026, 10, 7, 21300, 'lb'), inUnit(2026, 10, 8, 20000, 'lb')],
+      });
+
+      expect(volumeReading(strip(logs, 'kg'))).toContain('with 2 lb sessions not counted.');
+    });
+  });
+
+  it('names the unit in the first week after a switch', () => {
+    const logs = [inUnit(2026, 10, 6, 21300, 'lb'), inUnit(2026, 10, 20, 4980, 'kg')];
+
+    expect(volumeReading(strip(logs, 'kg'))).toBe(
+      '4,980 kg so far this week. Your first full week in kg ends Sunday.'
+    );
+  });
+
+  it('leaves the first-week sentence alone for a lifter with one unit', () => {
+    expect(volumeReading(strip([log(2026, 10, 20, worth(12400))]))).toBe(
+      '12,400 lb so far this week. Your first full week ends Sunday.'
+    );
   });
 });

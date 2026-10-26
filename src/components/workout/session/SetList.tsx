@@ -22,11 +22,14 @@ interface SetListProps {
   /** The prescribed count, highlighted in the ladder. Null outside a block. */
   target: number | null;
   units: WeightUnit;
-  /** Last weight used for this movement, for the unlogged-row hint. */
+  /**
+   * Last weight used for this movement IN `units`, for the unlogged-row hint.
+   *
+   * Already unit-matched by the caller, because that is what the next tap will
+   * log: the pre-fill never crosses units (#85 step 2), so a movement whose
+   * only history is in the other unit reads like one you have never logged.
+   */
   lastWeight: number | null;
-  lastWeightUnit: WeightUnit;
-  /** Whether that remembered weight was logged in the current unit. */
-  unitMatches: boolean;
   onQuickLog: (exerciseIndex: number, setIndex: number, reps: number) => void;
   onCustomInput: (exerciseIndex: number, setIndex: number) => void;
   onEditSet: (exerciseIndex: number, setIndex: number) => void;
@@ -41,8 +44,6 @@ export function SetList({
   target,
   units,
   lastWeight,
-  lastWeightUnit,
-  unitMatches,
   onQuickLog,
   onCustomInput,
   onEditSet,
@@ -68,9 +69,7 @@ export function SetList({
             {!set.logged && (
               <Text style={styles.weightHint}>
                 {hasWeight
-                  ? unitMatches
-                    ? `@ ${lastWeight} ${lastWeightUnit} · tap ... to change`
-                    : `last: ${lastWeight} ${lastWeightUnit} · tap ... to set ${units}`
+                  ? `@ ${lastWeight} ${units} · tap ... to change`
                   : 'no weight · tap ... to set'}
               </Text>
             )}

@@ -56,7 +56,7 @@ describe('sessionRecords', () => {
       exercise({ id: 'overhead_press-1', name: 'Overhead Press', sets: [set({ weight: 120 })] }),
     ]);
 
-    expect(sessionRecords([today, earlier], today)).toEqual([
+    expect(sessionRecords([today, earlier], today, 'lb')).toEqual([
       {
         exerciseId: 'bench_press',
         name: 'Bench Press',
@@ -79,7 +79,7 @@ describe('sessionRecords', () => {
     // that beat a number you already had.
     const today = log(at(0), [exercise({ sets: [set({ weight: 165, isPR: true })] })]);
 
-    expect(sessionRecords([today], today)).toEqual([]);
+    expect(sessionRecords([today], today, 'lb')).toEqual([]);
   });
 
   it('works before the workout is saved', () => {
@@ -89,14 +89,14 @@ describe('sessionRecords', () => {
       claimedAt: null,
     };
 
-    expect(sessionRecords([today, earlier], today).map((r) => r.value)).toEqual([200]);
+    expect(sessionRecords([today, earlier], today, 'lb').map((r) => r.value)).toEqual([200]);
   });
 
   it('leaves out a session that matched its earlier best without beating it', () => {
     const earlier = log(at(7), [exercise({ sets: [set({ weight: 200 })] })]);
     const today = log(at(0), [exercise({ sets: [set({ weight: 200 })] })]);
 
-    expect(sessionRecords([today, earlier], today)).toEqual([]);
+    expect(sessionRecords([today, earlier], today, 'lb')).toEqual([]);
   });
 
   it('leaves out more reps at a weight already lifted, which the series does not measure', () => {
@@ -105,7 +105,7 @@ describe('sessionRecords', () => {
     const earlier = log(at(7), [exercise({ sets: [set({ weight: 200, reps: 5 })] })]);
     const today = log(at(0), [exercise({ sets: [set({ weight: 200, reps: 8, isRepPR: true })] })]);
 
-    expect(sessionRecords([today, earlier], today)).toEqual([]);
+    expect(sessionRecords([today, earlier], today, 'lb')).toEqual([]);
   });
 
   it('reads a hold in seconds', () => {
@@ -119,7 +119,7 @@ describe('sessionRecords', () => {
     const earlier = log(at(6), [plank(45)]);
     const today = log(at(0), [plank(60)]);
 
-    expect(sessionRecords([today, earlier], today)).toEqual([
+    expect(sessionRecords([today, earlier], today, 'lb')).toEqual([
       { exerciseId: 'plank', name: 'Plank', metric: 'time', previous: 45, value: 60 },
     ]);
   });
@@ -134,7 +134,7 @@ describe('sessionRecords', () => {
     const earlier = log(at(5), [pullUp(11)]);
     const today = log(at(0), [pullUp(13)]);
 
-    expect(sessionRecords([today, earlier], today)).toEqual([
+    expect(sessionRecords([today, earlier], today, 'lb')).toEqual([
       { exerciseId: 'pull_ups', name: 'Pull-up', metric: 'reps', previous: 11, value: 13 },
     ]);
   });
@@ -153,7 +153,7 @@ describe('sessionRecords', () => {
     // The middle movement made the biggest jump; it still reads second.
     const today = log(at(0), movements([105, 160, 110]));
 
-    expect(sessionRecords([today, earlier], today).map((r) => r.name)).toEqual([
+    expect(sessionRecords([today, earlier], today, 'lb').map((r) => r.name)).toEqual([
       'Lift 0',
       'Lift 1',
       'Lift 2',
@@ -174,7 +174,7 @@ describe('sessionRecords', () => {
     const earlier = log(at(4), movements(base));
     const today = log(at(0), movements(base.map((w) => w + 5)));
 
-    const records = sessionRecords([today, earlier], today);
+    const records = sessionRecords([today, earlier], today, 'lb');
     expect(records).toHaveLength(6);
     expect(records.length).toBeGreaterThanOrEqual(PR_COLLAPSE_AT);
     expect(records.slice(0, PR_ROWS_SHOWN).map((r) => r.name)).toEqual([
@@ -192,7 +192,7 @@ describe('sessionRecords', () => {
     const earlier = log(at(14), [exercise({ sets: [set({ weight: 195 })] })]);
     const today = log(at(0), [exercise({ sets: [set({ weight: 200 })] })]);
 
-    expect(sessionRecords([today, abandoned, earlier], today)).toEqual([
+    expect(sessionRecords([today, abandoned, earlier], today, 'lb')).toEqual([
       {
         exerciseId: 'bench_press',
         name: 'Bench Press',
@@ -209,7 +209,7 @@ describe('sessionRecords', () => {
     const today = log(at(7), [exercise({ sets: [set({ weight: 200 })] })]);
     const since = log(at(0), [exercise({ sets: [set({ weight: 225 })] })], 'since');
 
-    expect(sessionRecords([since, today, earlier], today)).toEqual([
+    expect(sessionRecords([since, today, earlier], today, 'lb')).toEqual([
       {
         exerciseId: 'bench_press',
         name: 'Bench Press',
@@ -231,7 +231,7 @@ describe('sessionRecords', () => {
     const today = log(at(7), [pullUp(13)]);
     const weighted = log(at(0), [pullUp(5, 45)], 'weighted');
 
-    expect(sessionRecords([weighted, today, earlier], today)).toEqual([
+    expect(sessionRecords([weighted, today, earlier], today, 'lb')).toEqual([
       { exerciseId: 'pull_ups', name: 'Pull-up', metric: 'reps', previous: 11, value: 13 },
     ]);
   });
@@ -244,6 +244,66 @@ describe('sessionRecords', () => {
       exercise({ id: 'bench_press-4', sets: [set({ weight: 150 })] }),
     ]);
 
-    expect(sessionRecords([today, earlier], today)).toHaveLength(1);
+    expect(sessionRecords([today, earlier], today, 'lb')).toHaveLength(1);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Records never cross units (issue #85 step 2)
+// -----------------------------------------------------------------------------
+
+describe('sessionRecords — units', () => {
+  const inUnit = (
+    timestamp: string,
+    exercises: Exercise[],
+    weightUnit: 'lb' | 'kg',
+    id = timestamp
+  ): WorkoutLog => ({ ...log(timestamp, exercises, id), weightUnit });
+
+  it('gives the first session in a new unit no row, as a first record', () => {
+    // The arrow in a row can never read 195 → 90, so the kg session sets a
+    // first kg record — and #80 keeps first records out of the block.
+    const earlier = inUnit(at(7), [exercise({ sets: [set({ weight: 195 })] })], 'lb', 'earlier');
+    const today = inUnit(at(0), [exercise({ sets: [set({ weight: 90 })] })], 'kg', 'today');
+
+    expect(sessionRecords([today, earlier], today, 'lb')).toEqual([]);
+  });
+
+  it('measures a kg session against the kg record, reaching past the lb ones', () => {
+    const logs = [
+      inUnit(at(20), [exercise({ sets: [set({ weight: 195 })] })], 'lb', 'lb-a'),
+      inUnit(at(10), [exercise({ sets: [set({ weight: 85 })] })], 'kg', 'kg-a'),
+    ];
+    const today = inUnit(at(0), [exercise({ sets: [set({ weight: 90 })] })], 'kg', 'today');
+
+    expect(sessionRecords([...logs, today], today, 'lb')).toEqual([
+      {
+        exerciseId: 'bench_press',
+        name: 'Bench Press',
+        metric: 'weight',
+        previous: 85,
+        value: 90,
+      },
+    ]);
+  });
+
+  it('does not count a heavier session in the other unit as the record to beat', () => {
+    // 90 kg beats 85 kg. That 195 lb session is a bigger number and a
+    // different fact, and it must not suppress the row.
+    const logs = [
+      inUnit(at(10), [exercise({ sets: [set({ weight: 85 })] })], 'kg', 'kg-a'),
+      inUnit(at(5), [exercise({ sets: [set({ weight: 195 })] })], 'lb', 'lb-a'),
+    ];
+    const today = inUnit(at(0), [exercise({ sets: [set({ weight: 90 })] })], 'kg', 'today');
+
+    expect(sessionRecords([...logs, today], today, 'lb').map((r) => r.value)).toEqual([90]);
+  });
+
+  it('reads a session with no unit against the setting’s side', () => {
+    const earlier = log(at(7), [exercise({ sets: [set({ weight: 195 })] })], 'earlier');
+    const today = log(at(0), [exercise({ sets: [set({ weight: 200 })] })], 'today');
+
+    // Both sessions follow the setting, so they are one series on either.
+    expect(sessionRecords([today, earlier], today, 'kg').map((r) => r.value)).toEqual([200]);
   });
 });

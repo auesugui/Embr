@@ -8,6 +8,11 @@
 // A bar is a readout and does nothing when tapped: at 17 px it is well under a
 // touch target, and a week filter beside the day filter needs a rule for what
 // a day tap means while a week is selected.
+//
+// A RINGED TRACK is a week that also held a session in the other unit, which
+// the strip does not count (#85 step 2). The ring is what stops the short bar
+// from reading as a light week, and the sentence underneath names what was left
+// out. The ring sits outside the track so the bar keeps its true height.
 
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -20,21 +25,20 @@ import {
   volumeReadingSegments,
 } from '@/lib/weekly-volume';
 import { radius, roles, spacing, textStyles } from '@/theme';
-import type { WeightUnit } from '@/types';
 
 const TRACK_HEIGHT = 52;
 const BAR_WIDTH = 17;
 /** The smallest mark that still says you were here — a week of holds. */
 const ZERO_TICK = 3;
 
-export function WeeklyVolumeStrip({ strip, units }: { strip: VolumeStrip; units: WeightUnit }) {
-  const reading = volumeReading(strip, units);
+export function WeeklyVolumeStrip({ strip }: { strip: VolumeStrip }) {
+  const reading = volumeReading(strip);
 
   return (
     <View style={styles.card}>
       <View style={styles.head}>
         <Text style={styles.heading}>Weekly volume</Text>
-        <Text style={styles.window}>{describeWindow(strip, units)}</Text>
+        <Text style={styles.window}>{describeWindow(strip)}</Text>
       </View>
 
       <View style={styles.bars} accessibilityRole="image" accessibilityLabel={reading}>
@@ -49,7 +53,7 @@ export function WeeklyVolumeStrip({ strip, units }: { strip: VolumeStrip; units:
       </View>
 
       <Text style={styles.reading}>
-        {volumeReadingSegments(strip, units).map((segment) => (
+        {volumeReadingSegments(strip).map((segment) => (
           <Text key={segment.id} style={segment.strong ? styles.readingValue : undefined}>
             {segment.text}
           </Text>
@@ -67,6 +71,7 @@ function Bar({ week, max }: { week: VolumeWeek; max: number }) {
 
   return (
     <View style={styles.track}>
+      {week.excluded > 0 && <View style={styles.ring} />}
       {height > 0 && (
         <View
           style={[
@@ -127,6 +132,19 @@ const styles = StyleSheet.create({
     backgroundColor: roles.border,
     borderRadius: 3,
     justifyContent: 'flex-end',
+  },
+  // Outside the track, not a border on it: a border on RN is drawn inside the
+  // box, which would take 3 px off the bar's height and make a flagged week
+  // read as a lighter one than it was.
+  ring: {
+    position: 'absolute',
+    top: -1.5,
+    left: -1.5,
+    right: -1.5,
+    bottom: -1.5,
+    borderWidth: 1.5,
+    borderColor: roles.accent,
+    borderRadius: 4.5,
   },
   fill: {
     width: '100%',

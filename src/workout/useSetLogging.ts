@@ -12,8 +12,8 @@
 import { useState } from 'react';
 
 import { isOpenEnded, usesRestTimer } from '@/lib/blocks';
-import { useWeightHistoryStore, useWorkoutStore } from '@/stores';
-import type { BlockMode, Exercise, WeightUnit } from '@/types';
+import { useWorkoutStore } from '@/stores';
+import type { BlockMode, Exercise } from '@/types';
 import { haptics } from '@/utils/haptics';
 
 interface SetEditState {
@@ -28,9 +28,12 @@ interface UseSetLoggingArgs {
   memberIndexes: number[];
   mode: BlockMode;
   timed: boolean;
-  units: WeightUnit;
-  /** The remembered weight is in the unit being logged in (no conversion, #42). */
-  weightUnitMatches: boolean;
+  /**
+   * The weight to open a set on, already in the unit being logged in.
+   *
+   * The caller owns the unit, so nothing here has to know one: the pre-fill
+   * never crosses units and never converts (#42, #85 step 2).
+   */
   getLastWeight: (exerciseId: string) => number | null;
   logSet: (exerciseIndex: number, setIndex: number, reps: number, weight?: number) => void;
   editSet: (exerciseIndex: number, setIndex: number, reps: number, weight?: number) => void;
@@ -44,8 +47,6 @@ export function useSetLogging({
   memberIndexes,
   mode,
   timed,
-  units,
-  weightUnitMatches,
   getLastWeight,
   logSet,
   editSet,
@@ -106,19 +107,19 @@ export function useSetLogging({
    * the same store the modal path writes to — so quick-taps produce
    * volume/PR-real data without breaking the 3-second rule.
    *
-   * Fallback is `undefined` (→ stored as `null`) when there's no history or
-   * the stored value is non-positive. We deliberately do NOT fall back to 0:
-   * logSet's `weight ?? null` would store 0, `saveWeight(id, 0)` would pollute
-   * weightHistory so the next chip shows "@ 0 lb", and the summary's volume
-   * calc treats null and 0 identically (`(weight ?? 0) * reps`). Null keeps
-   * the set volume-neutral, history-clean, and PR-silent.
+   * Fallback is `undefined` (→ stored as `null`) when there's no history in
+   * this unit or the stored value is non-positive. We deliberately do NOT fall
+   * back to 0: logSet's `weight ?? null` would store 0, `saveWeight(id, 0)`
+   * would pollute weightHistory so the next chip shows "@ 0 lb", and the
+   * summary's volume calc treats null and 0 identically (`(weight ?? 0) *
+   * reps`). Null keeps the set volume-neutral, history-clean, and PR-silent.
    */
   const handleQuickLog = (exerciseIndex: number, setIndex: number, reps: number) => {
     const exercise = exercises[exerciseIndex];
     if (!exercise) return;
 
     const lastWeight = getLastWeight(exercise.id);
-    const quickWeight = lastWeight && lastWeight > 0 && weightUnitMatches ? lastWeight : undefined;
+    const quickWeight = lastWeight && lastWeight > 0 ? lastWeight : undefined;
 
     haptics.success();
     logSet(exerciseIndex, setIndex, reps, quickWeight);
@@ -153,14 +154,10 @@ export function useSetLogging({
   // The set and exercise the modal is pointed at.
   const editingSet = exercises[setEdit.exerciseIndex]?.sets[setEdit.setIndex];
   const editingExercise = exercises[setEdit.exerciseIndex];
-  // Read imperatively rather than by subscribing: the unit only matters at the
-  // moment the modal opens, and a subscription would re-render the whole
-  // session on every unrelated weight write.
-  const editingLastUnit: WeightUnit = editingExercise
-    ? (useWeightHistoryStore.getState().history[editingExercise.id]?.lastUnit ?? 'lb')
-    : 'lb';
-  const suggestedWeight =
-    editingExercise && editingLastUnit === units ? getLastWeight(editingExercise.id) : null;
+  // The last weight recorded in the unit being logged in, never the other
+  // one's number: 275 pre-filled into a kg field loads 275 kg onto a bar that
+  // held 275 lb.
+  const suggestedWeight = editingExercise ? getLastWeight(editingExercise.id) : null;
 
   return {
     setEdit,

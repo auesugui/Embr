@@ -16,13 +16,14 @@ import {
 } from '@/components/workout/session';
 import { blockHintText, describeBlock } from '@/lib/blocks';
 import { exerciseMetric, formatPrescription, uniformMetric } from '@/lib/metric';
-import { restIsUp, useSettingsStore, useWeightHistoryStore, useWorkoutStore } from '@/stores';
+import { restIsUp, useSettingsStore, useWorkoutStore } from '@/stores';
 import { colors, spacing } from '@/theme';
 import { haptics } from '@/utils/haptics';
 import { deriveSessionView } from '@/workout/sessionView';
 import { useSessionActions } from '@/workout/useSessionActions';
 import { useSessionTimers } from '@/workout/useSessionTimers';
 import { useSetLogging } from '@/workout/useSetLogging';
+import { useWeightPrefill } from '@/workout/useWeightPrefill';
 import { useWorkoutActions } from '@/workout/useWorkoutActions';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -45,9 +46,6 @@ export default function WorkoutSessionScreen() {
   // The store's actions, passed on by spread. Each hook below picks the ones
   // it needs out of the bag rather than the screen re-listing them.
   const actions = useWorkoutActions();
-
-  // Weight history for auto-fill
-  const getLastWeight = useWeightHistoryStore((state) => state.getLastWeight);
 
   /**
    * Whether the running-AMRAP scrim has been dismissed for the current window.
@@ -109,28 +107,20 @@ export default function WorkoutSessionScreen() {
     nextGroupLabel,
   } = view;
 
-  // Reactive last-used weight for the current exercise — drives the chip-row
-  // hint AND mirrors what the next quick-tap will log. Subscribing (rather
-  // than calling getLastWeight in render) means a modal save instantly
-  // re-renders the chips with the new weight.
+  // The weight a new set opens with: the remembered one, or the last session
+  // in this unit when the cache has rolled past it. Never the other unit's
+  // number — 275 pre-filled into a kg field is a different bar (#42, #85).
   //
   // `currentExercise` is undefined for one render whenever the store empties
   // underneath a mounted screen — which is exactly what ending a session does.
-  // Optional-chaining here is load-bearing: hooks can't sit below the
-  // `!active || !currentExercise` guard, so an unguarded `.id` throws inside
-  // the selector and takes the whole tree down before the guard can render.
-  const currentWeight = useWeightHistoryStore((state) =>
-    currentExercise ? (state.history[currentExercise.id]?.lastWeight ?? null) : null
-  );
-  // Pre-#42 history has no unit recorded — it was all logged in lb.
-  const currentWeightUnit = useWeightHistoryStore((state) =>
-    currentExercise ? (state.history[currentExercise.id]?.lastUnit ?? 'lb') : 'lb'
-  );
+  // Hooks can't sit below the `!active || !currentExercise` guard, so the id
+  // goes in as null rather than being dereferenced above it.
   const units = useSettingsStore((state) => state.units);
-  // Only auto-fill quick-taps when the remembered weight was logged in the
-  // CURRENT unit — silently reusing "135" across a lb→kg switch would log a
-  // wildly different real-world load. No conversion (issue #42).
-  const weightUnitMatches = currentWeightUnit === units;
+  const { current: currentWeight, weightFor } = useWeightPrefill({
+    exerciseId: currentExercise?.id ?? null,
+    units,
+    startedAt,
+  });
 
   const {
     setEdit,
@@ -147,9 +137,7 @@ export default function WorkoutSessionScreen() {
     memberIndexes: entries.map((e) => e.index),
     mode: currentBlock.mode,
     timed: currentTimed,
-    units,
-    weightUnitMatches,
-    getLastWeight,
+    getLastWeight: weightFor,
     ...actions,
   });
 
@@ -173,8 +161,7 @@ export default function WorkoutSessionScreen() {
   } = useSessionActions({
     view,
     restPaused: restTimer.paused,
-    weightUnitMatches,
-    getLastWeight,
+    getLastWeight: weightFor,
     setScrimDismissed,
     ...actions,
   });
@@ -326,8 +313,6 @@ export default function WorkoutSessionScreen() {
               target={singleTarget}
               units={units}
               lastWeight={currentWeight}
-              lastWeightUnit={currentWeightUnit}
-              unitMatches={weightUnitMatches}
               onQuickLog={handleQuickLog}
               onCustomInput={openEditor}
               onEditSet={openEditor}

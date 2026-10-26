@@ -41,8 +41,12 @@ interface UseSessionActionsArgs extends StoreActions {
   view: SessionView;
   /** The rest timer's paused state, for the overlay's one toggle. */
   restPaused: boolean;
-  /** The remembered weight is in the unit being logged in (no conversion, #42). */
-  weightUnitMatches: boolean;
+  /**
+   * The weight to open a set on, already in the unit being logged in.
+   *
+   * The caller owns the unit, so nothing here has to know one: the pre-fill
+   * never crosses units and never converts (#42, #85 step 2).
+   */
   getLastWeight: (exerciseId: string) => number | null;
   /**
    * Clears the AMRAP scrim's dismissal when a block starts, so the next window
@@ -58,7 +62,6 @@ interface UseSessionActionsArgs extends StoreActions {
 export function useSessionActions({
   view,
   restPaused,
-  weightUnitMatches,
   getLastWeight,
   setScrimDismissed,
   endSession,
@@ -182,7 +185,7 @@ export function useSessionActions({
       if (exercise.sets[openRoundIndex]?.logged) return [];
 
       const lastWeight = getLastWeight(exercise.id);
-      const weight = lastWeight && lastWeight > 0 && weightUnitMatches ? lastWeight : undefined;
+      const weight = lastWeight && lastWeight > 0 ? lastWeight : undefined;
       return [{ exerciseIndex: index, setIndex: openRoundIndex, reps, weight }];
     });
 

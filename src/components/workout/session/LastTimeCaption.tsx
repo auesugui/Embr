@@ -23,7 +23,9 @@ interface LastTimeCaptionProps {
 
 export function LastTimeCaption({ exerciseId }: LastTimeCaptionProps) {
   const logs = useWorkoutHistoryStore((state) => state.logs);
-  const units = useSettingsStore((state) => state.units);
+  // The setting only answers for a workout saved before #85 recorded a unit.
+  // The line itself prints whatever that session was logged in.
+  const setting = useSettingsStore((state) => state.units);
   // The session's own start, not the current time: the line must not change
   // under you mid-session, and a screen that reads the clock at render is
   // wrong for as long as it stays mounted.
@@ -33,7 +35,7 @@ export function LastTimeCaption({ exerciseId }: LastTimeCaptionProps) {
     <Text style={styles.caption} numberOfLines={1} ellipsizeMode="tail">
       {/* No anchor means no session, and nothing for the line to be stale
           against, so every saved workout counts as earlier. */}
-      {lastTimeLine({ logs, exerciseId, before: startedAt ?? Number.POSITIVE_INFINITY, units })}
+      {lastTimeLine({ logs, exerciseId, before: startedAt ?? Number.POSITIVE_INFINITY, setting })}
     </Text>
   );
 }
