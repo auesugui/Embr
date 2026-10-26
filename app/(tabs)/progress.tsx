@@ -15,26 +15,30 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ChevronRight } from '@/components/icons';
 import { ExerciseProgressRow } from '@/components/progress/ExerciseProgressRow';
+import { MuscleBalanceCard } from '@/components/progress/MuscleBalanceCard';
 import { ProgressEmpty } from '@/components/progress/ProgressEmpty';
 import { PressableScale } from '@/components/ui';
 import { useLocalDay } from '@/hooks/useLocalDay';
 import { buildExerciseProgress, formatProgressDate, hasRecentPR } from '@/lib/exercise-progress';
 import { getClaimedLogs } from '@/lib/history-stats';
+import { muscleBalance } from '@/lib/muscle-balance';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
 export default function ProgressScreen() {
   const logs = useWorkoutHistoryStore((s) => s.logs);
   const units = useSettingsStore((s) => s.units);
-  // The PR badge has a 14-day window, so this screen has to know when the day
-  // changed. A tab left open past midnight would otherwise keep badging an
-  // exercise whose record has aged out.
+  // The PR badge has a 14-day window and the muscle balance card counts this
+  // local week, so this screen has to know when the day changed. A tab left
+  // open past midnight would otherwise keep badging an exercise whose record
+  // has aged out, and keep counting last week's sets.
   const today = useLocalDay();
 
   // Derived in render so a workout saved or imported while the tab is mounted
   // shows up immediately, the same way History does it.
   const claimed = getClaimedLogs(logs);
   const progress = buildExerciseProgress(logs);
+  const balance = muscleBalance(logs, today);
 
   const sessionLine =
     claimed.length === 0
@@ -58,6 +62,12 @@ export default function ProgressScreen() {
         </View>
         <ChevronRight size={20} color={roles.textMuted} />
       </PressableScale>
+
+      {/* Under History, above Exercises: History stays the way into your
+          sessions, and the card then reads as the summary of the list under
+          it. Absent on a brand-new account, where the empty state below
+          already explains the tab. */}
+      {balance !== null && <MuscleBalanceCard balance={balance} />}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Exercises</Text>
