@@ -24,16 +24,25 @@
 //   any weight recorded    the heaviest weight, with the reps it was done for
 //   neither of those       the best reps
 //
-// THE SERIES RULE. The exercise's series metric is the hold, when the most
-// recent session is one; otherwise weight when any session carried a weight;
-// otherwise reps. `comparable` is the subset of sessions measured in that
+// THE UNIT RULE (#85 step 2). A session is in the unit its log records, and a
+// log without one is in the current setting (`effectiveWeightUnit`). Sessions
+// in different units are never joined: each unit gets its OWN series, with its
+// own metric, its own chart and its own records. 90 kg and 195 lb are
+// different facts, and a line through the switch falls off a cliff that never
+// happened in the gym. `byUnit` holds one entry per unit that has sessions —
+// one entry for almost everyone, and then every screen is the screen it is
+// today.
+//
+// THE SERIES RULE, inside one unit. The series metric is the hold, when that
+// unit's most recent session is one; otherwise weight when any of its sessions
+// carried a weight; otherwise reps. `comparable` is the subset measured in that
 // metric, and it is the only thing the chart and the PR list ever read — reps
 // are never compared with weights, and a plotted line never changes units
 // partway along.
 //
-// EVERY SESSION STILL COUNTS. `points` holds all of them whatever their
-// metric, and that is what the list ordering, the last logged date, the
-// session count and the History row read. So a lift you did bodyweight last
+// EVERY SESSION STILL COUNTS. `points` holds all of them whatever their metric
+// or unit, and that is what the list ordering, the last logged date, the
+// session count and the PR badge read. So a lift you did bodyweight last
 // Tuesday keeps its place at the top of the list and is counted, while the
 // chart and the records stay in weights. When the most recent session is not
 // in the series metric, a caller showing "the latest" shows that session in
@@ -43,13 +52,10 @@
 // logged set with neither number on it is an empty row rather than a set.
 // Cardio entries carry no sets and are left out entirely. Two sessions on the
 // same calendar day stay two points — the session is the unit, not the day.
-//
-// A WorkoutLog carries no weight unit, so the series has no unit of its own.
-// Callers label it with the current setting, exactly as the History screen
-// does.
 
 import { getClaimedLogs } from '@/lib/history-stats';
 import { baseExerciseId, exerciseMetric, formatSeconds } from '@/lib/metric';
+import { WEIGHT_UNITS, effectiveWeightUnit } from '@/lib/weight-unit';
 import type { LoggedSet, WeightUnit, WorkoutLog } from '@/types';
 
 /**
@@ -81,6 +87,19 @@ export interface ProgressPoint {
   reps: number;
   /** A logged set in this session was flagged a PR when it was logged. */
   hasPR: boolean;
+  /** The unit this session's weights were logged in. See weight-unit.ts. */
+  unit: WeightUnit;
+}
+
+/** One unit's sessions of one exercise: its own metric, chart and records. */
+export interface UnitSeries {
+  unit: WeightUnit;
+  /** This unit's sessions, whatever their metric. Oldest first, never empty. */
+  points: ProgressPoint[];
+  /** What this unit's chart and PR list are measured in. */
+  metric: ProgressMetric;
+  /** The subset in `metric` — what the chart and the PR list plot. */
+  comparable: ProgressPoint[];
 }
 
 export interface ExerciseProgress {
@@ -88,12 +107,15 @@ export interface ExerciseProgress {
   exerciseId: string;
   /** The name as the most recent log spells it. */
   name: string;
-  /** What the chart and the PR list are measured in. */
-  metric: ProgressMetric;
-  /** Every session, whatever its metric. Oldest first, never empty. */
+  /** Every session, whatever its metric or unit. Oldest first, never empty. */
   points: ProgressPoint[];
-  /** The subset in `metric` — what the chart and the PR list plot. Never empty. */
-  comparable: ProgressPoint[];
+  /**
+   * One entry per unit with sessions, lb first. One entry for almost everyone.
+   *
+   * Two entries is what makes the unit segment appear, and the only thing that
+   * does — see `historyHasBothUnits` for the same test on whole history.
+   */
+  byUnit: UnitSeries[];
 }
 
 export interface ProgressRecord {
@@ -129,6 +151,8 @@ interface RawSession {
   timestamp: string;
   /** What the movement measures, from the last entry of it in the log. */
   metric: 'reps' | 'time';
+  /** The log's own unit. Every entry of a movement in a log shares it. */
+  unit: WeightUnit;
   sets: LoggedSet[];
 }
 
@@ -193,13 +217,40 @@ function sessionBest(session: RawSession): { metric: ProgressMetric; value: numb
   return { metric: 'reps', value: count, reps: count };
 }
 
+/** One unit's slice, with its own metric. `sessions` is oldest first. */
+function unitSeries(unit: WeightUnit, sessions: Array<{ point: ProgressPoint; hold: boolean }>) {
+  const points = sessions.map((session) => session.point);
+
+  // A hold is a property of the MOVEMENT, not of one session's numbers, so a
+  // hold is charted in seconds unconditionally. A plank you only ever
+  // recorded as a weight has no seconds to chart, and the honest answer there
+  // is an empty series — not a weight series, which would hand the movement
+  // weight PRs it never measured. That is the one case where `comparable`
+  // comes back empty; the other two branches each require a point of their
+  // own metric. Otherwise weight wins over reps wherever both were logged.
+  const metric: ProgressMetric = sessions[sessions.length - 1].hold
+    ? 'time'
+    : points.some((point) => point.metric === 'weight')
+      ? 'weight'
+      : 'reps';
+
+  return {
+    unit,
+    points,
+    metric,
+    comparable: points.filter((point) => point.metric === metric),
+  };
+}
+
 /**
- * Every exercise with logged history, each with its own series.
+ * Every exercise with logged history, each split into one series per unit.
  *
  * Ordered by last logged date, newest first — what you trained this week is at
- * the top, which is the ordering the Progress list wants.
+ * the top, which is the ordering the Progress list wants. `setting` is the
+ * current Weight Units setting, which answers for logs that carry no unit of
+ * their own (see weight-unit.ts).
  */
-export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
+export function buildExerciseProgress(logs: WorkoutLog[], setting: WeightUnit): ExerciseProgress[] {
   const groups = new Map<string, RawGroup>();
 
   // Oldest first, so the last write of a name is the most recent one and the
@@ -229,6 +280,7 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
           logId: log.id,
           timestamp: log.timestamp,
           metric: exerciseMetric(exercise),
+          unit: effectiveWeightUnit(log, setting),
           sets: [...sets],
         });
       }
@@ -239,45 +291,41 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
 
   for (const group of groups.values()) {
     const points: ProgressPoint[] = [];
-    /** Whether the most recent session's MOVEMENT is a hold. */
-    let latestIsHold = false;
+    /** Each unit's own sessions, in session order. */
+    const byUnit = new Map<WeightUnit, Array<{ point: ProgressPoint; hold: boolean }>>();
 
     // Insertion order is log order, which is session order. Every session here
     // has a performed set, so every one of them becomes a point.
     for (const session of group.sessions.values()) {
       const { metric, value, reps } = sessionBest(session);
-      latestIsHold = session.metric === 'time';
-      points.push({
+      const point: ProgressPoint = {
         logId: session.logId,
         timestamp: session.timestamp,
         metric,
         value,
         reps,
         hasPR: session.sets.some((set) => set.isPR),
-      });
+        unit: session.unit,
+      };
+      points.push(point);
+
+      const held = byUnit.get(session.unit);
+      const entry = { point, hold: session.metric === 'time' };
+      if (held) held.push(entry);
+      else byUnit.set(session.unit, [entry]);
     }
 
     if (points.length === 0) continue;
 
-    // A hold is a property of the MOVEMENT, not of one session's numbers, so a
-    // hold is charted in seconds unconditionally. A plank you only ever
-    // recorded as a weight has no seconds to chart, and the honest answer there
-    // is an empty series — not a weight series, which would hand the movement
-    // weight PRs it never measured. That is the one case where `comparable`
-    // comes back empty; the other two branches each require a point of their
-    // own metric. Otherwise weight wins over reps wherever both were logged.
-    const metric: ProgressMetric = latestIsHold
-      ? 'time'
-      : points.some((point) => point.metric === 'weight')
-        ? 'weight'
-        : 'reps';
-
     progress.push({
       exerciseId: group.exerciseId,
       name: group.name,
-      metric,
       points,
-      comparable: points.filter((point) => point.metric === metric),
+      // lb first, whichever unit was logged first, so the segment never
+      // reorders itself under the person reading it.
+      byUnit: WEIGHT_UNITS.filter((unit) => byUnit.has(unit)).map((unit) =>
+        unitSeries(unit, byUnit.get(unit) as Array<{ point: ProgressPoint; hold: boolean }>)
+      ),
     });
   }
 
@@ -291,10 +339,31 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
 /** One exercise's series, or null when nothing has been logged for it. */
 export function findExerciseProgress(
   logs: WorkoutLog[],
-  exerciseId: string
+  exerciseId: string,
+  setting: WeightUnit
 ): ExerciseProgress | null {
   const wanted = baseExerciseId(exerciseId);
-  return buildExerciseProgress(logs).find((p) => p.exerciseId === wanted) ?? null;
+  return buildExerciseProgress(logs, setting).find((p) => p.exerciseId === wanted) ?? null;
+}
+
+/**
+ * The series holding the most recent session.
+ *
+ * The default everywhere: it is the unit you lifted in last, which is what you
+ * came to the screen for. Not the setting — someone who travels between gyms
+ * in different units would open on a dead series for a week after a trip.
+ */
+export function latestSeries(progress: ExerciseProgress): UnitSeries {
+  const latest = progress.points[progress.points.length - 1];
+  return (
+    progress.byUnit.find((series) => series.unit === latest.unit) ??
+    progress.byUnit[progress.byUnit.length - 1]
+  );
+}
+
+/** One side of the segment, or null when that unit has no sessions. */
+export function seriesForUnit(progress: ExerciseProgress, unit: WeightUnit): UnitSeries | null {
+  return progress.byUnit.find((series) => series.unit === unit) ?? null;
 }
 
 /**
@@ -352,6 +421,22 @@ export function progressRecords(points: ProgressPoint[]): ProgressRecord[] {
   }
 
   return records.reverse();
+}
+
+/**
+ * The narrowest chip whose window still holds every one of `points`.
+ *
+ * Each side of the unit segment opens on its own smallest window: after a
+ * switch the new unit holds three sessions in ten days, and the default 3M
+ * would draw them in the corner of a window that is mostly empty. `All` when
+ * no fixed window reaches the oldest session.
+ */
+export function smallestRange(points: ProgressPoint[], now: Date): ProgressRange {
+  for (const range of PROGRESS_RANGES) {
+    if (range === 'All') break;
+    if (rangePoints(points, range, now).length === points.length) return range;
+  }
+  return 'All';
 }
 
 /**
@@ -472,4 +557,82 @@ export function splitHeadline(
 ): { value: string; unit: string | null } {
   if (metric === 'time') return { value: formatSeconds(value), unit: null };
   return { value: `${value}`, unit: metric === 'reps' ? 'reps' : units };
+}
+
+// -----------------------------------------------------------------------------
+// Two-unit copy
+// -----------------------------------------------------------------------------
+// Every function here answers for ONE side of the unit segment, and `other`
+// being null is the one-unit case: the copy then has to come out exactly as it
+// reads today, because a lifter who has only ever used one unit should not be
+// able to tell this shipped.
+
+/** `3 sessions in kg` on a split history, `18 sessions logged` on one unit. */
+export function describeSessionCount(series: UnitSeries, split: boolean): string {
+  const count = series.points.length;
+  const plural = count === 1 ? '' : 's';
+  return split ? `${count} session${plural} in ${series.unit}` : `${count} session${plural} logged`;
+}
+
+/** `Your 10 lb sessions are on the lb tab.` */
+function pointsToTheOther(other: UnitSeries): string {
+  const count = other.points.length;
+  return count === 1
+    ? `Your 1 ${other.unit} session is on the ${other.unit} tab.`
+    : `Your ${count} ${other.unit} sessions are on the ${other.unit} tab.`;
+}
+
+/** The last session of a series. Never empty — see `buildExerciseProgress`. */
+const lastSession = (series: UnitSeries): ProgressPoint => series.points[series.points.length - 1];
+
+/**
+ * True when this side holds the exercise's most recent session.
+ *
+ * The live side is the unit you are lifting in now; the other one is a closed
+ * history. Several pieces of copy turn on the difference, so it is decided
+ * here once.
+ */
+export function isLiveSeries(series: UnitSeries, other: UnitSeries | null): boolean {
+  if (other === null) return true;
+  return Date.parse(lastSession(series).timestamp) > Date.parse(lastSession(other).timestamp);
+}
+
+/**
+ * The chart caption's second sentence, or null when there is nothing to say.
+ *
+ * On the live side it points at the other tab. On the older side it says where
+ * the series ends, so a closed history does not read as stalled training.
+ */
+export function describeOtherUnit(series: UnitSeries, other: UnitSeries | null): string | null {
+  if (other === null) return null;
+  if (isLiveSeries(series, other)) return pointsToTheOther(other);
+  return `Ends ${formatProgressDate(lastSession(series).timestamp)}, the last session logged in ${series.unit}.`;
+}
+
+/** The one-session card, which names the unit and says where the rest is. */
+export function describeOneSession(
+  series: UnitSeries,
+  other: UnitSeries | null
+): { title: string; body: string } {
+  if (other === null) {
+    return {
+      title: 'One session so far',
+      body: 'A line needs two points. Log this one again and the chart starts here.',
+    };
+  }
+  return {
+    title: `One session in ${series.unit}`,
+    body: `A line needs two points. ${pointsToTheOther(other)}`,
+  };
+}
+
+/**
+ * The PR callout's label.
+ *
+ * `Last PR in lb` rather than `Current PR` on the older side: the current
+ * record for a movement is the one in the unit you are lifting in now.
+ */
+export function describePRCallout(series: UnitSeries, other: UnitSeries | null): string {
+  if (other === null) return 'Current PR';
+  return `${isLiveSeries(series, other) ? 'Current' : 'Last'} PR in ${series.unit}`;
 }

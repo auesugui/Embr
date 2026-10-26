@@ -37,7 +37,8 @@ export default function ProgressScreen() {
   // Derived in render so a workout saved or imported while the tab is mounted
   // shows up immediately, the same way History does it.
   const claimed = getClaimedLogs(logs);
-  const progress = buildExerciseProgress(logs);
+  // The setting answers for logs written before #85 stamped a unit on them.
+  const progress = buildExerciseProgress(logs, units);
   const balance = muscleBalance(logs, today);
 
   const sessionLine =
@@ -87,7 +88,6 @@ export default function ProgressScreen() {
             <ExerciseProgressRow
               key={exercise.exerciseId}
               progress={exercise}
-              units={units}
               showPR={hasRecentPR(exercise.points, today)}
               last={index === progress.length - 1}
               onPress={() => router.push(`/exercise/${encodeURIComponent(exercise.exerciseId)}`)}

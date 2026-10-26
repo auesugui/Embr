@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { isOpenEnded, targetRepCount } from '@/lib/blocks';
 import { streakOnDay } from '@/lib/streak';
 import { useSettingsStore, useWorkoutHistoryStore, useWorkoutStore } from '@/stores';
+import type { WeightUnit } from '@/types';
 import { showAlert } from '@/utils/alert';
 import { haptics } from '@/utils/haptics';
 import { confirmEndSession } from '@/workout/endSessionGuard';
@@ -41,9 +42,10 @@ interface UseSessionActionsArgs extends StoreActions {
   view: SessionView;
   /** The rest timer's paused state, for the overlay's one toggle. */
   restPaused: boolean;
-  /** The remembered weight is in the unit being logged in (no conversion, #42). */
-  weightUnitMatches: boolean;
-  getLastWeight: (exerciseId: string) => number | null;
+  /** The unit being logged in. */
+  units: WeightUnit;
+  /** The last remembered weight IN `units`, or null. Never converts (#42, #85). */
+  getLastWeightInUnit: (exerciseId: string, unit: WeightUnit) => number | null;
   /**
    * Clears the AMRAP scrim's dismissal when a block starts, so the next window
    * opens focused again.
@@ -58,8 +60,8 @@ interface UseSessionActionsArgs extends StoreActions {
 export function useSessionActions({
   view,
   restPaused,
-  weightUnitMatches,
-  getLastWeight,
+  units,
+  getLastWeightInUnit,
   setScrimDismissed,
   endSession,
   setCurrentExercise,
@@ -181,8 +183,8 @@ export function useSessionActions({
       // user made to this round.
       if (exercise.sets[openRoundIndex]?.logged) return [];
 
-      const lastWeight = getLastWeight(exercise.id);
-      const weight = lastWeight && lastWeight > 0 && weightUnitMatches ? lastWeight : undefined;
+      const lastWeight = getLastWeightInUnit(exercise.id, units);
+      const weight = lastWeight && lastWeight > 0 ? lastWeight : undefined;
       return [{ exerciseIndex: index, setIndex: openRoundIndex, reps, weight }];
     });
 

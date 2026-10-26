@@ -18,8 +18,36 @@ const HEIGHT = 20;
 /** Keeps the round cap of the first and last point inside the box. */
 const INSET = 2;
 
-export function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return null;
+export function Sparkline({
+  values,
+  drawSingle = false,
+}: {
+  values: number[];
+  /**
+   * Draw a single value as a flat line on the baseline instead of nothing.
+   *
+   * For the row of a movement trained in both units: the series is cut down to
+   * one unit, so one session is a real shape-less history rather than a brand
+   * new exercise, and a blank where the shape goes reads as a bug. A one-unit
+   * row keeps the shipped behaviour and draws nothing.
+   */
+  drawSingle?: boolean;
+}) {
+  if (values.length < 2) {
+    if (!drawSingle || values.length === 0) return null;
+    return (
+      <Svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
+        <Polyline
+          points={`0,${HEIGHT - INSET} ${WIDTH},${HEIGHT - INSET}`}
+          fill="none"
+          stroke={roles.accent}
+          strokeWidth={1.75}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+    );
+  }
 
   const min = Math.min(...values);
   const max = Math.max(...values);

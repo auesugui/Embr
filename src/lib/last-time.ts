@@ -13,13 +13,16 @@
 //
 // HOW IT READS. The same collapse History uses (`set-summary.ts`): uniform work
 // is one line, varied work keeps every number. A hold reads in seconds, and a
-// weight is labelled with the current unit setting because a saved workout
-// carries no unit of its own (#85 covers recording it).
+// weight is labelled with the unit THAT WORKOUT was logged in (#85 step 2) —
+// the caption reports a past session, so it prints what was recorded and
+// converts nothing. The number already carries its unit, so no tail saying
+// "logged in lb" is added.
 
 import { isPerformedSet } from '@/lib/exercise-progress';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { baseExerciseId, exerciseMetric, formatCompact } from '@/lib/metric';
 import { compactEntry, describeEntry, sameWork } from '@/lib/set-summary';
+import { effectiveWeightUnit } from '@/lib/weight-unit';
 import type { LoggedSet, Metric, WeightUnit, WorkoutLog } from '@/types';
 
 export interface LastPerformed {
@@ -27,6 +30,8 @@ export interface LastPerformed {
   sets: LoggedSet[];
   /** What those numbers measure, as that workout itself spells it. */
   metric: Metric;
+  /** The unit that workout's weights were logged in. */
+  unit: WeightUnit;
 }
 
 /**
@@ -34,12 +39,14 @@ export interface LastPerformed {
  * this movement in it, or null the first time you train it.
  *
  * `before` is a required ms-epoch clock: a session screen that stays mounted
- * must not re-answer this against a moving "now".
+ * must not re-answer this against a moving "now". `setting` answers for a log
+ * that carries no unit of its own.
  */
 export function findLastPerformed(
   logs: WorkoutLog[],
   exerciseId: string,
-  before: number
+  before: number,
+  setting: WeightUnit
 ): LastPerformed | null {
   const base = baseExerciseId(exerciseId);
 
@@ -54,7 +61,11 @@ export function findLastPerformed(
     const sets = entries.flatMap((e) => e.sets.filter(isPerformedSet));
     if (sets.length === 0) continue;
 
-    return { sets, metric: exerciseMetric(entries[entries.length - 1]) };
+    return {
+      sets,
+      metric: exerciseMetric(entries[entries.length - 1]),
+      unit: effectiveWeightUnit(log, setting),
+    };
   }
 
   return null;
@@ -90,9 +101,12 @@ export function lastTimeLine(args: {
   exerciseId: string;
   /** ms epoch the current session started. */
   before: number;
-  units: WeightUnit;
+  /** The current setting, for a workout that carries no unit of its own. */
+  setting: WeightUnit;
 }): string {
-  const last = findLastPerformed(args.logs, args.exerciseId, args.before);
+  const last = findLastPerformed(args.logs, args.exerciseId, args.before, args.setting);
   if (!last) return 'First time';
-  return `Last time: ${describeSets(last.sets, args.units, last.metric)}`;
+  // That workout's unit, not the setting: the line is what you did, and
+  // relabelling 275 lb as 275 kg is a world record nobody set.
+  return `Last time: ${describeSets(last.sets, last.unit, last.metric)}`;
 }

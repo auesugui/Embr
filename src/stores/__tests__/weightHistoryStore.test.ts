@@ -240,6 +240,72 @@ describe('Weight History Store', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // The pre-fill never crosses units (issue #85 step 2)
+  // ---------------------------------------------------------------------------
+  // Pre-filling 275 into a kg field loads 275 kg onto a bar that held 275 lb.
+  // This is the one read in the app with a physical consequence, so it falls
+  // back to the last weight in the unit being logged in and nothing else.
+
+  describe('getLastWeightInUnit', () => {
+    it('returns the last weight when it was logged in that unit', () => {
+      const { saveWeight, getLastWeightInUnit } = useWeightHistoryStore.getState();
+
+      saveWeight('bench-press', 135, 'lb');
+
+      expect(getLastWeightInUnit('bench-press', 'lb')).toBe(135);
+    });
+
+    it('does not hand the other unit’s number to the field', () => {
+      const { saveWeight, getLastWeightInUnit } = useWeightHistoryStore.getState();
+
+      saveWeight('back-squat', 275, 'lb');
+
+      expect(getLastWeightInUnit('back-squat', 'kg')).toBeNull();
+    });
+
+    it('falls back to the last weight recorded in that unit', () => {
+      const { saveWeight, getLastWeightInUnit } = useWeightHistoryStore.getState();
+
+      saveWeight('bench-press', 100, 'kg');
+      saveWeight('bench-press', 195, 'lb');
+
+      expect(getLastWeightInUnit('bench-press', 'kg')).toBe(100);
+      expect(getLastWeightInUnit('bench-press', 'lb')).toBe(195);
+    });
+
+    it('takes the most recent entry in that unit, not the oldest', () => {
+      const { saveWeight, getLastWeightInUnit } = useWeightHistoryStore.getState();
+
+      saveWeight('bench-press', 85, 'kg');
+      saveWeight('bench-press', 90, 'kg');
+      saveWeight('bench-press', 195, 'lb');
+
+      expect(getLastWeightInUnit('bench-press', 'kg')).toBe(90);
+    });
+
+    it('is null for a movement with no history at all', () => {
+      expect(useWeightHistoryStore.getState().getLastWeightInUnit('deadlift', 'lb')).toBeNull();
+    });
+
+    it('reads a pre-#42 entry, which carries no unit, as lb', () => {
+      useWeightHistoryStore.setState({
+        history: {
+          'bench-press': {
+            exerciseId: 'bench-press',
+            lastWeight: 135,
+            recentWeights: [{ weight: 135, timestamp: '2026-01-01T00:00:00.000Z' }],
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        },
+      });
+
+      const { getLastWeightInUnit } = useWeightHistoryStore.getState();
+      expect(getLastWeightInUnit('bench-press', 'lb')).toBe(135);
+      expect(getLastWeightInUnit('bench-press', 'kg')).toBeNull();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Persistence Tests
   // ---------------------------------------------------------------------------
 

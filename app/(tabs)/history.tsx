@@ -50,6 +50,7 @@ import {
 import { getClaimedLogs } from '@/lib/history-stats';
 import { localDayKey } from '@/lib/local-day';
 import { volumeStrip } from '@/lib/weekly-volume';
+import { effectiveWeightUnit } from '@/lib/weight-unit';
 import { useSettingsStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 
@@ -98,7 +99,9 @@ export default function HistoryScreen() {
   const headerMonth = collapsed ? monthOfDay(focusKey) : viewedMonth;
 
   const trainedDays = useMemo(() => trainingDayKeys(logs), [logs]);
-  const strip = useMemo(() => volumeStrip(logs, now), [logs, now]);
+  // The strip counts the current unit only and labels itself with it, so the
+  // setting goes in rather than being applied to the numbers afterwards.
+  const strip = useMemo(() => volumeStrip(logs, now, units), [logs, now, units]);
   const earliest = useMemo(() => earliestMonth(logs), [logs]);
   const grid = useMemo(
     () => monthGrid(viewedMonth, { todayKey, trainedDays, selectedKey: selectedDay }),
@@ -204,7 +207,7 @@ export default function HistoryScreen() {
           onToggleCollapsed={handleFold}
           onSelectDay={handleSelectDay}
         />
-        {strip !== null && <WeeklyVolumeStrip strip={strip} units={units} />}
+        {strip !== null && <WeeklyVolumeStrip strip={strip} />}
         {/* Inside the block, so a pinned header keeps carrying the date it is
             filtering by and the way out of it. */}
         {selectedDay !== null && (
@@ -230,7 +233,10 @@ export default function HistoryScreen() {
         <RevealRow key={log.id} index={Math.min(i, 6)}>
           <WorkoutRow
             log={log}
-            units={units}
+            // Each card prints its own session's numbers, so it carries that
+            // workout's own unit. A mixed list is correct here: every row
+            // names the unit it is in.
+            units={effectiveWeightUnit(log, units)}
             expanded={expandedId === log.id}
             onToggle={() => handleToggle(log.id)}
           />

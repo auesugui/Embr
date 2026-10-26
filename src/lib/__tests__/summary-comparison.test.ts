@@ -88,28 +88,28 @@ describe('previousSession', () => {
     const today = pushA(at(0), 10_000);
     const logs = [today, pushA(at(3), 9_000, { id: 'recent' }), pushA(at(9), 8_000, { id: 'old' })];
 
-    expect(previousSession(logs, today)?.id).toBe('recent');
+    expect(previousSession(logs, today, 'lb')?.id).toBe('recent');
   });
 
   it('ignores another day of the same template', () => {
     const today = pushA(at(0), 10_000);
     const pullA = pushA(at(3), 9_000, { id: 'pull', dayKey: 'ppl_pull_a' });
 
-    expect(previousSession([today, pullA], today)).toBeNull();
+    expect(previousSession([today, pullA], today, 'lb')).toBeNull();
   });
 
   it('ignores the same day of a different template', () => {
     const today = pushA(at(0), 10_000);
     const copy = pushA(at(3), 9_000, { id: 'copy', templateId: 'ppl_6day__copy' });
 
-    expect(previousSession([today, copy], today)).toBeNull();
+    expect(previousSession([today, copy], today, 'lb')).toBeNull();
   });
 
   it('ignores logs written before the workout identity was recorded', () => {
     const today = pushA(at(0), 10_000);
     const legacy = log(at(3), 9_000, { id: 'legacy' });
 
-    expect(previousSession([today, legacy], today)).toBeNull();
+    expect(previousSession([today, legacy], today, 'lb')).toBeNull();
   });
 
   it('ignores an unsaved session and one logged later', () => {
@@ -117,7 +117,7 @@ describe('previousSession', () => {
     const abandoned = pushA(at(7), 9_000, { id: 'abandoned', claimedAt: null });
     const later = pushA(at(0), 9_000, { id: 'later' });
 
-    expect(previousSession([today, abandoned, later], today)).toBeNull();
+    expect(previousSession([today, abandoned, later], today, 'lb')).toBeNull();
   });
 
   it('skips an earlier session that moved no weight', () => {
@@ -125,7 +125,7 @@ describe('previousSession', () => {
     const planks = pushA(at(2), 0, { id: 'planks', exercises: [hold(120)] });
     const real = pushA(at(6), 9_000, { id: 'real' });
 
-    expect(previousSession([today, planks, real], today)?.id).toBe('real');
+    expect(previousSession([today, planks, real], today, 'lb')?.id).toBe('real');
   });
 });
 
@@ -138,7 +138,7 @@ describe('volumeComparison', () => {
     const today = pushA(at(0), 10_970);
     const earlier = pushA(at(3), 10_490, { id: 'earlier' });
 
-    expect(volumeComparison([today, earlier], today)).toEqual({
+    expect(volumeComparison([today, earlier], today, 'lb')).toEqual({
       direction: 'up',
       delta: 480,
       previousTimestamp: at(3),
@@ -149,7 +149,7 @@ describe('volumeComparison', () => {
     const today = pushA(at(0), 18_680);
     const earlier = pushA(at(6), 19_900, { id: 'earlier' });
 
-    expect(volumeComparison([today, earlier], today)).toMatchObject({
+    expect(volumeComparison([today, earlier], today, 'lb')).toMatchObject({
       direction: 'down',
       delta: 1_220,
     });
@@ -159,7 +159,7 @@ describe('volumeComparison', () => {
     const today = pushA(at(0), 9_000);
     const earlier = pushA(at(6), 9_000, { id: 'earlier' });
 
-    expect(volumeComparison([today, earlier], today)).toMatchObject({
+    expect(volumeComparison([today, earlier], today, 'lb')).toMatchObject({
       direction: 'same',
       delta: 0,
     });
@@ -167,28 +167,28 @@ describe('volumeComparison', () => {
 
   it('is absent on a first-ever session', () => {
     const today = pushA(at(0), 9_000);
-    expect(volumeComparison([today], today)).toBeNull();
+    expect(volumeComparison([today], today, 'lb')).toBeNull();
   });
 
   it('is absent for a workout never run before', () => {
     const today = pushA(at(0), 21_455, { templateId: 'ppl_6day', dayKey: 'ppl_legs_b' });
     const pushDays = [pushA(at(2), 9_000, { id: 'a' }), pushA(at(9), 8_000, { id: 'b' })];
 
-    expect(volumeComparison([today, ...pushDays], today)).toBeNull();
+    expect(volumeComparison([today, ...pushDays], today, 'lb')).toBeNull();
   });
 
   it('is absent when this session moved no weight', () => {
     const today = pushA(at(0), 0, { exercises: [hold(150)] });
     const earlier = pushA(at(4), 7_980, { id: 'earlier' });
 
-    expect(volumeComparison([today, earlier], today)).toBeNull();
+    expect(volumeComparison([today, earlier], today, 'lb')).toBeNull();
   });
 
   it('is absent on a log written before the workout identity was recorded', () => {
     const today = log(at(0), 9_000);
     const earlier = log(at(4), 8_000, { id: 'earlier' });
 
-    expect(volumeComparison([today, earlier], today)).toBeNull();
+    expect(volumeComparison([today, earlier], today, 'lb')).toBeNull();
   });
 });
 
@@ -282,7 +282,7 @@ describe('the stored name', () => {
     const today = pushA(at(0), 10_970, { workoutName: 'Push A' });
     const earlier = pushA(at(3), 10_490, { id: 'earlier', workoutName: 'Push A' });
 
-    const comparison = volumeComparison([today, earlier], today);
+    const comparison = volumeComparison([today, earlier], today, 'lb');
     expect(comparison).not.toBeNull();
     expect(
       comparisonSentence(comparison as VolumeComparison, today.workoutName as string, 'lb')
@@ -292,5 +292,42 @@ describe('the stored name', () => {
   it('is absent on a log saved before the name was recorded', () => {
     const today = pushA(at(0), 10_970);
     expect(today.workoutName).toBeUndefined();
+  });
+});
+
+// -----------------------------------------------------------------------------
+// The comparison never crosses units (issue #85 step 2)
+// -----------------------------------------------------------------------------
+
+describe('volumeComparison — units', () => {
+  const inUnit = (base: WorkoutLog, weightUnit: 'lb' | 'kg'): WorkoutLog => ({
+    ...base,
+    weightUnit,
+  });
+
+  it('says nothing when the last run of the workout was in the other unit', () => {
+    const earlier = inUnit(pushA(at(7), 10000, { id: 'earlier' }), 'lb');
+    const today = inUnit(pushA(at(0), 4980, { id: 'today' }), 'kg');
+
+    expect(volumeComparison([today, earlier], today, 'lb')).toBeNull();
+  });
+
+  it('reaches past the other unit to the last session in this one', () => {
+    const kgEarlier = inUnit(pushA(at(9), 4980, { id: 'kg-earlier' }), 'kg');
+    const lbBetween = inUnit(pushA(at(3), 21300, { id: 'lb-between' }), 'lb');
+    const today = inUnit(pushA(at(0), 5270, { id: 'today' }), 'kg');
+
+    expect(previousSession([today, lbBetween, kgEarlier], today, 'kg')?.id).toBe('kg-earlier');
+    expect(volumeComparison([today, lbBetween, kgEarlier], today, 'kg')).toMatchObject({
+      direction: 'up',
+      delta: 290,
+    });
+  });
+
+  it('compares two sessions that both carry no unit, whatever the setting', () => {
+    const earlier = pushA(at(7), 4980, { id: 'earlier' });
+    const today = pushA(at(0), 5270, { id: 'today' });
+
+    expect(volumeComparison([today, earlier], today, 'kg')).toMatchObject({ direction: 'up' });
   });
 });

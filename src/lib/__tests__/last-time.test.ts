@@ -51,8 +51,8 @@ const log = (
     ...over,
   }) as WorkoutLog;
 
-const line = (logs: WorkoutLog[], exerciseId = 'bench_press-0', units: 'lb' | 'kg' = 'lb') =>
-  lastTimeLine({ logs, exerciseId, before: SESSION_START, units });
+const line = (logs: WorkoutLog[], exerciseId = 'bench_press-0', setting: 'lb' | 'kg' = 'lb') =>
+  lastTimeLine({ logs, exerciseId, before: SESSION_START, setting });
 
 // -----------------------------------------------------------------------------
 // Which workout it reads
@@ -65,7 +65,7 @@ describe('findLastPerformed', () => {
       log(at(9), [exercise({ sets: [set({ weight: 175 })] })]),
     ];
 
-    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START)?.sets[0].weight).toBe(185);
+    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START, 'lb')?.sets[0].weight).toBe(185);
   });
 
   it('ignores a workout saved after the session started', () => {
@@ -78,7 +78,7 @@ describe('findLastPerformed', () => {
       log(at(3), [exercise({ sets: [set({ weight: 185 })] })]),
     ];
 
-    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START)?.sets[0].weight).toBe(185);
+    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START, 'lb')?.sets[0].weight).toBe(185);
   });
 
   it('skips a workout that was never saved', () => {
@@ -87,7 +87,7 @@ describe('findLastPerformed', () => {
       log(at(5), [exercise({ sets: [set({ weight: 185 })] })]),
     ];
 
-    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START)?.sets[0].weight).toBe(185);
+    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START, 'lb')?.sets[0].weight).toBe(185);
   });
 
   it('skips rows with neither a weight nor a count', () => {
@@ -97,13 +97,13 @@ describe('findLastPerformed', () => {
       log(at(6), [exercise({ sets: [set({ weight: 185 })] })]),
     ];
 
-    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START)?.sets[0].weight).toBe(185);
+    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START, 'lb')?.sets[0].weight).toBe(185);
   });
 
   it('matches on the base id, whatever position the movement sat in', () => {
     const logs = [log(at(2), [exercise({ id: 'bench_press-4' })])];
 
-    expect(findLastPerformed(logs, 'bench_press-1', SESSION_START)?.sets).toHaveLength(1);
+    expect(findLastPerformed(logs, 'bench_press-1', SESSION_START, 'lb')?.sets).toHaveLength(1);
   });
 
   it('merges repeated entries of one movement in one workout', () => {
@@ -116,11 +116,11 @@ describe('findLastPerformed', () => {
       ]),
     ];
 
-    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START)?.sets).toHaveLength(2);
+    expect(findLastPerformed(logs, 'bench_press-0', SESSION_START, 'lb')?.sets).toHaveLength(2);
   });
 
   it('is null the first time you train a movement', () => {
-    expect(findLastPerformed([], 'bench_press-0', SESSION_START)).toBeNull();
+    expect(findLastPerformed([], 'bench_press-0', SESSION_START, 'lb')).toBeNull();
   });
 });
 
@@ -206,17 +206,29 @@ describe('lastTimeLine', () => {
     expect(line(logs, 'plank-0')).toBe('Last time: 2 × 45s');
   });
 
-  it('labels the weight with the current unit, since the workout carries none', () => {
+  it('labels the weight with the setting when the workout carries no unit', () => {
     const logs = [log(at(2), [exercise({ sets: [set({ weight: 60 }), set({ weight: 60 })] })])];
 
     expect(line(logs, 'bench_press-0', 'kg')).toBe('Last time: 2 × 10 @ 60 kg');
   });
 
-  it('still labels with the current unit when the workout records its own (#85)', () => {
-    // #85 records the unit; nothing reads it yet, because labelling part of the
-    // history from the log and the rest from the setting is worse than one
-    // consistent rule.
+  it('labels the weight with the unit the workout was logged in (#85 step 2)', () => {
+    // The caption reports a past session, so it prints what was recorded and
+    // converts nothing. Relabelling 60 lb as 60 kg because the setting moved
+    // is the one reading that is simply false.
     const logs = [log(at(2), [exercise({ sets: [set({ weight: 60 })] })], { weightUnit: 'lb' })];
+
+    expect(line(logs, 'bench_press-0', 'kg')).toBe('Last time: 60 lb × 10');
+  });
+
+  it('reads an unrecognised unit in a restored backup as absent', () => {
+    // restoreBackup passes the field through unchanged, so a hand-edited or
+    // future-version file can carry anything. It falls back to the setting.
+    const logs = [
+      log(at(2), [exercise({ sets: [set({ weight: 60 })] })], {
+        weightUnit: 'stone' as unknown as 'lb',
+      }),
+    ];
 
     expect(line(logs, 'bench_press-0', 'kg')).toBe('Last time: 60 kg × 10');
   });

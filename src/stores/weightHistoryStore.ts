@@ -18,6 +18,8 @@ interface WeightHistoryActions {
   getLastWeight: (exerciseId: string) => number | null;
   // Unit-aware read: pre-#42 entries default to lb.
   getLastWeightWithUnit: (exerciseId: string) => { weight: number; unit: WeightUnit } | null;
+  /** The pre-fill. Never crosses units — see `lastWeightInUnit`. */
+  getLastWeightInUnit: (exerciseId: string, unit: WeightUnit) => number | null;
   saveWeight: (exerciseId: string, weight: number, unit?: WeightUnit) => void;
   getRecentWeights: (exerciseId: string) => WeightHistoryEntry[];
   clearExerciseHistory: (exerciseId: string) => void;
@@ -41,6 +43,29 @@ const MAX_RECENT_WEIGHTS = 5;
 const initialState: WeightHistoryState = {
   history: {},
 };
+
+/**
+ * The most recent remembered weight for this movement IN `unit`, or null.
+ *
+ * The pre-fill is the one surface where a unit mix-up puts the wrong plates on
+ * a bar: filling 275 into a kg field loads 275 kg onto a bar that held 275 lb.
+ * So it never crosses units and never converts — it falls back to the last
+ * weight recorded in the unit being logged in, and opens empty when there is
+ * none (#85 step 2, Q5).
+ *
+ * Exported as a pure function so the screen's selector and the store action
+ * answer this from one definition rather than two.
+ */
+export function lastWeightInUnit(
+  history: ExerciseWeightHistory | undefined,
+  unit: WeightUnit
+): number | null {
+  if (!history) return null;
+  // Pre-#42 entries carry no unit — they were all logged in lb.
+  if ((history.lastUnit ?? 'lb') === unit) return history.lastWeight;
+  const match = history.recentWeights.find((entry) => (entry.unit ?? 'lb') === unit);
+  return match?.weight ?? null;
+}
 
 // Helper to persist state
 const persistState = async (state: WeightHistoryState) => {
@@ -68,6 +93,8 @@ export const useWeightHistoryStore = create<WeightHistoryStore>((set, get) => ({
       unit: exerciseHistory.lastUnit ?? 'lb',
     };
   },
+
+  getLastWeightInUnit: (exerciseId, unit) => lastWeightInUnit(get().history[exerciseId], unit),
 
   saveWeight: (exerciseId, weight, unit = 'lb') => {
     set((state) => {
