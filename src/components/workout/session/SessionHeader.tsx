@@ -1,20 +1,31 @@
 // =============================================================================
-// SessionHeader — block position, running total, and the way out
+// SessionHeader — block position, running total, elapsed time, and the way out
 // =============================================================================
-// Three things, one row: where you are in the workout, what you have done so
-// far, and End. "End" is destructive (it throws the session away), which is why
-// it reads in the danger color and sits as far from the back arrow as the row
-// allows.
+// Four things, one row: where you are in the workout, what you have done so
+// far, how long you have been at it, and End. "End" is destructive (it throws
+// the session away), which is why it reads in the danger color and sits as far
+// from the back arrow as the row allows.
+//
+// The clock goes beside the back arrow rather than next to End, because putting
+// a number against End crowds the one control you must not mis-tap. It is not
+// in the centre either: Total and position are a two-line stack already, and a
+// third line makes the header taller on every screen.
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChevronLeft } from '@/components/icons';
 import { formatTotal } from '@/lib/metric';
+import { formatElapsed } from '@/lib/session-clock';
 import { colors, roles, spacing, textStyles } from '@/theme';
 import type { Metric } from '@/types';
 
 interface SessionHeaderProps {
   totalReps: number;
+  /**
+   * Seconds since the session started, rest and backgrounded time included.
+   * Pausing a rest timer does not pause it.
+   */
+  elapsed: number;
   /**
    * What the running total counts, or null when the session mixes reps and
    * holds — a sum across both names neither, so it goes out unlabelled.
@@ -31,6 +42,7 @@ interface SessionHeaderProps {
 
 export function SessionHeader({
   totalReps,
+  elapsed,
   totalMetric,
   position,
   total,
@@ -41,17 +53,22 @@ export function SessionHeader({
 }: SessionHeaderProps) {
   return (
     <View style={[styles.header, { paddingTop }]}>
-      <Pressable
-        onPress={onPrevious}
-        disabled={!canGoBack}
-        style={styles.navArrow}
-        accessibilityRole="button"
-        accessibilityLabel="Previous exercise"
-      >
-        {/* Was a literal '<' in a Text node — missed in the glyph sweep
-            because it's written as a JSX expression, not a bare character. */}
-        <ChevronLeft size={22} color={canGoBack ? roles.textSecondary : roles.textMuted} />
-      </Pressable>
+      <View style={styles.headerLeft}>
+        <Pressable
+          onPress={onPrevious}
+          disabled={!canGoBack}
+          style={styles.navArrow}
+          accessibilityRole="button"
+          accessibilityLabel="Previous exercise"
+        >
+          {/* Was a literal '<' in a Text node — missed in the glyph sweep
+              because it's written as a JSX expression, not a bare character. */}
+          <ChevronLeft size={22} color={canGoBack ? roles.textSecondary : roles.textMuted} />
+        </Pressable>
+
+        {/* Reads as a readout, not a control: muted, tabular, no border or fill. */}
+        <Text style={styles.elapsed}>{formatElapsed(elapsed)}</Text>
+      </View>
 
       <View style={styles.headerCenter}>
         <Text style={styles.totalReps}>
@@ -79,8 +96,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.ui.border,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   navArrow: {
     padding: spacing[2],
+  },
+  elapsed: {
+    ...textStyles.caption,
+    color: roles.textMuted,
+    fontVariant: ['tabular-nums'],
   },
   headerCenter: {
     alignItems: 'center',

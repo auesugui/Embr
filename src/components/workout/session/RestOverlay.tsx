@@ -13,9 +13,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ExerciseDemo } from '@/components/workout/ExerciseDemo';
 import { RestTimerRing } from '@/components/workout/RestTimerRing';
 import { formatClock } from '@/lib/blocks';
-import { colors, radius, roles, spacing, textStyles } from '@/theme';
+import { colors, radius, roles, spacing, textStyles, touchTarget } from '@/theme';
 
 const OVERLAY_PADDING_TOP = spacing[4];
+
+/** How much one tap of the adjust buttons is worth. */
+const ADJUST_STEP = 15;
 
 interface RestOverlayProps {
   /** Bare exercise id (no `-index` suffix) for the demo lookup. */
@@ -25,6 +28,46 @@ interface RestOverlayProps {
   paused: boolean;
   onSkip: () => void;
   onTogglePause: () => void;
+  /** Add or remove rest, in seconds. */
+  onAdjust: (delta: number) => void;
+}
+
+/**
+ * One of the two adjust buttons.
+ *
+ * It stops the press reaching the overlay, so adjusting the rest never skips
+ * it — the same thing Pause and Skip already do. Below fifteen seconds the
+ * minus button dims rather than becoming a second Skip: taking fifteen off
+ * twelve lands on zero, which is what Skip is for.
+ */
+function AdjustButton({
+  label,
+  delta,
+  off,
+  onAdjust,
+}: {
+  label: string;
+  delta: number;
+  off: boolean;
+  onAdjust: (delta: number) => void;
+}) {
+  return (
+    <Pressable
+      style={[styles.adjust, off && styles.adjustOff]}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: off }}
+      accessibilityLabel={`${delta > 0 ? 'Add' : 'Remove'} ${Math.abs(delta)} seconds of rest`}
+      onPress={(e) => {
+        e.stopPropagation();
+        // Dimmed, not disabled: a disabled Pressable lets the press through to
+        // the overlay on web, and skipping the rest is not what a dim button
+        // should do.
+        if (!off) onAdjust(delta);
+      }}
+    >
+      <Text style={[styles.adjustText, off && styles.adjustTextOff]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export function RestOverlay({
@@ -34,6 +77,7 @@ export function RestOverlay({
   paused,
   onSkip,
   onTogglePause,
+  onAdjust,
 }: RestOverlayProps) {
   const insets = useSafeAreaInsets();
   const paddingBottom = insets.bottom + spacing[4];
@@ -57,11 +101,28 @@ export function RestOverlay({
 
       <View style={styles.timerBlock} onLayout={(e) => setTimerHeight(e.nativeEvent.layout.height)}>
         <Text style={styles.restLabel}>{paused ? 'Paused' : 'Rest'}</Text>
-        <RestTimerRing remaining={remaining} total={duration} paused={paused} size={180}>
-          <Text style={[styles.restTimer, remaining === 0 && styles.restTimerReady]}>
-            {formatClock(remaining)}
-          </Text>
-        </RestTimerRing>
+
+        {/* The adjust buttons flank the ring because they change the number
+            inside it. At zero every control clears — the whole screen is one
+            tap target there, and a live button inside it is a mis-tap. */}
+        <View style={styles.ringRow}>
+          {remaining > 0 && (
+            <AdjustButton
+              label="−15s"
+              delta={-ADJUST_STEP}
+              off={remaining < ADJUST_STEP}
+              onAdjust={onAdjust}
+            />
+          )}
+          <RestTimerRing remaining={remaining} total={duration} paused={paused} size={180}>
+            <Text style={[styles.restTimer, remaining === 0 && styles.restTimerReady]}>
+              {formatClock(remaining)}
+            </Text>
+          </RestTimerRing>
+          {remaining > 0 && (
+            <AdjustButton label="+15s" delta={ADJUST_STEP} off={false} onAdjust={onAdjust} />
+          )}
+        </View>
 
         {remaining === 0 ? (
           <Text style={styles.readyText}>Tap to continue</Text>
@@ -111,6 +172,32 @@ const styles = StyleSheet.create({
   },
   timerBlock: {
     alignItems: 'center',
+  },
+  ringRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2.5],
+  },
+  adjust: {
+    width: 58,
+    minHeight: touchTarget.minimum,
+    borderRadius: radius.md,
+    backgroundColor: roles.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adjustOff: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: roles.border,
+  },
+  adjustText: {
+    ...textStyles.buttonSmall,
+    color: roles.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  adjustTextOff: {
+    color: roles.textMuted,
   },
   restLabel: {
     ...textStyles.label,

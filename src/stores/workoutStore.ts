@@ -14,9 +14,30 @@ import { useWeightHistoryStore } from './weightHistoryStore';
 // Types
 // -----------------------------------------------------------------------------
 
-interface RestTimerState {
+/**
+ * The between-sets rest timer.
+ *
+ * ONE ANCHOR, EVERYTHING ELSE DERIVED — the same discipline as the block clock
+ * below. The stored fact is `endsAt`, a wall-clock instant; remaining time is
+ * computed from it on read. It used to count one-second ticks, which meant a
+ * backgrounded tab handed back rest that had already passed, and a reload lost
+ * the timer entirely. Anchored, a rest that ran out while you were away comes
+ * back finished, and ±15s is arithmetic on one number.
+ *
+ * Nothing rings while the app is in the background. A PWA cannot wake itself
+ * without a push server, and Embr has no backend.
+ */
+export interface RestTimerState {
+  /**
+   * Seconds the arc is measured against. Grown by +15s along with the
+   * remaining time, so the arc tracks the number instead of passing full.
+   */
   duration: number;
+  /** ms epoch the rest ends. Null while paused, and while none is running. */
+  endsAt: number | null;
+  /** Seconds left: banked at a pause, and what the first paint reads. */
   remaining: number;
+  /** Counting down. False while paused, and once the rest has run out. */
   running: boolean;
   paused: boolean;
 }
@@ -146,6 +167,11 @@ interface WorkoutActions {
   resumeRestTimer: () => void;
   resetRestTimer: () => void;
   tickRestTimer: () => void;
+  /**
+   * Add or remove rest, in seconds. Session-only — it moves this timer and
+   * writes nothing beyond the session state that already persists.
+   */
+  adjustRestTimer: (delta: number) => void;
 
   // Timed block
   startBlockTimer: (
@@ -181,6 +207,7 @@ type WorkoutStore = WorkoutState & WorkoutActions;
 
 const initialRestTimer: RestTimerState = {
   duration: 90,
+  endsAt: null,
   remaining: 0,
   running: false,
   paused: false,
@@ -214,6 +241,25 @@ const initialState: WorkoutState = {
   restTimer: initialRestTimer,
   blockTimer: initialBlockTimer,
 };
+
+/**
+ * Seconds left on the rest timer, from its anchor rather than a tick count.
+ *
+ * A paused or finished timer has no anchor to read, so the banked `remaining`
+ * is the answer. `now` is required: the one caller that is a screen renders for
+ * the length of a whole rest.
+ */
+export const restRemaining = (timer: RestTimerState, now: number): number => {
+  if (timer.endsAt === null) return timer.remaining;
+  return Math.max(0, Math.ceil((timer.endsAt - now) / 1000));
+};
+
+/**
+ * Whether the rest overlay is up: counting, paused, or run out and waiting for
+ * the tap that closes it. One rule, because the screen and the restore path
+ * must agree on when a rest exists.
+ */
+export const restIsUp = (timer: RestTimerState): boolean => timer.endsAt !== null || timer.paused;
 
 /**
  * Seconds of work the clock has seen, from the wall clock rather than ticks.
@@ -263,6 +309,33 @@ const emptySet = () => ({
 // Helper to persist session state
 const persistSession = async (state: Partial<WorkoutState>) => {
   await appStorage.setJSON(STORAGE_KEYS.SESSION.FULL_STATE, state);
+};
+
+/** The pre-anchor rest timer, still sitting in any session saved before it. */
+type LegacyRestTimerState = Omit<RestTimerState, 'endsAt'> & { endsAt?: number | null };
+
+/**
+ * Rebuild the rest timer from persisted state.
+ *
+ * A session saved before the timer had an anchor carries a tick-counted
+ * `remaining` and no way to tell how much of it went by while the app was
+ * closed. Those sessions dropped the rest timer on every reload anyway, so one
+ * comes back with no rest running rather than with invented time.
+ */
+const restoreRestTimer = (
+  stored: LegacyRestTimerState | undefined,
+  now: number
+): RestTimerState => {
+  if (!stored || stored.endsAt === undefined) return initialRestTimer;
+
+  const timer: RestTimerState = { ...stored, endsAt: stored.endsAt };
+  // No anchor: paused, or no rest at all. The banked remaining is the truth.
+  if (timer.endsAt === null) return { ...timer, running: false };
+
+  // A rest that ran out while the app was away comes back ready for the tap
+  // that closes it, not running with time that no longer exists.
+  const remaining = restRemaining(timer, now);
+  return { ...timer, remaining, running: remaining > 0 };
 };
 
 /** The pre-block clock shape, still sitting in any session saved by that pass. */
@@ -610,54 +683,113 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
   },
 
   // Rest timer
+  //
+  // Persisted with the session, like the block clock: a rest routinely outlives
+  // a reload or a trip to another app, and the anchor is what makes coming back
+  // to the true remaining time possible.
   startRestTimer: (duration) => {
-    set({
-      restTimer: {
-        duration,
-        remaining: duration,
-        running: true,
-        paused: false,
-      },
+    const safeDuration = Math.max(0, Math.round(duration));
+    set((state) => {
+      // No rest prescribed means no overlay at all, rather than one that opens
+      // already finished and has to be tapped away.
+      const restTimer: RestTimerState =
+        safeDuration === 0
+          ? initialRestTimer
+          : {
+              duration: safeDuration,
+              endsAt: Date.now() + safeDuration * 1000,
+              remaining: safeDuration,
+              running: true,
+              paused: false,
+            };
+      persistSession({ ...state, restTimer }).catch(console.warn);
+      return { restTimer };
     });
   },
 
   pauseRestTimer: () => {
-    set((state) => ({
-      restTimer: { ...state.restTimer, paused: true, running: false },
-    }));
+    set((state) => {
+      const timer = state.restTimer;
+      if (!timer.running) return state;
+      // Bank what is left, then drop the anchor — resume re-anchors it.
+      const restTimer: RestTimerState = {
+        ...timer,
+        remaining: restRemaining(timer, Date.now()),
+        endsAt: null,
+        running: false,
+        paused: true,
+      };
+      persistSession({ ...state, restTimer }).catch(console.warn);
+      return { restTimer };
+    });
   },
 
   resumeRestTimer: () => {
-    set((state) => ({
-      restTimer: { ...state.restTimer, paused: false, running: true },
-    }));
+    set((state) => {
+      const timer = state.restTimer;
+      if (!timer.paused) return state;
+      const restTimer: RestTimerState = {
+        ...timer,
+        endsAt: Date.now() + timer.remaining * 1000,
+        running: timer.remaining > 0,
+        paused: false,
+      };
+      persistSession({ ...state, restTimer }).catch(console.warn);
+      return { restTimer };
+    });
   },
 
   resetRestTimer: () => {
-    set({ restTimer: initialRestTimer });
+    set((state) => {
+      persistSession({ ...state, restTimer: initialRestTimer }).catch(console.warn);
+      return { restTimer: initialRestTimer };
+    });
   },
 
   tickRestTimer: () => {
     set((state) => {
-      if (!state.restTimer.running || state.restTimer.paused) {
-        return state;
-      }
+      const timer = state.restTimer;
+      if (!timer.running || timer.endsAt === null) return state;
 
-      const remaining = Math.max(0, state.restTimer.remaining - 1);
+      const remaining = restRemaining(timer, Date.now());
 
+      // Out of time. The anchor stays so the overlay knows a rest is up and
+      // offers "Tap to continue" rather than closing itself.
       if (remaining === 0) {
-        return {
-          restTimer: {
-            ...state.restTimer,
-            remaining: 0,
-            running: false,
-          },
-        };
+        const restTimer: RestTimerState = { ...timer, remaining: 0, running: false };
+        persistSession({ ...state, restTimer }).catch(console.warn);
+        return { restTimer };
       }
 
-      return {
-        restTimer: { ...state.restTimer, remaining },
+      // Re-render only on a whole-second change; this fires more often than
+      // the number it is driving changes.
+      if (remaining === timer.remaining) return state;
+      return { restTimer: { ...timer, remaining } };
+    });
+  },
+
+  adjustRestTimer: (delta) => {
+    set((state) => {
+      const timer = state.restTimer;
+      if (!restIsUp(timer)) return state;
+
+      const now = Date.now();
+      const remaining = restRemaining(timer, now);
+      // At zero every control has cleared, so there is nothing to adjust.
+      if (remaining === 0) return state;
+
+      const next = Math.max(0, remaining + delta);
+      const restTimer: RestTimerState = {
+        ...timer,
+        // Added time grows the ring's total as well, so the arc can never pass
+        // full. Removing time leaves the total alone and the arc just shrinks.
+        duration: delta > 0 ? timer.duration + delta : timer.duration,
+        remaining: next,
+        endsAt: timer.paused ? null : now + next * 1000,
+        running: !timer.paused && next > 0,
       };
+      persistSession({ ...state, restTimer }).catch(console.warn);
+      return { restTimer };
     });
   },
 
@@ -836,6 +968,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
           gymRushActive: stored.gymRushActive ?? false,
           blocks: stored.blocks ?? [],
           blockTimes: stored.blockTimes ?? {},
+          restTimer: restoreRestTimer(stored.restTimer, Date.now()),
           blockTimer: restoreBlockTimer(stored.blockTimer, stored.amrapTimer),
         });
       }

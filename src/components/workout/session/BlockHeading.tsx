@@ -11,13 +11,22 @@ import { StyleSheet, Text, View } from 'react-native';
 import { ExerciseDemo } from '@/components/workout/ExerciseDemo';
 import { colors, roles, spacing, textStyles } from '@/theme';
 import type { Exercise } from '@/types';
+import { LastTimeCaption } from './LastTimeCaption';
 
 interface BlockHeadingProps {
   /** Every movement in the block. One entry means a single-movement block. */
   entries: Array<{ exercise: Exercise | undefined; index: number }>;
+  /**
+   * Inside a timed block, which gets no "Last time" line.
+   *
+   * What you compare across two AMRAPs is rounds in the window, and across two
+   * for-times the finish time. Neither is a set scheme, so neither fits a line
+   * about sets — and the clock card already carries the live round tally.
+   */
+  timed: boolean;
 }
 
-export function BlockHeading({ entries }: BlockHeadingProps) {
+export function BlockHeading({ entries, timed }: BlockHeadingProps) {
   const isCircuit = entries.length > 1;
   const single = entries[0]?.exercise;
 
@@ -46,6 +55,8 @@ export function BlockHeading({ entries }: BlockHeadingProps) {
 
       {/* Collapsed by default — opt in when you want the reminder. */}
       <ExerciseDemo exerciseId={single.id.replace(/-\d+$/, '')} />
+
+      {!timed && <LastTimeCaption exerciseId={single.id} />}
     </>
   );
 }

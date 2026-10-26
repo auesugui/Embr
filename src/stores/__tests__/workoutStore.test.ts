@@ -11,6 +11,8 @@ import {
   blockElapsed,
   blockInterval,
   blockRemaining,
+  restIsUp,
+  restRemaining,
   selectExerciseProgress,
   selectIsRestTimerComplete,
   selectSessionDuration,
@@ -567,90 +569,279 @@ describe('Workout Store', () => {
   // Rest Timer
   // ---------------------------------------------------------------------------
 
+  // The rest timer is anchored to a wall-clock instant rather than counting
+  // ticks, so every test here moves the system clock instead of calling tick
+  // repeatedly. That IS the behaviour: a backgrounded tab delivers no ticks.
   describe('Rest Timer', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const timer = () => useWorkoutStore.getState().restTimer;
+    const now = () => Date.now();
+
     describe('startRestTimer', () => {
-      it('should start timer with specified duration', () => {
+      it('anchors the rest against the wall clock', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
         const { startRestTimer } = useWorkoutStore.getState();
 
         startRestTimer(90);
 
-        const { restTimer } = useWorkoutStore.getState();
-        expect(restTimer.running).toBe(true);
-        expect(restTimer.paused).toBe(false);
-        expect(restTimer.remaining).toBe(90);
-        expect(restTimer.duration).toBe(90);
+        expect(timer()).toMatchObject({
+          duration: 90,
+          remaining: 90,
+          running: true,
+          paused: false,
+          endsAt: 1_000_000 + 90_000,
+        });
+      });
+
+      it('opens no rest at all when none is prescribed', () => {
+        const { startRestTimer } = useWorkoutStore.getState();
+
+        startRestTimer(0);
+
+        expect(restIsUp(timer())).toBe(false);
       });
     });
 
-    describe('pauseRestTimer', () => {
-      it('should pause active timer', () => {
-        const { startRestTimer, pauseRestTimer } = useWorkoutStore.getState();
+    describe('tickRestTimer', () => {
+      it('does not lose time while the app is not ticking', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, tickRestTimer } = useWorkoutStore.getState();
+        startRestTimer(90);
 
+        // Thirty seconds pass with no tick delivered.
+        jest.setSystemTime(1_000_000 + 30_000);
+        tickRestTimer();
+
+        expect(timer().remaining).toBe(60);
+      });
+
+      it('stops the clock at zero but leaves the rest on screen', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, tickRestTimer } = useWorkoutStore.getState();
+        startRestTimer(60);
+
+        jest.setSystemTime(1_000_000 + 61_000);
+        tickRestTimer();
+
+        expect(timer().remaining).toBe(0);
+        expect(timer().running).toBe(false);
+        // The overlay stays up offering "Tap to continue".
+        expect(restIsUp(timer())).toBe(true);
+      });
+
+      it('does not tick while paused', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, pauseRestTimer, tickRestTimer } = useWorkoutStore.getState();
         startRestTimer(90);
         pauseRestTimer();
 
-        const { restTimer } = useWorkoutStore.getState();
-        expect(restTimer.paused).toBe(true);
+        jest.setSystemTime(1_000_000 + 30_000);
+        tickRestTimer();
+
+        expect(timer().remaining).toBe(90);
       });
     });
 
-    describe('resumeRestTimer', () => {
-      it('should resume paused timer', () => {
+    describe('pauseRestTimer and resumeRestTimer', () => {
+      it('keeps the remaining time exact across a pause', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
         const { startRestTimer, pauseRestTimer, resumeRestTimer } = useWorkoutStore.getState();
-
         startRestTimer(90);
+
+        jest.setSystemTime(1_000_000 + 20_000);
         pauseRestTimer();
+
+        expect(timer()).toMatchObject({
+          remaining: 70,
+          running: false,
+          paused: true,
+          endsAt: null,
+        });
+
+        // A minute of paused time must not come out of the rest.
+        jest.setSystemTime(1_000_000 + 80_000);
         resumeRestTimer();
 
-        const { restTimer } = useWorkoutStore.getState();
-        expect(restTimer.paused).toBe(false);
+        expect(restRemaining(timer(), now())).toBe(70);
+        expect(timer().running).toBe(true);
       });
     });
 
     describe('resetRestTimer', () => {
-      it('should stop and reset timer', () => {
+      it('takes the rest off screen entirely', () => {
         const { startRestTimer, resetRestTimer } = useWorkoutStore.getState();
 
         startRestTimer(90);
         resetRestTimer();
 
-        const { restTimer } = useWorkoutStore.getState();
-        expect(restTimer.running).toBe(false);
-        expect(restTimer.remaining).toBe(0);
+        expect(timer().remaining).toBe(0);
+        expect(timer().running).toBe(false);
+        expect(restIsUp(timer())).toBe(false);
       });
     });
 
-    describe('tickRestTimer', () => {
-      it('should decrement remaining time', () => {
-        const { startRestTimer, tickRestTimer } = useWorkoutStore.getState();
-
+    describe('adjustRestTimer', () => {
+      it('adds fifteen seconds to the remaining time and to the ring total', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, adjustRestTimer } = useWorkoutStore.getState();
         startRestTimer(90);
-        tickRestTimer();
 
-        const { restTimer } = useWorkoutStore.getState();
-        expect(restTimer.remaining).toBe(89);
+        jest.setSystemTime(1_000_000 + 28_000);
+        adjustRestTimer(15);
+
+        // 1:17 of 1:45 — the arc grows a little and can never pass full.
+        expect(timer().remaining).toBe(77);
+        expect(timer().duration).toBe(105);
+        expect(timer().remaining).toBeLessThanOrEqual(timer().duration);
       });
 
-      it('should auto-stop when reaching 0', () => {
-        const { startRestTimer, tickRestTimer } = useWorkoutStore.getState();
+      it('takes fifteen seconds off without moving the ring total', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, adjustRestTimer } = useWorkoutStore.getState();
+        startRestTimer(90);
 
-        startRestTimer(1);
-        tickRestTimer();
+        jest.setSystemTime(1_000_000 + 28_000);
+        adjustRestTimer(-15);
 
-        const { restTimer } = useWorkoutStore.getState();
-        expect(restTimer.running).toBe(false);
-        expect(restTimer.remaining).toBe(0);
+        expect(timer().remaining).toBe(47);
+        expect(timer().duration).toBe(90);
       });
 
-      it('should not tick when paused', () => {
-        const { startRestTimer, pauseRestTimer, tickRestTimer } = useWorkoutStore.getState();
+      it('floors at zero rather than going negative', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, adjustRestTimer } = useWorkoutStore.getState();
+        startRestTimer(10);
 
+        adjustRestTimer(-15);
+
+        expect(timer().remaining).toBe(0);
+        expect(timer().running).toBe(false);
+      });
+
+      it('does nothing once the rest has run out', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, tickRestTimer, adjustRestTimer } = useWorkoutStore.getState();
+        startRestTimer(30);
+
+        jest.setSystemTime(1_000_000 + 31_000);
+        tickRestTimer();
+        adjustRestTimer(15);
+
+        expect(timer().remaining).toBe(0);
+        expect(timer().duration).toBe(30);
+      });
+
+      it('adjusts a paused rest without restarting it', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, pauseRestTimer, adjustRestTimer } = useWorkoutStore.getState();
         startRestTimer(90);
         pauseRestTimer();
-        tickRestTimer();
 
-        const { restTimer } = useWorkoutStore.getState();
-        expect(restTimer.remaining).toBe(90);
+        adjustRestTimer(15);
+
+        expect(timer()).toMatchObject({
+          remaining: 105,
+          running: false,
+          paused: true,
+          endsAt: null,
+        });
+      });
+
+      it('does nothing when no rest is running', () => {
+        const { adjustRestTimer } = useWorkoutStore.getState();
+
+        adjustRestTimer(15);
+
+        expect(restIsUp(timer())).toBe(false);
+      });
+    });
+
+    describe('restoring with the session', () => {
+      const storedSession = (restTimer: unknown) => ({
+        active: true,
+        exercises: [],
+        currentExerciseIndex: 0,
+        restTimer,
+      });
+
+      it('comes back with the time that actually passed taken off', async () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        (appStorage.getJSON as jest.Mock).mockResolvedValue(
+          storedSession({
+            duration: 90,
+            endsAt: 1_000_000 + 60_000,
+            remaining: 90,
+            running: true,
+            paused: false,
+          })
+        );
+
+        jest.setSystemTime(1_000_000 + 20_000);
+        await useWorkoutStore.getState().hydrate();
+
+        expect(timer().remaining).toBe(40);
+        expect(timer().running).toBe(true);
+      });
+
+      it('comes back ready when the rest ended while the app was away', async () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        (appStorage.getJSON as jest.Mock).mockResolvedValue(
+          storedSession({
+            duration: 90,
+            endsAt: 1_000_000 + 30_000,
+            remaining: 90,
+            running: true,
+            paused: false,
+          })
+        );
+
+        jest.setSystemTime(1_000_000 + 10 * 60_000);
+        await useWorkoutStore.getState().hydrate();
+
+        expect(timer().remaining).toBe(0);
+        expect(timer().running).toBe(false);
+        expect(restIsUp(timer())).toBe(true);
+      });
+
+      it('keeps a paused rest exactly where it was', async () => {
+        (appStorage.getJSON as jest.Mock).mockResolvedValue(
+          storedSession({ duration: 90, endsAt: null, remaining: 45, running: false, paused: true })
+        );
+
+        await useWorkoutStore.getState().hydrate();
+
+        expect(timer()).toMatchObject({ remaining: 45, paused: true, running: false });
+      });
+
+      // A session saved before the timer had an anchor. It carries a
+      // tick-counted `remaining` and no `endsAt`, and those sessions dropped
+      // the rest timer on every reload anyway.
+      it('loads a session saved without an anchor with no rest running', async () => {
+        (appStorage.getJSON as jest.Mock).mockResolvedValue(
+          storedSession({ duration: 90, remaining: 45, running: true, paused: false })
+        );
+
+        await useWorkoutStore.getState().hydrate();
+
+        expect(useWorkoutStore.getState().active).toBe(true);
+        expect(restIsUp(timer())).toBe(false);
+        expect(timer().remaining).toBe(0);
+      });
+
+      it('loads a session with no rest timer at all', async () => {
+        (appStorage.getJSON as jest.Mock).mockResolvedValue({
+          active: true,
+          exercises: [],
+          currentExerciseIndex: 0,
+        });
+
+        await useWorkoutStore.getState().hydrate();
+
+        expect(useWorkoutStore.getState().active).toBe(true);
+        expect(restIsUp(timer())).toBe(false);
       });
     });
   });

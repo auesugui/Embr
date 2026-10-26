@@ -26,6 +26,7 @@ export function useWorkoutActions() {
     resumeRestTimer: useWorkoutStore((state) => state.resumeRestTimer),
     resetRestTimer: useWorkoutStore((state) => state.resetRestTimer),
     tickRestTimer: useWorkoutStore((state) => state.tickRestTimer),
+    adjustRestTimer: useWorkoutStore((state) => state.adjustRestTimer),
     startBlockTimer: useWorkoutStore((state) => state.startBlockTimer),
     pauseBlockTimer: useWorkoutStore((state) => state.pauseBlockTimer),
     resumeBlockTimer: useWorkoutStore((state) => state.resumeBlockTimer),
