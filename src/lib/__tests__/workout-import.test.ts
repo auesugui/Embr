@@ -120,6 +120,26 @@ describe('parseWorkoutImport', () => {
     expect(skipped).toBe(1);
   });
 
+  it('carries the logged weight unit through, and leaves an older log without one (#85)', () => {
+    const withUnit = { ...makeLog({ id: 'log-5' }), weightUnit: 'kg' };
+
+    const { logs, skipped } = parseWorkoutImport(backupText([makeLog(), withUnit]));
+
+    expect(logs[0]).not.toHaveProperty('weightUnit');
+    expect(logs[1].weightUnit).toBe('kg');
+    expect(skipped).toBe(0);
+  });
+
+  it('drops a weight unit it does not recognise rather than the workout (#85)', () => {
+    const bogus = { ...makeLog({ id: 'log-6' }), weightUnit: 'stone' };
+
+    const { logs, skipped } = parseWorkoutImport(backupText([bogus]));
+
+    expect(logs.map((log) => log.id)).toEqual(['log-6']);
+    expect(logs[0]).not.toHaveProperty('weightUnit');
+    expect(skipped).toBe(0);
+  });
+
   it('says so when none of the workouts can be read', () => {
     expect(() => parseWorkoutImport(backupText([{ id: '' }]))).toThrow(
       'None of the workouts in that file could be read.'

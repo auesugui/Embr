@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 
 import { isOpenEnded, targetRepCount } from '@/lib/blocks';
 import { streakOnDay } from '@/lib/streak';
-import { useWorkoutHistoryStore, useWorkoutStore } from '@/stores';
+import { useSettingsStore, useWorkoutHistoryStore, useWorkoutStore } from '@/stores';
 import { showAlert } from '@/utils/alert';
 import { haptics } from '@/utils/haptics';
 import { confirmEndSession } from '@/workout/endSessionGuard';
@@ -120,6 +120,10 @@ export function useSessionActions({
       templateId: workoutStoreState.templateId ?? undefined,
       dayKey: workoutStoreState.dayKey ?? undefined,
       workoutName: workoutStoreState.workoutName ?? undefined,
+      // The unit these weights were typed in, read here rather than at render
+      // so a session that was open while the setting changed records the unit
+      // in effect at finish (#85).
+      weightUnit: useSettingsStore.getState().units,
     });
 
     router.replace({

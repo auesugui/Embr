@@ -60,6 +60,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       expect(id).toBeTruthy();
@@ -78,6 +79,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       expect(require('@/utils/storage').appStorage.setJSON as jest.Mock).toHaveBeenCalled();
@@ -93,12 +95,14 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
       const b = useWorkoutHistoryStore.getState().createLog({
         exercises: [makeExercise()],
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       expect(a).not.toBe(b);
@@ -110,6 +114,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
         templateId: 'ppl_6day',
         dayKey: 'ppl_push_a',
         workoutName: 'Push A',
@@ -129,6 +134,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
         templateId: 'ppl_6day',
         dayKey: 'ppl_push_a',
       });
@@ -146,6 +152,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
         templateId: 'ppl_6day',
       });
       const none = useWorkoutHistoryStore.getState().createLog({
@@ -153,6 +160,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       for (const id of [partial, none]) {
@@ -179,6 +187,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 1,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       const claimed = useWorkoutHistoryStore.getState().saveWorkout(id);
@@ -194,6 +203,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 1,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       const first = useWorkoutHistoryStore.getState().saveWorkout(id);
@@ -209,6 +219,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 1,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       const first = useWorkoutHistoryStore.getState().saveWorkout(id);
@@ -236,6 +247,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 1,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       // Mirror of summary.tsx handleFinish: act only when saveWorkout returns
@@ -360,6 +372,7 @@ describe('Workout History Store', () => {
         durationSeconds: 600,
         streakDays: 0,
         sessionIntent: 'normal',
+        weightUnit: 'lb',
       });
 
       const added = useWorkoutHistoryStore.getState().mergeLogs([importedLog('imported-1')]);
@@ -383,6 +396,59 @@ describe('Workout History Store', () => {
 
       expect(added).toBe(0);
       expect(useWorkoutHistoryStore.getState().logs).toBe(before);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // weightUnit — recorded on new logs only (#85)
+  // ---------------------------------------------------------------------------
+
+  describe('weightUnit', () => {
+    const create = (weightUnit: 'lb' | 'kg') =>
+      useWorkoutHistoryStore.getState().createLog({
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 0,
+        sessionIntent: 'normal',
+        weightUnit,
+      });
+
+    it.each(['lb', 'kg'] as const)('stamps the unit the workout was logged in: %s', (unit) => {
+      const log = useWorkoutHistoryStore.getState().getLog(create(unit));
+      expect(log?.weightUnit).toBe(unit);
+    });
+
+    it('keeps the unit through saveWorkout', () => {
+      const id = create('kg');
+      expect(useWorkoutHistoryStore.getState().saveWorkout(id)?.weightUnit).toBe('kg');
+      expect(useWorkoutHistoryStore.getState().getLog(id)?.weightUnit).toBe('kg');
+    });
+
+    it('leaves a pre-#85 log without the key, through load, save and merge', async () => {
+      const legacy = {
+        id: 'workout_legacy',
+        timestamp: '2026-07-01T00:00:00.000Z',
+        exercises: [makeExercise()],
+        durationSeconds: 600,
+        streakDays: 3,
+        sessionIntent: 'normal' as const,
+        claimedAt: null,
+      };
+      (require('@/utils/storage').appStorage.getJSON as jest.Mock).mockResolvedValue({
+        logs: [legacy],
+      });
+      await useWorkoutHistoryStore.getState().hydrate();
+
+      const saved = useWorkoutHistoryStore.getState().saveWorkout('workout_legacy');
+      expect(saved).not.toBeNull();
+      expect('weightUnit' in (saved as object)).toBe(false);
+
+      useWorkoutHistoryStore
+        .getState()
+        .mergeLogs([{ ...legacy, id: 'workout_legacy_2', claimedAt: null }]);
+      for (const log of useWorkoutHistoryStore.getState().logs) {
+        expect('weightUnit' in log).toBe(false);
+      }
     });
   });
 });

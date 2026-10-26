@@ -298,6 +298,15 @@ export interface WorkoutLog {
    * workout", which on a split is a different day entirely.
    */
   workoutName?: string;
+  /**
+   * The weight unit the sets were logged in, stamped when the log is created.
+   *
+   * Absent on every log written before #85, which is why nothing reads it yet:
+   * a reader that trusted it would label part of the history from the log and
+   * the rest from the setting. Weights are still labelled with the current
+   * unit setting everywhere.
+   */
+  weightUnit?: WeightUnit;
 }
 
 export interface PRRecord {
