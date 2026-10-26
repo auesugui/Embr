@@ -323,6 +323,69 @@ describe('buildExerciseProgress — metric choice', () => {
     expect(progress.comparable).toHaveLength(1);
   });
 
+  // ---------------------------------------------------------------------------
+  // A hold recorded as a weight. `isPerformedSet` decides the session, not the
+  // series value, so a weighted plank with no seconds does not disappear.
+  // ---------------------------------------------------------------------------
+
+  const plank = (sets: LoggedSet[]) =>
+    exercise({ id: 'plank-0', name: 'Plank', metric: 'time', sets });
+
+  it('counts a weight-only hold session, and leaves it off the seconds series', () => {
+    const logs = [
+      log(at(14), [plank([set({ weight: null, reps: 45 })])], 'a'),
+      log(at(7), [plank([set({ weight: null, reps: 60 })])], 'b'),
+      log(at(0), [plank([set({ weight: 45, reps: null })])], 'c'),
+    ];
+
+    const [progress] = buildExerciseProgress(logs);
+    expect(progress.metric).toBe('time');
+    expect(progress.points).toHaveLength(3);
+    expect(progress.points[2].metric).toBe('weight');
+    // Only the two sessions with seconds on them can be plotted against each other.
+    expect(progress.comparable.map((p) => p.value)).toEqual([45, 60]);
+  });
+
+  it('still plots a hold that was weighted AND held for seconds', () => {
+    const logs = [
+      log(at(7), [plank([set({ weight: 25, reps: 40 })])], 'a'),
+      log(at(0), [plank([set({ weight: 25, reps: 55 })])], 'b'),
+    ];
+
+    const [progress] = buildExerciseProgress(logs);
+    expect(progress.metric).toBe('time');
+    expect(progress.comparable.map((p) => p.value)).toEqual([40, 55]);
+  });
+
+  it('lets a weight-only hold session set the row date and the list order', () => {
+    const logs = [
+      log(at(14), [plank([set({ weight: null, reps: 45 })])], 'a'),
+      log(at(5), [exercise({ sets: [set({ weight: 185, reps: 5 })] })], 'b'),
+      log(at(1), [plank([set({ weight: 45, reps: null })])], 'c'),
+    ];
+
+    const progress = buildExerciseProgress(logs);
+    expect(progress.map((p) => p.name)).toEqual(['Plank', 'Bench Press']);
+
+    const latest = progress[0].points[progress[0].points.length - 1];
+    expect(latest.timestamp).toBe(at(1));
+    // Its own terms: a weight with no seconds to multiply it by.
+    expect(summarizePoint(latest, latest.metric, 'lb')).toBe(
+      `45 lb · ${formatProgressDate(at(1))}`
+    );
+  });
+
+  it('lists a hold whose only session was weight-only, with nothing to chart', () => {
+    const logs = [log(at(2), [plank([set({ weight: 45, reps: null })])])];
+
+    const [progress] = buildExerciseProgress(logs);
+    expect(progress.name).toBe('Plank');
+    expect(progress.points).toHaveLength(1);
+    // One session and one comparable point, so the chart cannot draw a line.
+    expect(progress.comparable).toHaveLength(1);
+    expect(progress.metric).toBe('weight');
+  });
+
   it('leaves cardio entries out of the list entirely', () => {
     const logs = [
       log(at(0), [

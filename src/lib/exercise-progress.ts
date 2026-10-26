@@ -12,11 +12,17 @@
 // Every entry of the movement in a log has its logged sets merged before the
 // session's best set is picked, so the point reads the heavier of the two.
 //
-// Each session's best logged set is read in its own terms:
+// WHAT COUNTS AS A SESSION. `isPerformedSet` decides it, and nothing else
+// does: a logged set carrying a weight OR a count is work you did. That test
+// is independent of what the series measures, so a weighted plank recorded
+// without seconds is still a session of the plank — it just has no value on a
+// series measured in seconds.
 //
-//   hold (metric 'time')   the longest hold, in seconds
-//   any weight logged      the heaviest weight, with the reps it was done for
-//   no weight logged       the best reps
+// Each session's best set is then read in its own terms:
+//
+//   hold with seconds      the longest hold, in seconds
+//   any weight recorded    the heaviest weight, with the reps it was done for
+//   neither of those       the best reps
 //
 // THE SERIES RULE. The exercise's series metric is the hold, when the most
 // recent session is one; otherwise weight when any session carried a weight;
@@ -33,8 +39,8 @@
 // in the series metric, a caller showing "the latest" shows that session in
 // its own terms (`point.metric`).
 //
-// Sets with `logged: false` are not part of the record and are ignored. A
-// session whose logged sets produce no positive value is not a point at all.
+// Sets with `logged: false` are not part of the record and are ignored, and a
+// logged set with neither number on it is an empty row rather than a set.
 // Cardio entries carry no sets and are left out entirely. Two sessions on the
 // same calendar day stay two points — the session is the unit, not the day.
 //
@@ -128,26 +134,58 @@ interface RawGroup {
   sessions: Map<string, RawSession>;
 }
 
-/** The best set of a session, read under the resolved metric. */
-function bestSet(sets: LoggedSet[], metric: ProgressMetric): { value: number; reps: number } {
-  if (metric === 'weight') {
-    let best = { value: 0, reps: 0 };
-    for (const set of sets) {
-      const weight = set.weight ?? 0;
-      const reps = set.reps ?? 0;
-      // A tie on weight is broken by reps, so "275 lb × 5" names the hardest
-      // set of the session rather than whichever row came first.
-      if (weight > best.value || (weight === best.value && reps > best.reps)) {
-        best = { value: weight, reps };
-      }
-    }
-    return best;
-  }
+/**
+ * A set that was actually performed: logged, and carrying a number.
+ *
+ * Either number on its own is work you did — a weighted plank recorded as
+ * "45 lb" with no seconds is a set, and so is a bodyweight one recorded as
+ * "60" with no weight. This is the ONLY place membership is decided. Reading
+ * it off the series value instead is what made a weight-only hold vanish: the
+ * hold series looks at seconds, found none, and threw the session away.
+ */
+export function isPerformedSet(set: LoggedSet): boolean {
+  return set.logged && ((set.weight ?? 0) > 0 || (set.reps ?? 0) > 0);
+}
 
-  // Reps and seconds are both `LoggedSet.reps` — see src/lib/metric.ts.
+/** The heaviest weight across the sets, with the reps it was done for. */
+function heaviest(sets: LoggedSet[]): { value: number; reps: number } {
+  let best = { value: 0, reps: 0 };
+  for (const set of sets) {
+    const weight = set.weight ?? 0;
+    const reps = set.reps ?? 0;
+    // A tie on weight is broken by reps, so "275 lb × 5" names the hardest set
+    // of the session rather than whichever row came first.
+    if (weight > best.value || (weight === best.value && reps > best.reps)) {
+      best = { value: weight, reps };
+    }
+  }
+  return best;
+}
+
+/** The best rep count — or the longest hold, since both live in `reps`. */
+function bestCount(sets: LoggedSet[]): number {
   let value = 0;
   for (const set of sets) value = Math.max(value, set.reps ?? 0);
-  return { value, reps: value };
+  return value;
+}
+
+/**
+ * One session's best set, in whatever terms it was actually recorded in.
+ *
+ * A hold reads as seconds when seconds were recorded. When they were not, the
+ * session is still a session, so it falls through to the weight rather than
+ * disappearing — it just has nothing to plot on a series measured in seconds.
+ */
+function sessionBest(session: RawSession): { metric: ProgressMetric; value: number; reps: number } {
+  const count = bestCount(session.sets);
+  if (session.metric === 'time' && count > 0) {
+    return { metric: 'time', value: count, reps: count };
+  }
+
+  const top = heaviest(session.sets);
+  if (top.value > 0) return { metric: 'weight', value: top.value, reps: top.reps };
+
+  return { metric: 'reps', value: count, reps: count };
 }
 
 /**
@@ -165,7 +203,7 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
     for (const exercise of log.exercises) {
       if (exercise.cardio) continue;
 
-      const sets = exercise.sets.filter((set) => set.logged);
+      const sets = exercise.sets.filter(isPerformedSet);
       if (sets.length === 0) continue;
 
       const exerciseId = baseExerciseId(exercise.id);
@@ -196,16 +234,14 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
 
   for (const group of groups.values()) {
     const points: ProgressPoint[] = [];
-    // Insertion order is log order, which is session order.
+    /** Whether the most recent session's MOVEMENT is a hold. */
+    let latestIsHold = false;
+
+    // Insertion order is log order, which is session order. Every session here
+    // has a performed set, so every one of them becomes a point.
     for (const session of group.sessions.values()) {
-      const metric: ProgressMetric =
-        session.metric === 'time'
-          ? 'time'
-          : session.sets.some((set) => (set.weight ?? 0) > 0)
-            ? 'weight'
-            : 'reps';
-      const { value, reps } = bestSet(session.sets, metric);
-      if (value <= 0) continue;
+      const { metric, value, reps } = sessionBest(session);
+      latestIsHold = session.metric === 'time';
       points.push({
         logId: session.logId,
         timestamp: session.timestamp,
@@ -218,12 +254,13 @@ export function buildExerciseProgress(logs: WorkoutLog[]): ExerciseProgress[] {
 
     if (points.length === 0) continue;
 
-    // A hold is a property of the movement, so the most recent session decides
-    // it. Otherwise weight wins over reps wherever both were logged, and the
-    // latest session always has a metric, so `comparable` is never empty.
-    const latest = points[points.length - 1];
+    // A hold is a property of the MOVEMENT, not of one session's numbers, so a
+    // weighted plank recorded without seconds does not turn the series into
+    // weights. Otherwise weight wins over reps wherever both were logged. Each
+    // branch requires a point of its own metric, so `comparable` is never empty.
+    const hasSeconds = points.some((point) => point.metric === 'time');
     const metric: ProgressMetric =
-      latest.metric === 'time'
+      latestIsHold && hasSeconds
         ? 'time'
         : points.some((point) => point.metric === 'weight')
           ? 'weight'
@@ -376,8 +413,11 @@ export function summarizePoint(
   units: WeightUnit
 ): string {
   const date = formatProgressDate(point.timestamp);
-  if (metric === 'weight') return `${point.value} ${units} × ${point.reps} · ${date}`;
-  return `${formatProgressValue(point.value, metric, units)} · ${date}`;
+  if (metric !== 'weight') return `${formatProgressValue(point.value, metric, units)} · ${date}`;
+  // A weighted hold recorded without seconds has a weight and nothing to
+  // multiply it by. "45 lb × 0" would be a rep count nobody did.
+  if (point.reps <= 0) return `${point.value} ${units} · ${date}`;
+  return `${point.value} ${units} × ${point.reps} · ${date}`;
 }
 
 /** What the chart is plotting, for the caption under it. */
