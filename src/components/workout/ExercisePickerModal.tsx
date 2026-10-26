@@ -4,8 +4,12 @@
 // Searchable list of the exercise library, built-ins plus the user's own. Used
 // by the template editor (issue #5) to swap an exercise or add one to a
 // personal copy. A search that names no exercise offers to create it.
+//
+// Above the list: a Recent row read back out of saved workouts and one row of
+// filter chips (issue #83). Search and chips narrow together, never
+// separately, and the rules for both live in `src/lib/exercise-filter.ts`.
 
-import { memo, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Keyboard,
   Modal,
@@ -18,12 +22,23 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChevronRight, Plus } from '@/components/icons';
+import { Plus } from '@/components/icons';
 import { CreateExerciseForm } from '@/components/workout/CreateExerciseForm';
-import { type ExerciseDefinition, allExercises, searchExercises } from '@/data';
+import { EquipmentFilterSheet } from '@/components/workout/EquipmentFilterSheet';
+import { ExerciseFilterChips } from '@/components/workout/ExerciseFilterChips';
+import { ExercisePickerRecents } from '@/components/workout/ExercisePickerRecents';
+import { ExercisePickerResults } from '@/components/workout/ExercisePickerResults';
+import { type Equipment, type MuscleGroup, allExercises } from '@/data';
 import { useKeyboardInset } from '@/hooks';
 import { findExerciseByName, toExerciseName } from '@/lib/custom-exercise';
-import { useCustomExerciseStore } from '@/stores';
+import {
+  describeEmptyPicker,
+  filterExercises,
+  filterMuscles,
+  isNarrowed,
+  recentExercises,
+} from '@/lib/exercise-filter';
+import { useCustomExerciseStore, useWorkoutHistoryStore } from '@/stores';
 import { colors, radius, roles, spacing, textStyles } from '@/theme';
 import { haptics } from '@/utils/haptics';
 
@@ -36,37 +51,6 @@ interface ExercisePickerModalProps {
   excludeIds?: string[];
 }
 
-function ExerciseRow({
-  exercise,
-  isOwn,
-  onSelect,
-}: {
-  exercise: ExerciseDefinition;
-  isOwn: boolean;
-  onSelect: (id: string) => void;
-}) {
-  const handle = () => {
-    haptics.selection();
-    onSelect(exercise.id);
-  };
-  return (
-    <Pressable style={styles.row} onPress={handle}>
-      <View style={styles.rowInfo}>
-        <View style={styles.rowNameLine}>
-          <Text style={styles.rowName}>{exercise.name}</Text>
-          {isOwn && <Text style={styles.ownBadge}>YOURS</Text>}
-        </View>
-        <Text style={styles.rowMeta}>
-          {exercise.primaryMuscle} · {exercise.equipment.join('/')}
-        </Text>
-      </View>
-      <ChevronRight size={18} color={roles.textMuted} style={styles.rowChevron} />
-    </Pressable>
-  );
-}
-
-const MemoRow = memo(ExerciseRow);
-
 export function ExercisePickerModal({
   visible,
   title,
@@ -77,8 +61,13 @@ export function ExercisePickerModal({
   const [query, setQuery] = useState('');
   // The name being created, while the New Exercise step is showing.
   const [creating, setCreating] = useState<string | null>(null);
+  const [muscle, setMuscle] = useState<MuscleGroup | null>(null);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [equipmentOpen, setEquipmentOpen] = useState(false);
   // Subscribed so a new exercise shows up, and to mark the user's own.
   const ownExercises = useCustomExerciseStore((state) => state.exercises);
+  // Recents are derived from saved workouts. Nothing new is persisted.
+  const logs = useWorkoutHistoryStore((state) => state.logs);
   // The sheet has to get out of the keyboard's way itself: this is a PWA, and
   // KeyboardAvoidingView does nothing in a browser. See useKeyboardInset.
   const keyboardInset = useKeyboardInset();
@@ -88,6 +77,9 @@ export function ExercisePickerModal({
     if (visible) {
       setQuery('');
       setCreating(null);
+      setMuscle(null);
+      setEquipment([]);
+      setEquipmentOpen(false);
     }
   }, [visible]);
 
@@ -106,13 +98,35 @@ export function ExercisePickerModal({
 
   const excludeSet = new Set(excludeIds);
   const ownIds = new Set(ownExercises.map((e) => e.id));
+  const library = allExercises();
   const trimmed = query.trim();
-  const results = searchExercises(trimmed).filter((e) => !excludeSet.has(e.id));
-  const canCreate = trimmed.length > 0 && !findExerciseByName(trimmed, allExercises());
+  const filter = { muscle, equipment, query: trimmed };
+  const results = filterExercises(filter, excludeSet);
+  // Decided against the whole library, not the filtered results: chips can
+  // never hide the fact that a name is free.
+  const named = trimmed.length > 0 ? findExerciseByName(trimmed, library) : undefined;
+  const canCreate = trimmed.length > 0 && !named;
+  const narrowed = isNarrowed(filter);
+  const empty = results.length === 0 ? describeEmptyPicker({ filter, named }) : null;
+  // Hidden while anything narrows the list: a row that ignores your filter is
+  // a second answer on screen competing with the right one.
+  const recents = narrowed ? [] : recentExercises({ logs, library, excludeIds: excludeSet });
 
   const startCreate = () => {
     haptics.tap();
     setCreating(toExerciseName(trimmed));
+  };
+
+  const clearChips = () => {
+    haptics.tap();
+    setMuscle(null);
+    setEquipment([]);
+  };
+
+  const toggleEquipment = (item: Equipment) => {
+    setEquipment((current) =>
+      current.includes(item) ? current.filter((e) => e !== item) : [...current, item]
+    );
   };
 
   return (
@@ -164,6 +178,29 @@ export function ExercisePickerModal({
                 autoCorrect={false}
               />
 
+              <ExercisePickerRecents exercises={recents} onSelect={handleSelect} />
+
+              <ExerciseFilterChips
+                muscles={filterMuscles(library)}
+                muscle={muscle}
+                equipmentCount={equipment.length}
+                onPickMuscle={setMuscle}
+                onOpenEquipment={() => {
+                  Keyboard.dismiss();
+                  setEquipmentOpen(true);
+                }}
+              />
+
+              {/* The count takes the slot Recent left, so the list starts at
+                  the same height either way. Counting the whole library on the
+                  default sheet tells you nothing, so it is absent there. */}
+              {narrowed && (
+                <View style={styles.countRow}>
+                  <Text style={styles.countLabel}>Results</Text>
+                  <Text style={styles.countValue}>{results.length}</Text>
+                </View>
+              )}
+
               <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
                 {canCreate && (
                   <Pressable
@@ -178,22 +215,39 @@ export function ExercisePickerModal({
                     <Text style={styles.createHint}>Saved to your library, then added here</Text>
                   </Pressable>
                 )}
-                {results.length === 0 && !canCreate ? (
-                  <Text style={styles.emptyText}>No exercises match “{query}”.</Text>
-                ) : (
-                  results.map((exercise) => (
-                    <MemoRow
-                      key={exercise.id}
-                      exercise={exercise}
-                      isOwn={ownIds.has(exercise.id)}
-                      onSelect={handleSelect}
-                    />
-                  ))
-                )}
+                <ExercisePickerResults
+                  results={results}
+                  ownIds={ownIds}
+                  empty={empty}
+                  underCreate={canCreate}
+                  onSelect={handleSelect}
+                  onClearChips={clearChips}
+                />
               </ScrollView>
             </>
           )}
         </View>
+
+        {/* Laid OVER the picker sheet, as a sibling of it: the list keeps its
+            scroll position, and nothing new wraps the search field. */}
+        {equipmentOpen && creating === null && (
+          <>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setEquipmentOpen(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close equipment filter"
+            />
+            <EquipmentFilterSheet
+              selected={equipment}
+              count={results.length}
+              bottomInset={insets.bottom}
+              onToggle={toggleEquipment}
+              onClear={() => setEquipment([])}
+              onDone={() => setEquipmentOpen(false)}
+            />
+          </>
+        )}
       </View>
     </Modal>
   );
@@ -246,36 +300,6 @@ const styles = StyleSheet.create({
   list: {
     flexShrink: 1,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: colors.ui.border,
-  },
-  rowInfo: {
-    flex: 1,
-  },
-  rowNameLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[2],
-  },
-  rowName: {
-    ...textStyles.body,
-    color: colors.text.primary,
-  },
-  ownBadge: {
-    ...textStyles.caption,
-    fontSize: 11,
-    fontWeight: '700',
-    color: roles.accentText,
-    backgroundColor: roles.accentSubtle,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing[2],
-    overflow: 'hidden',
-  },
   createRow: {
     paddingVertical: spacing[3],
     paddingHorizontal: spacing[2],
@@ -296,19 +320,21 @@ const styles = StyleSheet.create({
     color: colors.text.muted,
     marginTop: 2,
   },
-  rowMeta: {
+  countRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing[1],
+  },
+  countLabel: {
     ...textStyles.caption,
-    color: colors.text.muted,
-    marginTop: 2,
-    textTransform: 'capitalize',
+    color: roles.textMuted,
+    fontWeight: '600',
   },
-  rowChevron: {
-    marginLeft: spacing[3],
-  },
-  emptyText: {
-    ...textStyles.body,
-    color: colors.text.muted,
-    textAlign: 'center',
-    paddingVertical: spacing[6],
+  countValue: {
+    ...textStyles.caption,
+    color: roles.textMuted,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
 });
