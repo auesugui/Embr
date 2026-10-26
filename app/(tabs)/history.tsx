@@ -41,6 +41,7 @@ import {
   monthTitle,
   shiftMonth,
   trainingDayKeys,
+  weekRowForDay,
 } from '@/lib/history-calendar';
 import { getClaimedLogs } from '@/lib/history-stats';
 import { localDayKey } from '@/lib/local-day';
@@ -76,6 +77,11 @@ export default function HistoryScreen() {
 
   const viewedMonth = month ?? monthOfDay(todayKey);
   const collapsed = folded ?? scrolled;
+  // The day the collapsed row is about. It survives stepping to another month,
+  // so collapsed the card is labelled by this day's month rather than by the
+  // month being browsed — the row and its title have to agree.
+  const focusKey = selectedDay ?? todayKey;
+  const headerMonth = collapsed ? monthOfDay(focusKey) : viewedMonth;
 
   const trainedDays = useMemo(() => trainingDayKeys(logs), [logs]);
   const strip = useMemo(() => volumeStrip(logs, now), [logs, now]);
@@ -84,17 +90,21 @@ export default function HistoryScreen() {
     () => monthGrid(viewedMonth, { todayKey, trainedDays, selectedKey: selectedDay }),
     [viewedMonth, todayKey, trainedDays, selectedDay]
   );
+  const week = useMemo(
+    () => weekRowForDay(focusKey, { todayKey, trainedDays, selectedKey: selectedDay }),
+    [focusKey, todayKey, trainedDays, selectedDay]
+  );
 
   const navigation = useNavigation();
   // Collapsed, the month moves into the nav bar so the grid's own title can go
   // with the rows it labelled.
   useLayoutEffect(() => {
-    const label = collapsed ? monthName(viewedMonth) : null;
+    const label = collapsed ? monthName(headerMonth) : null;
     navigation.setOptions({
       headerRight:
         label === null ? undefined : () => <Text style={styles.headerMonth}>{label}</Text>,
     });
-  }, [navigation, collapsed, viewedMonth]);
+  }, [navigation, collapsed, headerMonth]);
 
   // Claimed-only, newest-first. Derived in render so store updates reflect
   // immediately (e.g. claiming a workout adds it to the list right away).
@@ -106,6 +116,12 @@ export default function HistoryScreen() {
     setSelectedDay((current) => (current === key ? null : key));
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) =>
     setScrolled(event.nativeEvent.contentOffset.y > COLLAPSE_AT);
+  // Stepping a month expands: collapsed, the card shows the selected day's own
+  // week, so a step that left it collapsed would change nothing you can see.
+  const handleStep = (delta: number) => {
+    setMonth(shiftMonth(viewedMonth, delta));
+    setFolded(false);
+  };
 
   // ---- Loading (store hydrating from AsyncStorage) ----
   if (!hydrated) {
@@ -150,33 +166,36 @@ export default function HistoryScreen() {
     >
       <View style={styles.header}>
         <HistoryCalendar
-          title={monthTitle(viewedMonth)}
+          title={monthTitle(headerMonth)}
           days={grid}
+          week={week}
           collapsed={collapsed}
-          focusKey={selectedDay ?? todayKey}
           canPrevious={canStepBack(viewedMonth, earliest)}
           canNext={canStepForward(viewedMonth, todayKey)}
           emptyNote={
             grid.some((cell) => cell.trained) ? null : `No workouts in ${monthName(viewedMonth)}.`
           }
-          onPrevious={() => setMonth(shiftMonth(viewedMonth, -1))}
-          onNext={() => setMonth(shiftMonth(viewedMonth, 1))}
+          onPrevious={() => handleStep(-1)}
+          onNext={() => handleStep(1)}
           onToggleCollapsed={() => setFolded(!collapsed)}
           onSelectDay={handleSelectDay}
         />
         {strip !== null && <WeeklyVolumeStrip strip={strip} units={units} />}
+        {/* Inside the block, so a pinned header keeps carrying the date it is
+            filtering by and the way out of it. */}
+        {selectedDay !== null && (
+          <ShowingLine
+            dayKey={selectedDay}
+            count={shown.length}
+            onClear={() => setSelectedDay(null)}
+          />
+        )}
       </View>
 
-      {selectedDay === null ? (
+      {selectedDay === null && (
         <Text style={styles.summaryLine}>
           {claimed.length} workout{claimed.length === 1 ? '' : 's'} logged
         </Text>
-      ) : (
-        <ShowingLine
-          dayKey={selectedDay}
-          count={shown.length}
-          onClear={() => setSelectedDay(null)}
-        />
       )}
 
       {/* A filter that matched nothing, not an account with no history — one

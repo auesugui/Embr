@@ -6,13 +6,14 @@
 // at. One mark per day, never an intensity — "did I train" is the question this
 // card answers, and the strip under it answers "how much".
 //
-// Collapsed it keeps a single week row, the selected day's week or today's, so
-// the date being filtered by stays on screen while the list scrolls.
+// Collapsed it keeps a single week row, the selected day's week or today's,
+// whatever month is being browsed, so the date being filtered by stays on
+// screen while the list scrolls.
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from '@/components/icons';
-import { type CalendarDay, calendarRows, formatDayLabel, rowForDay } from '@/lib/history-calendar';
+import { type CalendarDay, calendarRows, formatDayLabel } from '@/lib/history-calendar';
 import { WEEK_DAY_INITIALS } from '@/lib/local-week';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
@@ -25,8 +26,8 @@ const WEEKDAY_CELLS = WEEK_DAY_INITIALS.map((letter, index) => ({
 export function HistoryCalendar({
   title,
   days,
+  week,
   collapsed,
-  focusKey,
   canPrevious,
   canNext,
   emptyNote,
@@ -37,9 +38,9 @@ export function HistoryCalendar({
 }: {
   title: string;
   days: CalendarDay[];
+  /** The focus day's own week, the one row the collapse keeps. */
+  week: CalendarDay[];
   collapsed: boolean;
-  /** The day whose week survives the collapse. */
-  focusKey: string;
   canPrevious: boolean;
   canNext: boolean;
   /** Said inside the card when the month has nothing in it. */
@@ -49,8 +50,7 @@ export function HistoryCalendar({
   onToggleCollapsed: () => void;
   onSelectDay: (key: string) => void;
 }) {
-  const rows = calendarRows(days);
-  const shown = collapsed ? [rowForDay(rows, focusKey)] : rows;
+  const shown = collapsed ? [week] : calendarRows(days);
 
   return (
     <View style={styles.card}>

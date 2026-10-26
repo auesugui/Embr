@@ -48,7 +48,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingVertical: spacing[2],
     paddingHorizontal: spacing[3],
-    marginBottom: spacing[3],
   },
   label: {
     ...textStyles.caption,

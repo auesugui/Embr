@@ -19,9 +19,9 @@ import {
   monthName,
   monthOfDay,
   monthTitle,
-  rowForDay,
   shiftMonth,
   trainingDayKeys,
+  weekRowForDay,
 } from '../history-calendar';
 
 let nextId = 0;
@@ -127,15 +127,48 @@ describe('monthGrid', () => {
   });
 });
 
-describe('rowForDay', () => {
-  const rows = calendarRows(grid('2026-10', '2026-10-24'));
+describe('weekRowForDay', () => {
+  const week = (focus: string, selected: string | null = null) =>
+    weekRowForDay(focus, {
+      todayKey: '2026-10-26',
+      trainedDays: new Set(['2026-10-19', '2026-09-30']),
+      selectedKey: selected,
+    });
 
-  it('finds the week holding the day', () => {
-    expect(rowForDay(rows, '2026-10-24').map((c) => c.day)).toEqual([19, 20, 21, 22, 23, 24, 25]);
+  it('is the Monday-to-Sunday week holding the day', () => {
+    expect(week('2026-10-21').map((cell) => cell.key)).toEqual([
+      '2026-10-19',
+      '2026-10-20',
+      '2026-10-21',
+      '2026-10-22',
+      '2026-10-23',
+      '2026-10-24',
+      '2026-10-25',
+    ]);
   });
 
-  it('falls back to the first week when the month does not hold it', () => {
-    expect(rowForDay(rows, '2026-07-04')).toBe(rows[0]);
+  it('is the selected day’s own week whatever month is being browsed', () => {
+    // The browsed month is irrelevant: this is built from the day itself.
+    const row = week('2026-10-19', '2026-10-19');
+    expect(row.find((cell) => cell.selected)?.key).toBe('2026-10-19');
+    expect(row.some((cell) => cell.trained)).toBe(true);
+  });
+
+  it('spans two months when the week does, with no placeholders', () => {
+    const row = week('2026-09-30', '2026-09-30');
+
+    expect(row.map((cell) => cell.day)).toEqual([28, 29, 30, 1, 2, 3, 4]);
+    expect(row.every((cell) => cell.key !== null)).toBe(true);
+    expect(row[2].selected).toBe(true);
+    expect(row[2].trained).toBe(true);
+  });
+
+  it('marks today and the days after it the same way the grid does', () => {
+    const row = week('2026-10-26');
+
+    expect(row[0].isToday).toBe(true);
+    expect(row[1].isFuture).toBe(true);
+    expect(row.map((cell) => cell.id)).toHaveLength(7);
   });
 });
 

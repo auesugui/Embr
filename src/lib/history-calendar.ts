@@ -16,6 +16,7 @@ import type { WorkoutLog } from '@/types';
 
 import { getClaimedLogs } from './history-stats';
 import { localDayKey } from './local-day';
+import { weekDayKeys, weekKeyForDay } from './local-week';
 import { trainedDaysByWeek } from './weekly-goal';
 
 const MONTHS = [
@@ -93,6 +94,12 @@ export interface CalendarDay {
   selected: boolean;
 }
 
+export interface GridOptions {
+  todayKey: string;
+  trainedDays: ReadonlySet<string>;
+  selectedKey: string | null;
+}
+
 const blank = (id: string): CalendarDay => ({
   id,
   key: null,
@@ -103,18 +110,26 @@ const blank = (id: string): CalendarDay => ({
   selected: false,
 });
 
+/** One day, read the same way wherever a cell is built. */
+const dayCell = (
+  key: string,
+  { todayKey, trainedDays, selectedKey }: GridOptions
+): CalendarDay => ({
+  id: key,
+  key,
+  day: Number(key.slice(8)),
+  trained: trainedDays.has(key),
+  isToday: key === todayKey,
+  // YYYY-MM-DD compares chronologically as plain text.
+  isFuture: key > todayKey,
+  selected: key === selectedKey,
+});
+
 /**
  * One month as whole Monday-first weeks, leading and trailing placeholders
  * included so the cells always divide into rows of seven.
  */
-export function monthGrid(
-  month: string,
-  {
-    todayKey,
-    trainedDays,
-    selectedKey,
-  }: { todayKey: string; trainedDays: ReadonlySet<string>; selectedKey: string | null }
-): CalendarDay[] {
+export function monthGrid(month: string, options: GridOptions): CalendarDay[] {
   const [year, index] = month.split('-').map(Number);
   const first = new Date(year, index - 1, 1, 12);
   // Day 0 of the next month is the last day of this one.
@@ -123,17 +138,7 @@ export function monthGrid(
   const days: CalendarDay[] = [];
   for (let lead = (first.getDay() + 6) % 7; lead > 0; lead--) days.push(blank(`lead-${lead}`));
   for (let day = 1; day <= length; day++) {
-    const key = localDayKey(new Date(year, index - 1, day, 12));
-    days.push({
-      id: key,
-      key,
-      day,
-      trained: trainedDays.has(key),
-      isToday: key === todayKey,
-      // YYYY-MM-DD compares chronologically as plain text.
-      isFuture: key > todayKey,
-      selected: key === selectedKey,
-    });
+    days.push(dayCell(localDayKey(new Date(year, index - 1, day, 12)), options));
   }
   while (days.length % 7 !== 0) days.push(blank(`trail-${days.length}`));
   return days;
@@ -147,11 +152,16 @@ export function calendarRows(days: CalendarDay[]): CalendarDay[][] {
 }
 
 /**
- * The row holding `key`, or the first row when this month does not hold it —
- * which is what the collapsed calendar shows after you step to another month.
+ * The Monday-to-Sunday week holding `key`, as seven real cells.
+ *
+ * Built from the day itself rather than looked up in the viewed month's grid.
+ * A selected day survives stepping to another month, and the collapsed row has
+ * to keep showing the day being filtered by rather than the first week of
+ * whatever month is being browsed. The week can therefore span two months, and
+ * it has no placeholders: every one of its days exists.
  */
-export function rowForDay(rows: CalendarDay[][], key: string): CalendarDay[] {
-  return rows.find((row) => row.some((cell) => cell.key === key)) ?? rows[0];
+export function weekRowForDay(key: string, options: GridOptions): CalendarDay[] {
+  return weekDayKeys(weekKeyForDay(key)).map((day) => dayCell(day, options));
 }
 
 // -----------------------------------------------------------------------------
