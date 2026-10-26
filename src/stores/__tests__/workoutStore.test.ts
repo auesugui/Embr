@@ -13,6 +13,7 @@ import {
   blockRemaining,
   restIsUp,
   restRemaining,
+  restRemainingMs,
   selectExerciseProgress,
   selectIsRestTimerComplete,
   selectSessionDuration,
@@ -632,6 +633,24 @@ describe('Workout Store', () => {
         expect(restIsUp(timer())).toBe(true);
       });
 
+      it('runs out exactly on the boundary, not before it', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, tickRestTimer } = useWorkoutStore.getState();
+        startRestTimer(60);
+
+        // One millisecond short: still 0:01 on screen, still running.
+        jest.setSystemTime(1_000_000 + 59_999);
+        tickRestTimer();
+        expect(timer().remaining).toBe(1);
+        expect(timer().running).toBe(true);
+
+        jest.setSystemTime(1_000_000 + 60_000);
+        tickRestTimer();
+        expect(timer().remaining).toBe(0);
+        expect(timer().remainingMs).toBe(0);
+        expect(timer().running).toBe(false);
+      });
+
       it('does not tick while paused', () => {
         jest.useFakeTimers().setSystemTime(1_000_000);
         const { startRestTimer, pauseRestTimer, tickRestTimer } = useWorkoutStore.getState();
@@ -667,6 +686,46 @@ describe('Workout Store', () => {
 
         expect(restRemaining(timer(), now())).toBe(70);
         expect(timer().running).toBe(true);
+      });
+
+      // The displayed number rounds UP. Banking that number instead of the
+      // real remainder hands back up to a second on every pause.
+      it('banks the fraction of a second it was paused on', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, pauseRestTimer, resumeRestTimer } = useWorkoutStore.getState();
+        startRestTimer(90);
+
+        jest.setSystemTime(1_000_000 + 20_500);
+        pauseRestTimer();
+
+        expect(timer().remainingMs).toBe(69_500);
+        // What you read is still 1:10, because a part-second is not over yet.
+        expect(timer().remaining).toBe(70);
+
+        jest.setSystemTime(1_000_000 + 95_000);
+        resumeRestTimer();
+
+        expect(restRemainingMs(timer(), now())).toBe(69_500);
+      });
+
+      it('does not accumulate rest over repeated pauses', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, pauseRestTimer, resumeRestTimer } = useWorkoutStore.getState();
+        startRestTimer(90);
+
+        // Ten pause/resume cycles, each landing mid-second. Rounding up at any
+        // one of them would buy nearly ten seconds of rest across the lot.
+        let clock = 1_000_000;
+        for (let i = 0; i < 10; i++) {
+          clock += 1_100;
+          jest.setSystemTime(clock);
+          pauseRestTimer();
+          clock += 60_000;
+          jest.setSystemTime(clock);
+          resumeRestTimer();
+        }
+
+        expect(restRemainingMs(timer(), now())).toBe(90_000 - 11_000);
       });
     });
 
@@ -757,6 +816,51 @@ describe('Workout Store', () => {
 
         expect(restIsUp(timer())).toBe(false);
       });
+
+      // The anchor moves by exactly the adjustment. Rebuilding it from the
+      // displayed number would round the remainder up first.
+      it('shifts a running rest by the exact fifteen seconds', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, adjustRestTimer } = useWorkoutStore.getState();
+        startRestTimer(90);
+
+        jest.setSystemTime(1_000_000 + 28_400);
+        adjustRestTimer(15);
+
+        expect(restRemainingMs(timer(), now())).toBe(76_600);
+        expect(timer().endsAt).toBe(1_000_000 + 105_000);
+
+        adjustRestTimer(-15);
+
+        expect(restRemainingMs(timer(), now())).toBe(61_600);
+        expect(timer().duration).toBe(105);
+      });
+
+      it('shifts a paused rest by the exact fifteen seconds', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, pauseRestTimer, adjustRestTimer } = useWorkoutStore.getState();
+        startRestTimer(90);
+
+        jest.setSystemTime(1_000_000 + 20_500);
+        pauseRestTimer();
+        adjustRestTimer(-15);
+
+        expect(timer().remainingMs).toBe(54_500);
+        expect(timer().endsAt).toBeNull();
+      });
+
+      it('floors a running rest at the moment it is adjusted', () => {
+        jest.useFakeTimers().setSystemTime(1_000_000);
+        const { startRestTimer, adjustRestTimer } = useWorkoutStore.getState();
+        startRestTimer(90);
+
+        jest.setSystemTime(1_000_000 + 79_500);
+        adjustRestTimer(-15);
+
+        expect(restRemainingMs(timer(), now())).toBe(0);
+        expect(timer().running).toBe(false);
+        expect(restIsUp(timer())).toBe(true);
+      });
     });
 
     describe('restoring with the session', () => {
@@ -808,12 +912,33 @@ describe('Workout Store', () => {
 
       it('keeps a paused rest exactly where it was', async () => {
         (appStorage.getJSON as jest.Mock).mockResolvedValue(
+          storedSession({
+            duration: 90,
+            endsAt: null,
+            remainingMs: 45_400,
+            remaining: 46,
+            running: false,
+            paused: true,
+          })
+        );
+
+        await useWorkoutStore.getState().hydrate();
+
+        expect(timer()).toMatchObject({ remainingMs: 45_400, remaining: 46, paused: true });
+        expect(timer().running).toBe(false);
+      });
+
+      // The pass between the tick count and the millisecond bank stored whole
+      // seconds. It converts to the instant it was showing, and no further.
+      it('converts a seconds-only bank without gaining time', async () => {
+        (appStorage.getJSON as jest.Mock).mockResolvedValue(
           storedSession({ duration: 90, endsAt: null, remaining: 45, running: false, paused: true })
         );
 
         await useWorkoutStore.getState().hydrate();
 
-        expect(timer()).toMatchObject({ remaining: 45, paused: true, running: false });
+        expect(timer().remainingMs).toBe(45_000);
+        expect(timer().remaining).toBe(45);
       });
 
       // A session saved before the timer had an anchor. It carries a

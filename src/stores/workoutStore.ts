@@ -24,6 +24,11 @@ import { useWeightHistoryStore } from './weightHistoryStore';
  * the timer entirely. Anchored, a rest that ran out while you were away comes
  * back finished, and ±15s is arithmetic on one number.
  *
+ * EXACT IN MILLISECONDS, ROUNDED ONLY TO BE READ. Pausing 20.5 seconds into a
+ * 90-second rest banks 69.5 seconds, not 70. Writing back the number on screen
+ * would hand you up to a second of rest on every pause, resume and ±15s, and
+ * it compounds: the display rounds up, so ten pauses can buy ten seconds.
+ *
  * Nothing rings while the app is in the background. A PWA cannot wake itself
  * without a push server, and Embr has no backend.
  */
@@ -35,7 +40,9 @@ export interface RestTimerState {
   duration: number;
   /** ms epoch the rest ends. Null while paused, and while none is running. */
   endsAt: number | null;
-  /** Seconds left: banked at a pause, and what the first paint reads. */
+  /** Milliseconds left, banked when there is no anchor to read. Exact. */
+  remainingMs: number;
+  /** Last derived whole seconds, for rendering only. Never read as truth. */
   remaining: number;
   /** Counting down. False while paused, and once the rest has run out. */
   running: boolean;
@@ -208,6 +215,7 @@ type WorkoutStore = WorkoutState & WorkoutActions;
 const initialRestTimer: RestTimerState = {
   duration: 90,
   endsAt: null,
+  remainingMs: 0,
   remaining: 0,
   running: false,
   paused: false,
@@ -243,16 +251,25 @@ const initialState: WorkoutState = {
 };
 
 /**
- * Seconds left on the rest timer, from its anchor rather than a tick count.
+ * Milliseconds left on the rest timer, from its anchor rather than a tick
+ * count. This is the exact value, and the only one a write may re-anchor from.
  *
- * A paused or finished timer has no anchor to read, so the banked `remaining`
- * is the answer. `now` is required: the one caller that is a screen renders for
- * the length of a whole rest.
+ * A paused or finished timer has no anchor to read, so the banked
+ * `remainingMs` is the answer. `now` is required: the one caller that is a
+ * screen renders for the length of a whole rest.
  */
-export const restRemaining = (timer: RestTimerState, now: number): number => {
-  if (timer.endsAt === null) return timer.remaining;
-  return Math.max(0, Math.ceil((timer.endsAt - now) / 1000));
+export const restRemainingMs = (timer: RestTimerState, now: number): number => {
+  if (timer.endsAt === null) return Math.max(0, timer.remainingMs);
+  return Math.max(0, timer.endsAt - now);
 };
+
+/**
+ * The same thing as the screen reads it: whole seconds, rounded up so the last
+ * fraction of a second still shows 0:01. Display only — rounding here and then
+ * storing the result is what buys unearned rest.
+ */
+export const restRemaining = (timer: RestTimerState, now: number): number =>
+  Math.ceil(restRemainingMs(timer, now) / 1000);
 
 /**
  * Whether the rest overlay is up: counting, paused, or run out and waiting for
@@ -311,8 +328,14 @@ const persistSession = async (state: Partial<WorkoutState>) => {
   await appStorage.setJSON(STORAGE_KEYS.SESSION.FULL_STATE, state);
 };
 
-/** The pre-anchor rest timer, still sitting in any session saved before it. */
-type LegacyRestTimerState = Omit<RestTimerState, 'endsAt'> & { endsAt?: number | null };
+/**
+ * The pre-anchor rest timer, still sitting in any session saved before it, and
+ * the seconds-only bank of the pass between the two.
+ */
+type LegacyRestTimerState = Omit<RestTimerState, 'endsAt' | 'remainingMs'> & {
+  endsAt?: number | null;
+  remainingMs?: number;
+};
 
 /**
  * Rebuild the rest timer from persisted state.
@@ -328,14 +351,28 @@ const restoreRestTimer = (
 ): RestTimerState => {
   if (!stored || stored.endsAt === undefined) return initialRestTimer;
 
-  const timer: RestTimerState = { ...stored, endsAt: stored.endsAt };
-  // No anchor: paused, or no rest at all. The banked remaining is the truth.
-  if (timer.endsAt === null) return { ...timer, running: false };
+  const timer: RestTimerState = {
+    ...stored,
+    endsAt: stored.endsAt,
+    // A bank saved in whole seconds converts to the same instant it displayed,
+    // which is the most that shape ever knew. Nothing is gained on the way in.
+    remainingMs: stored.remainingMs ?? stored.remaining * 1000,
+  };
+
+  // No anchor: paused, or no rest at all. The banked time is the truth.
+  if (timer.endsAt === null) {
+    return { ...timer, remaining: restRemaining(timer, now), running: false };
+  }
 
   // A rest that ran out while the app was away comes back ready for the tap
   // that closes it, not running with time that no longer exists.
-  const remaining = restRemaining(timer, now);
-  return { ...timer, remaining, running: remaining > 0 };
+  const remainingMs = restRemainingMs(timer, now);
+  return {
+    ...timer,
+    remainingMs,
+    remaining: Math.ceil(remainingMs / 1000),
+    running: remainingMs > 0,
+  };
 };
 
 /** The pre-block clock shape, still sitting in any session saved by that pass. */
@@ -698,6 +735,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
           : {
               duration: safeDuration,
               endsAt: Date.now() + safeDuration * 1000,
+              remainingMs: safeDuration * 1000,
               remaining: safeDuration,
               running: true,
               paused: false,
@@ -711,10 +749,13 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
     set((state) => {
       const timer = state.restTimer;
       if (!timer.running) return state;
-      // Bank what is left, then drop the anchor — resume re-anchors it.
+      // Bank what is left to the millisecond, then drop the anchor — resume
+      // re-anchors from the bank, so a pause costs nothing and gives nothing.
+      const remainingMs = restRemainingMs(timer, Date.now());
       const restTimer: RestTimerState = {
         ...timer,
-        remaining: restRemaining(timer, Date.now()),
+        remainingMs,
+        remaining: Math.ceil(remainingMs / 1000),
         endsAt: null,
         running: false,
         paused: true,
@@ -728,10 +769,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
     set((state) => {
       const timer = state.restTimer;
       if (!timer.paused) return state;
+      const remainingMs = restRemainingMs(timer, Date.now());
       const restTimer: RestTimerState = {
         ...timer,
-        endsAt: Date.now() + timer.remaining * 1000,
-        running: timer.remaining > 0,
+        endsAt: Date.now() + remainingMs,
+        running: remainingMs > 0,
         paused: false,
       };
       persistSession({ ...state, restTimer }).catch(console.warn);
@@ -756,7 +798,12 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
       // Out of time. The anchor stays so the overlay knows a rest is up and
       // offers "Tap to continue" rather than closing itself.
       if (remaining === 0) {
-        const restTimer: RestTimerState = { ...timer, remaining: 0, running: false };
+        const restTimer: RestTimerState = {
+          ...timer,
+          remainingMs: 0,
+          remaining: 0,
+          running: false,
+        };
         persistSession({ ...state, restTimer }).catch(console.warn);
         return { restTimer };
       }
@@ -774,19 +821,25 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
       if (!restIsUp(timer)) return state;
 
       const now = Date.now();
-      const remaining = restRemaining(timer, now);
       // At zero every control has cleared, so there is nothing to adjust.
-      if (remaining === 0) return state;
+      if (restRemainingMs(timer, now) === 0) return state;
 
-      const next = Math.max(0, remaining + delta);
+      // The anchor moves by the adjustment, never by a rounded remainder. A
+      // running rest shifts its end, a paused one shifts its bank; both floor
+      // at zero rather than going negative.
+      const deltaMs = delta * 1000;
+      const endsAt = timer.endsAt === null ? null : Math.max(now, timer.endsAt + deltaMs);
+      const remainingMs = endsAt === null ? Math.max(0, timer.remainingMs + deltaMs) : endsAt - now;
+
       const restTimer: RestTimerState = {
         ...timer,
         // Added time grows the ring's total as well, so the arc can never pass
         // full. Removing time leaves the total alone and the arc just shrinks.
         duration: delta > 0 ? timer.duration + delta : timer.duration,
-        remaining: next,
-        endsAt: timer.paused ? null : now + next * 1000,
-        running: !timer.paused && next > 0,
+        endsAt,
+        remainingMs,
+        remaining: Math.ceil(remainingMs / 1000),
+        running: !timer.paused && remainingMs > 0,
       };
       persistSession({ ...state, restTimer }).catch(console.warn);
       return { restTimer };

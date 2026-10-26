@@ -13,6 +13,7 @@ export {
   useWorkoutStore,
   restIsUp,
   restRemaining,
+  restRemainingMs,
   selectSessionDuration,
   selectExerciseProgress,
   selectIsRestTimerComplete,
