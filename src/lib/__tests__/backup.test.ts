@@ -238,6 +238,73 @@ describe('parseBackup', () => {
     expect(restored.logs[1]).not.toHaveProperty('workoutName');
   });
 
+  it('round-trips logs with and without the logged weight unit (#85)', async () => {
+    // Same shape as the #80 case: a log written after #85 carries the unit, a
+    // log written before it carries none, and a value this build does not
+    // recognise is carried verbatim like every other slice content — restore
+    // never re-parses a history blob to tidy it up.
+    const historyBlob = JSON.stringify({
+      logs: [
+        {
+          id: 'w3',
+          timestamp: '2026-10-25T18:00:00.000Z',
+          claimedAt: '2026-10-25T18:05:00.000Z',
+          exercises: [],
+          durationSeconds: 1800,
+          streakDays: 2,
+          sessionIntent: 'normal',
+          weightUnit: 'kg',
+        },
+        {
+          id: 'w2',
+          timestamp: '2026-10-23T18:00:00.000Z',
+          claimedAt: '2026-10-23T18:05:00.000Z',
+          exercises: [],
+          durationSeconds: 1800,
+          streakDays: 1,
+          sessionIntent: 'normal',
+        },
+        { id: 'w1', timestamp: '2026-09-01T18:00:00.000Z', weightUnit: 'stone' },
+      ],
+    });
+
+    mockMultiGet.mockResolvedValue([['workout_history.full_state', historyBlob]]);
+    const exported = await createBackup(FIXED_NOW);
+
+    await restoreBackup(parseBackup(JSON.stringify(exported)));
+
+    const entries = mockMultiSet.mock.calls[0][0];
+    expect(entries).toContainEqual(['workout_history.full_state', historyBlob]);
+
+    const restored = JSON.parse(
+      (entries as Array<[string, string]>).find(
+        ([key]) => key === 'workout_history.full_state'
+      )?.[1] as string
+    );
+    expect(restored.logs[0].weightUnit).toBe('kg');
+    expect(restored.logs[1]).not.toHaveProperty('weightUnit');
+    expect(restored.logs[2].weightUnit).toBe('stone');
+  });
+
+  it('still restores a backup written before the weight unit existed (#85)', async () => {
+    const legacy = validBackup({
+      app: 'ironquest',
+      data: {
+        'workout_history.full_state': JSON.stringify({
+          logs: [{ id: 'w1', claimedAt: '2026-07-01T00:00:00.000Z', totalFP: 250 }],
+        }),
+      },
+    });
+
+    await expect(restoreBackup(parseBackup(JSON.stringify(legacy)))).resolves.toBe(1);
+
+    const entries = mockMultiSet.mock.calls[0][0] as [string, string][];
+    const restored = JSON.parse(
+      entries.find(([key]) => key === 'workout_history.full_state')?.[1] as string
+    );
+    expect(restored.logs[0]).not.toHaveProperty('weightUnit');
+  });
+
   it('rejects a newer format version rather than guessing at it', () => {
     const future = validBackup({ formatVersion: BACKUP_FORMAT_VERSION + 1 });
     expect(() => parseBackup(JSON.stringify(future))).toThrow(/newer version/);

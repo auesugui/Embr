@@ -18,7 +18,7 @@
 // before any re-claim can happen.
 
 import { mergeWorkoutLogs } from '@/lib/workout-merge';
-import type { Exercise, SessionIntent, WorkoutBlock, WorkoutLog } from '@/types';
+import type { Exercise, SessionIntent, WeightUnit, WorkoutBlock, WorkoutLog } from '@/types';
 import { STORAGE_KEYS, appStorage } from '@/utils/storage';
 import { create } from 'zustand';
 
@@ -52,6 +52,14 @@ export interface CreateLogInput {
   dayKey?: string;
   /** What to call the workout, snapshotted when the session started. */
   workoutName?: string;
+  /**
+   * The unit setting in effect when the workout was logged.
+   *
+   * Required and passed in rather than read from the settings store here, so
+   * the history store stays independent of it and a test can state the unit it
+   * is logging in. Every new log carries one; pre-#85 logs carry none.
+   */
+  weightUnit: WeightUnit;
 }
 
 interface WorkoutHistoryState {
@@ -117,6 +125,7 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
     templateId,
     dayKey,
     workoutName,
+    weightUnit,
   }) => {
     const id = generateId();
     const log: WorkoutLog = {
@@ -127,6 +136,7 @@ export const useWorkoutHistoryStore = create<WorkoutHistoryStore>((set, get) => 
       streakDays,
       sessionIntent,
       claimedAt: null,
+      weightUnit,
       // Omitted entirely when empty, so a plain session's log keeps exactly the
       // shape it had before blocks existed and old backups stay comparable.
       ...(blocks?.length ? { blocks } : {}),

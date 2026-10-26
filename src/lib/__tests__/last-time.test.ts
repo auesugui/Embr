@@ -212,6 +212,15 @@ describe('lastTimeLine', () => {
     expect(line(logs, 'bench_press-0', 'kg')).toBe('Last time: 2 × 10 @ 60 kg');
   });
 
+  it('still labels with the current unit when the workout records its own (#85)', () => {
+    // #85 records the unit; nothing reads it yet, because labelling part of the
+    // history from the log and the rest from the setting is worse than one
+    // consistent rule.
+    const logs = [log(at(2), [exercise({ sets: [set({ weight: 60 })] })], { weightUnit: 'lb' })];
+
+    expect(line(logs, 'bench_press-0', 'kg')).toBe('Last time: 60 kg × 10');
+  });
+
   it('leaves out a cardio entry, which has no sets to read', () => {
     const logs = [
       log(at(1), [

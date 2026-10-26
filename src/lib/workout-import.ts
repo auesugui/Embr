@@ -9,7 +9,7 @@
 
 import { BackupParseError, parseBackup } from '@/lib/backup';
 import { BLOCK_MODES } from '@/lib/blocks';
-import type { BlockMode, WorkoutBlock, WorkoutLog } from '@/types';
+import type { BlockMode, WeightUnit, WorkoutBlock, WorkoutLog } from '@/types';
 import { STORAGE_KEYS } from '@/utils/storage';
 
 export interface WorkoutImport {
@@ -49,6 +49,12 @@ const isBlock = (value: unknown): value is WorkoutBlock =>
   isNonEmptyString(value.id) &&
   typeof value.mode === 'string' &&
   (BLOCK_MODES as string[]).includes(value.mode as BlockMode);
+
+// A unit we don't recognise is dropped rather than failing the whole entry:
+// it's optional, no reader depends on it, and the workout itself is the part
+// that cannot be reconstructed (#85).
+const readWeightUnit = (value: unknown): WeightUnit | undefined =>
+  value === 'lb' || value === 'kg' ? value : undefined;
 
 const isWorkoutLog = (value: unknown): value is WorkoutLog => {
   if (!isRecord(value)) return false;
@@ -105,9 +111,10 @@ export function parseWorkoutImport(text: string): WorkoutImport {
     throw new BackupParseError('That file has no workouts in it.');
   }
 
-  const logs = entries
-    .filter(isWorkoutLog)
-    .map((log) => ({ ...log, claimedAt: log.claimedAt ?? null }));
+  const logs = entries.filter(isWorkoutLog).map(({ weightUnit, ...log }) => {
+    const unit = readWeightUnit(weightUnit);
+    return { ...log, claimedAt: log.claimedAt ?? null, ...(unit ? { weightUnit: unit } : {}) };
+  });
   if (logs.length === 0) {
     throw new BackupParseError('None of the workouts in that file could be read.');
   }
