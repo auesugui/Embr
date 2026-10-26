@@ -11,6 +11,9 @@ export {
 } from './playerStore';
 export {
   useWorkoutStore,
+  restIsUp,
+  restRemaining,
+  restRemainingMs,
   selectSessionDuration,
   selectExerciseProgress,
   selectIsRestTimerComplete,

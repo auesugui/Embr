@@ -35,16 +35,31 @@ export interface SetSummary {
 }
 
 /** How one logged entry reads on its own: `135 lb × 5`, `5 reps`, or `45s`. */
-function describeEntry(set: LoggedSet, units: WeightUnit, metric: Metric): string {
+export function describeEntry(set: LoggedSet, units: WeightUnit, metric: Metric): string {
   const reps = set.reps ?? 0;
   if (!set.weight) return formatQuantity(reps, metric);
   return `${set.weight} ${units} × ${formatCompact(reps, metric)}`;
 }
 
 /** The compact form used inside the detail list: `135×5`, `5`, or `45s`. */
-function compactEntry(set: LoggedSet, metric: Metric): string {
+export function compactEntry(set: LoggedSet, metric: Metric): string {
   const reps = set.reps ?? 0;
   return set.weight ? `${set.weight}×${formatCompact(reps, metric)}` : formatCompact(reps, metric);
+}
+
+/**
+ * Whether every entry recorded the same work.
+ *
+ * This is the collapse test itself: uniform work is one line, varied work keeps
+ * its numbers. The session screen's "Last time" caption asks the same question,
+ * so it asks it here rather than spelling out a second answer.
+ */
+export function sameWork(sets: LoggedSet[]): boolean {
+  const first = sets[0];
+  if (!first) return true;
+  return sets.every(
+    (s) => (s.reps ?? 0) === (first.reps ?? 0) && (s.weight ?? null) === (first.weight ?? null)
+  );
 }
 
 /**
@@ -70,11 +85,8 @@ export function summarizeSets(
   const repPR = logged.some((s) => s.isRepPR) ? ' · rep PR' : '';
 
   const first = logged[0];
-  const uniform = logged.every(
-    (s) => (s.reps ?? 0) === (first.reps ?? 0) && (s.weight ?? null) === (first.weight ?? null)
-  );
 
-  if (uniform) {
+  if (sameWork(logged)) {
     // One entry is already its own summary; multiplying by one reads worse.
     if (count === 1) return { headline: `${describeEntry(first, units, metric)}${repPR}` };
 

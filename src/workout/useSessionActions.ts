@@ -27,6 +27,7 @@ type StoreActions = Pick<
   | 'resetRestTimer'
   | 'pauseRestTimer'
   | 'resumeRestTimer'
+  | 'adjustRestTimer'
   | 'startBlockTimer'
   | 'pauseBlockTimer'
   | 'resumeBlockTimer'
@@ -65,6 +66,7 @@ export function useSessionActions({
   resetRestTimer,
   pauseRestTimer,
   resumeRestTimer,
+  adjustRestTimer,
   startBlockTimer,
   pauseBlockTimer,
   resumeBlockTimer,
@@ -156,6 +158,11 @@ export function useSessionActions({
     }
   };
 
+  const handleAdjustRest = (delta: number) => {
+    haptics.selection();
+    adjustRestTimer(delta);
+  };
+
   // The primary circuit action: bank the whole round in one tap.
   //
   // Weight is resolved per movement the same way a quick-tap does, so a loaded
@@ -232,6 +239,7 @@ export function useSessionActions({
     handlePreviousExercise,
     handleSkipRest,
     handleTogglePause,
+    handleAdjustRest,
     handleLogRound,
     handleStartBlock,
     handleToggleBlockPause,

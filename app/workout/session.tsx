@@ -16,7 +16,7 @@ import {
 } from '@/components/workout/session';
 import { blockHintText, describeBlock } from '@/lib/blocks';
 import { exerciseMetric, formatPrescription, uniformMetric } from '@/lib/metric';
-import { useSettingsStore, useWeightHistoryStore, useWorkoutStore } from '@/stores';
+import { restIsUp, useSettingsStore, useWeightHistoryStore, useWorkoutStore } from '@/stores';
 import { colors, spacing } from '@/theme';
 import { haptics } from '@/utils/haptics';
 import { deriveSessionView } from '@/workout/sessionView';
@@ -34,6 +34,7 @@ export default function WorkoutSessionScreen() {
 
   // Store state
   const active = useWorkoutStore((state) => state.active);
+  const startedAt = useWorkoutStore((state) => state.startedAt);
   const exercises = useWorkoutStore((state) => state.exercises);
   const currentExerciseIndex = useWorkoutStore((state) => state.currentExerciseIndex);
   const restTimer = useWorkoutStore((state) => state.restTimer);
@@ -57,7 +58,8 @@ export default function WorkoutSessionScreen() {
    */
   const [scrimDismissed, setScrimDismissed] = useState(false);
 
-  useSessionTimers({
+  const { elapsed: sessionElapsed } = useSessionTimers({
+    startedAt,
     restTimer,
     blockTimer,
     tickRestTimer: actions.tickRestTimer,
@@ -161,6 +163,7 @@ export default function WorkoutSessionScreen() {
     handlePreviousExercise,
     handleSkipRest,
     handleTogglePause,
+    handleAdjustRest,
     handleLogRound,
     handleStartBlock,
     handleToggleBlockPause,
@@ -231,7 +234,7 @@ export default function WorkoutSessionScreen() {
         />
       )}
 
-      {restTimer.running && (
+      {restIsUp(restTimer) && (
         <RestOverlay
           exerciseId={currentExercise.id.replace(/-\d+$/, '')}
           remaining={restTimer.remaining}
@@ -239,12 +242,14 @@ export default function WorkoutSessionScreen() {
           paused={restTimer.paused}
           onSkip={handleSkipRest}
           onTogglePause={handleTogglePause}
+          onAdjust={handleAdjustRest}
         />
       )}
 
       <View {...behindScrim}>
         <SessionHeader
           totalReps={totalReps}
+          elapsed={sessionElapsed}
           totalMetric={uniformMetric(exercises)}
           position={currentExerciseIndex + 1}
           total={exercises.length}
@@ -262,7 +267,7 @@ export default function WorkoutSessionScreen() {
         contentContainerStyle={styles.exerciseContent}
       >
         <View style={styles.exerciseCard}>
-          <BlockHeading entries={entries} />
+          <BlockHeading entries={entries} timed={currentTimed} />
 
           {currentTimed && (
             <BlockClockCard
