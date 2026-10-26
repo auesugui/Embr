@@ -106,6 +106,29 @@ describe('Workout Store', () => {
         expect(state.exercises[0].name).toBe('Bench Press');
       });
 
+      it('carries the template day and its name so the log can record both', () => {
+        const { startSession } = useWorkoutStore.getState();
+
+        startSession('ppl_6day', createTestExercises(), 'normal', [], {
+          key: 'ppl_push_a',
+          name: 'Push A',
+        });
+
+        const state = useWorkoutStore.getState();
+        expect(state.dayKey).toBe('ppl_push_a');
+        expect(state.workoutName).toBe('Push A');
+      });
+
+      it('starts without a day when the caller has none to name', () => {
+        const { startSession } = useWorkoutStore.getState();
+
+        startSession('template-1', createTestExercises());
+
+        const state = useWorkoutStore.getState();
+        expect(state.dayKey).toBeNull();
+        expect(state.workoutName).toBeNull();
+      });
+
       it('should reset current exercise index to 0', () => {
         const { startSession, setCurrentExercise } = useWorkoutStore.getState();
 
@@ -662,6 +685,38 @@ describe('Workout Store', () => {
         const state = useWorkoutStore.getState();
         expect(state.active).toBe(true);
         expect(state.exercises).toHaveLength(1);
+        // Sessions persisted before #80 carry no day and resume without one.
+        expect(state.dayKey).toBeNull();
+        expect(state.workoutName).toBeNull();
+      });
+
+      it('restores the template day and name of a session that recorded them', async () => {
+        (appStorage.getJSON as jest.Mock).mockResolvedValue({
+          active: true,
+          exercises: [],
+          dayKey: 'ppl_push_a',
+          workoutName: 'Push A',
+        });
+
+        await useWorkoutStore.getState().hydrate();
+
+        const state = useWorkoutStore.getState();
+        expect(state.dayKey).toBe('ppl_push_a');
+        expect(state.workoutName).toBe('Push A');
+      });
+
+      it('resumes a session that recorded a day before names were stored', async () => {
+        (appStorage.getJSON as jest.Mock).mockResolvedValue({
+          active: true,
+          exercises: [],
+          dayKey: 'ppl_push_a',
+        });
+
+        await useWorkoutStore.getState().hydrate();
+
+        const state = useWorkoutStore.getState();
+        expect(state.dayKey).toBe('ppl_push_a');
+        expect(state.workoutName).toBeNull();
       });
 
       it('should handle empty storage gracefully', async () => {

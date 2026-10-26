@@ -283,6 +283,21 @@ export function ClipboardList({ size = 24, color = '#000', strokeWidth, style }:
 }
 
 /**
+ * The record. A medal: disc above, two ribbon tails below.
+ *
+ * Drawn narrow so the tails read as ribbon rather than a V at 18px, which is
+ * the only size it is used at (the summary's New PRs heading).
+ */
+export function Award({ size = 24, color = '#000', strokeWidth, style }: IconProps) {
+  return (
+    <Icon size={size} color={color} strokeWidth={strokeWidth} style={style}>
+      <Circle cx={12} cy={8.4} r={5.6} />
+      <Path d="M8.3 13.1 7 21.4l5-2.9 5 2.9-1.3-8.3" />
+    </Icon>
+  );
+}
+
+/**
  * Progress. The rising polyline plus its arrowhead, which is what makes it read
  * as a trend rather than a mountain range at tab-bar size.
  */

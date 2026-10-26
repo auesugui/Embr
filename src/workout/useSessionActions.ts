@@ -112,6 +112,12 @@ export function useSessionActions({
       // back as three unrelated exercises with one set each.
       blocks: workoutStoreState.blocks,
       blockTimes: workoutStoreState.blockTimes,
+      // Which workout this was, so the summary can compare it with the last
+      // time you ran the same day rather than with your last session of
+      // anything.
+      templateId: workoutStoreState.templateId ?? undefined,
+      dayKey: workoutStoreState.dayKey ?? undefined,
+      workoutName: workoutStoreState.workoutName ?? undefined,
     });
 
     router.replace({

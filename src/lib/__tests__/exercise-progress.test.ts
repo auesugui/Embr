@@ -566,15 +566,15 @@ describe('progressRecords', () => {
     ]);
 
     expect(records).toEqual([
-      { timestamp: at(2), value: 195, previous: 175 },
-      { timestamp: at(44), value: 175, previous: 165 },
-      { timestamp: at(70), value: 165, previous: null },
+      { logId: at(2), timestamp: at(2), value: 195, previous: 175 },
+      { logId: at(44), timestamp: at(44), value: 175, previous: 165 },
+      { logId: at(70), timestamp: at(70), value: 165, previous: null },
     ]);
   });
 
   it('calls the earliest session the first record, never a beaten zero', () => {
     const records = progressRecords([point(at(5), 135)]);
-    expect(records).toEqual([{ timestamp: at(5), value: 135, previous: null }]);
+    expect(records).toEqual([{ logId: at(5), timestamp: at(5), value: 135, previous: null }]);
   });
 
   it('returns nothing for an exercise with no points', () => {

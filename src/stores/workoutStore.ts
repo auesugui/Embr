@@ -63,6 +63,10 @@ interface WorkoutState {
   // Session state
   active: boolean;
   templateId: string | null;
+  /** The template day being run, so the log can record which workout this was. */
+  dayKey: string | null;
+  /** What to call this workout, snapshotted here and written onto the log. */
+  workoutName: string | null;
   startedAt: number | null;
   currentExerciseIndex: number;
   exercises: Exercise[];
@@ -86,7 +90,12 @@ interface WorkoutActions {
     templateId: string,
     exercises: Exercise[],
     intent?: SessionIntent,
-    blocks?: WorkoutBlock[]
+    blocks?: WorkoutBlock[],
+    /**
+     * Which day of the template this is: its id, and what to call it. Omitted
+     * by callers that have no day to name.
+     */
+    day?: { key: string; name: string }
   ) => void;
   endSession: () => void;
   cancelSession: () => void;
@@ -193,6 +202,8 @@ const initialBlockTimer: BlockTimerState = {
 const initialState: WorkoutState = {
   active: false,
   templateId: null,
+  dayKey: null,
+  workoutName: null,
   startedAt: null,
   currentExerciseIndex: 0,
   exercises: [],
@@ -329,13 +340,15 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
   ...initialState,
 
   // Session lifecycle
-  startSession: (templateId, exercises, intent = 'normal', blocks = []) => {
+  startSession: (templateId, exercises, intent = 'normal', blocks = [], day = undefined) => {
     const startedAt = Date.now();
 
     const newState: WorkoutState = {
       ...initialState,
       active: true,
       templateId,
+      dayKey: day?.key ?? null,
+      workoutName: day?.name ?? null,
       startedAt,
       currentExerciseIndex: 0,
       exercises,
@@ -813,6 +826,9 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
         set({
           active: stored.active,
           templateId: stored.templateId ?? null,
+          // Sessions persisted before #80 carry no day, and resume without one.
+          dayKey: stored.dayKey ?? null,
+          workoutName: stored.workoutName ?? null,
           startedAt: stored.startedAt ?? null,
           currentExerciseIndex: stored.currentExerciseIndex ?? 0,
           exercises: stored.exercises ?? [],
