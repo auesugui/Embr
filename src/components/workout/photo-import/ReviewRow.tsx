@@ -119,7 +119,7 @@ export function ReviewRow({
         <Figure
           label="Sets"
           accessibilityLabel={`${movement} sets`}
-          value={row.sets === null ? '' : String(row.sets)}
+          value={row.sets}
           flagged={setsFlag !== undefined || missing.includes('sets')}
           faint={faint}
           onChangeText={(text) => onEdit(`rows.${index}.sets`, text)}

@@ -52,22 +52,27 @@ describe('parseCard', () => {
     const { rows } = parseCard(standaloneCard);
 
     expect(rows).toEqual([
-      expect.objectContaining({ name: 'Pull-Up (Bodyweight)', sets: 3, weightLb: null, reps: '5' }),
+      expect.objectContaining({
+        name: 'Pull-Up (Bodyweight)',
+        sets: '3',
+        weightLb: null,
+        reps: '5',
+      }),
       expect.objectContaining({
         name: 'Bent Over Row (Dumbbell)',
-        sets: 3,
+        sets: '3',
         weightLb: 70,
         reps: '8',
       }),
-      expect.objectContaining({ name: 'Shrug (Dumbbell)', sets: 3, weightLb: 45, reps: '12' }),
+      expect.objectContaining({ name: 'Shrug (Dumbbell)', sets: '3', weightLb: 45, reps: '12' }),
       expect.objectContaining({
         name: 'Incline Chest Fly (Dumbbell)',
-        sets: 3,
+        sets: '3',
         weightLb: 30,
         reps: '10',
       }),
-      expect.objectContaining({ name: 'Reverse Fly', sets: 3, weightLb: 20, reps: '7' }),
-      expect.objectContaining({ name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: '10' }),
+      expect.objectContaining({ name: 'Reverse Fly', sets: '3', weightLb: 20, reps: '7' }),
+      expect.objectContaining({ name: 'Hanging Leg Raise', sets: '3', weightLb: null, reps: '10' }),
     ]);
   });
 

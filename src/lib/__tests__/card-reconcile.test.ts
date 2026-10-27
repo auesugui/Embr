@@ -23,9 +23,9 @@ const card = (overrides: Partial<ParsedCard> = {}): ParsedCard => ({
   subtitle: 'Workout A',
   date: '2026-10-13',
   rows: [
-    { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: '10' },
-    { id: 'r1', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: '10' },
-    { id: 'r2', name: 'Arnold Press', sets: 3, weightLb: 40, reps: '8' },
+    { id: 'r0', name: 'Chest Press (Dumbbell)', sets: '3', weightLb: 60, reps: '10' },
+    { id: 'r1', name: 'Hanging Leg Raise', sets: '3', weightLb: null, reps: '10' },
+    { id: 'r2', name: 'Arnold Press', sets: '3', weightLb: 40, reps: '8' },
   ],
   durationMin: 57,
   volumeLb: 4890,
@@ -45,7 +45,7 @@ describe('reconcile', () => {
 
   it('keeps the first reading and flags a weight the readings disagree on', () => {
     const second = card({
-      rows: [{ id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 20, reps: '10' }],
+      rows: [{ id: 'r0', name: 'Chest Press (Dumbbell)', sets: '3', weightLb: 20, reps: '10' }],
     });
 
     const reading = reconcile(card(), second);
@@ -61,10 +61,10 @@ describe('reconcile', () => {
   it('flags a movement only one reading found, and keeps the one the second reading found', () => {
     const second = card({
       rows: [
-        { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: '10' },
-        { id: 'r1', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: '10' },
-        { id: 'r2', name: 'Arnold Press', sets: 3, weightLb: 40, reps: '8' },
-        { id: 'r3', name: 'Lateral Raise', sets: 2, weightLb: 15, reps: '12' },
+        { id: 'r0', name: 'Chest Press (Dumbbell)', sets: '3', weightLb: 60, reps: '10' },
+        { id: 'r1', name: 'Hanging Leg Raise', sets: '3', weightLb: null, reps: '10' },
+        { id: 'r2', name: 'Arnold Press', sets: '3', weightLb: 40, reps: '8' },
+        { id: 'r3', name: 'Lateral Raise', sets: '2', weightLb: 15, reps: '12' },
       ],
     });
 
@@ -81,10 +81,10 @@ describe('reconcile', () => {
   it('puts a movement only the second reading found where it sits on the card', () => {
     const second = card({
       rows: [
-        { id: 'r0', name: 'Chest Press (Dumbbell)', sets: 3, weightLb: 60, reps: '10' },
-        { id: 'r1', name: 'Reverse Fly', sets: 3, weightLb: 20, reps: '7' },
-        { id: 'r2', name: 'Hanging Leg Raise', sets: 3, weightLb: null, reps: '10' },
-        { id: 'r3', name: 'Arnold Press', sets: 3, weightLb: 40, reps: '8' },
+        { id: 'r0', name: 'Chest Press (Dumbbell)', sets: '3', weightLb: 60, reps: '10' },
+        { id: 'r1', name: 'Reverse Fly', sets: '3', weightLb: 20, reps: '7' },
+        { id: 'r2', name: 'Hanging Leg Raise', sets: '3', weightLb: null, reps: '10' },
+        { id: 'r3', name: 'Arnold Press', sets: '3', weightLb: 40, reps: '8' },
       ],
     });
 
@@ -167,9 +167,46 @@ describe('setField', () => {
     expect(saveProblems(next)).toEqual(['1 value needs checking.']);
   });
 
-  it('ignores a zero or fractional count', () => {
-    expect(setField(clean(), 'rows.0.sets', '0').card.rows[0].sets).toBe(3);
-    expect(setField(clean(), 'rows.0.sets', '2.5').card.rows[0].sets).toBe(3);
+  // Every way a figure the copy uses can be set, and the state it leaves behind. A
+  // valid reading is the only thing that makes a field valid; everything else leaves it
+  // missing, visible and flagged, rather than keeping a count nobody gave.
+  const EDITS: [string, string, string, boolean][] = [
+    // field   typed or chosen   held afterwards   usable
+    ['sets', '4', '4', true],
+    ['sets', '', '', false],
+    ['sets', 'nothing', '', false],
+    ['sets', '0', '0', false],
+    ['sets', '100', '100', false],
+    ['sets', '2.5', '2.5', false],
+    ['sets', 'three', 'three', false],
+    ['reps', '12', '12', true],
+    ['reps', '8-12', '8-12', true],
+    ['reps', '', '', false],
+    ['reps', 'nothing', '', false],
+    ['reps', '0', '0', false],
+    ['reps', '100', '100', false],
+    ['reps', '12-3', '12-3', false],
+    ['reps', '3-3', '3-3', false],
+    ['reps', '0-12', '0-12', false],
+    ['reps', 'ten', 'ten', false],
+  ];
+
+  it.each(EDITS)('setting %s to "%s" holds "%s", usable: %s', (field, typed, held, usable) => {
+    const flagged: Reading = {
+      card: card(),
+      disagreements: [{ path: `rows.0.${field}`, first: '3', second: 'nothing' }],
+    };
+    const next = setField(flagged, `rows.0.${field}`, typed);
+    const row = next.card.rows[0];
+
+    expect(field === 'sets' ? row.sets : row.reps).toBe(held);
+    // The question is answered either way, so its prompt goes.
+    expect(next.disagreements).toEqual([]);
+    expect(saveProblems(next)).toEqual(usable ? [] : ['1 value needs checking.']);
+    // A valid replacement always settles it again.
+    expect(saveProblems(setField(next, `rows.0.${field}`, field === 'sets' ? '5' : '9'))).toEqual(
+      []
+    );
   });
 
   it('keeps a movement name as typed, so a space between two words can be entered', () => {

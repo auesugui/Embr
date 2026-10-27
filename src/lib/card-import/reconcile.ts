@@ -26,7 +26,7 @@ export interface Reading {
 }
 
 const shown = (value: string | number | null): string =>
-  value === null ? 'nothing' : String(value);
+  value === null || value === '' ? 'nothing' : String(value);
 
 const sameName = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 

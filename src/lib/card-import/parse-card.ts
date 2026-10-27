@@ -11,21 +11,31 @@
 // capital I reads as "i". normalizeLine undoes those before anything is matched.
 // Errors it cannot undo are caught by reading each photo twice (reconcile.ts).
 
+/**
+ * The two values a copy is built from. Each one is in exactly one of two states:
+ *
+ *   valid   — readSets or readReps can read it, and it is what gets copied
+ *   missing — anything else: not read, read as something a copy cannot use ("0
+ *             sets", "2.5", "12-3"), typed as something else, or emptied
+ *
+ * Both are held as the text they were read or typed as, so a field always shows what
+ * it holds and nothing is corrected behind the person. Missing is flagged on the
+ * field, counted in "N values need checking", and never copied; only a valid
+ * replacement makes a field valid again. The one check lives in readSets and readReps
+ * and every caller asks them, so the screen and the copy cannot disagree.
+ */
 export interface ParsedRow {
   /** Stable for the life of the reading, so the review screen can key rows that get edited. */
   id: string;
   name: string;
   /**
-   * Sets prescribed or performed, or null when the card did not name one. A finished
-   * card shows only its best set, so this is a check, not data.
+   * Sets prescribed or performed, as read or typed. A finished card shows only its
+   * best set, so this is a check, not data.
    */
-  sets: number | null;
+  sets: string;
   /** Best-set weight in lb. Null for a bodyweight movement and for every plan row. */
   weightLb: number | null;
-  /**
-   * A count ("8") or a range ("3-12"), as the card writes it, or "" when the card did
-   * not name one. Copied into a template as written.
-   */
+  /** A count ("8") or a range ("3-12"), as read or typed. Copied into a template as written. */
   reps: string;
 }
 
@@ -82,6 +92,9 @@ const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%/;
  *      ("12.5 lb") and a thousands comma have none, so neither is split in two.
  *   3. Every number is read whole. "70 lb x 8" with no set count is a 70 lb best
  *      set, not 7 sets of a 0 lb one.
+ *   4. A figure the grammar reads but a copy cannot use ("0 sets", "2.5 sets",
+ *      "150 reps") keeps its movement, with that value missing. Dropping the row
+ *      would take the movement off the screen along with the figure.
  *
  * A row needs a set count or a rep count, and a lone bare number is neither: it
  * could be a week, a percentage or a total. Everything the grammar does not
@@ -89,7 +102,7 @@ const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%/;
  * progress bar, "Show less" and the finished card's footer stay out of the table.
  */
 const ROW =
-  /^(?<name>[^\d]*[A-Za-z][^\d]*?)\s*(?:(?<sets>\d{1,3})(?!\d)(?!\s*(?:-|–|to)\s*\d)\s*(?<worded>sets?\b)?)?(?:\s*[x·•|]\s*|\s*[-–]\s*|\s+[.,:~]\s+|\s*)(?:(?<weight>\d{1,4}(?:\.\d)?)\s*(?:lbs?)?\s*x\s*(?<weightReps>\d{1,3})|(?<low>\d{1,3})\s*(?:-|–|to)\s*(?<high>\d{1,3})\s*(?:reps?\b)?|(?<count>\d{1,3})\s*reps?\b)?\s*$/i;
+  /^(?<name>[^\d]*[A-Za-z][^\d]*?)\s*(?:(?<sets>\d{1,3}(?:\.\d{1,2})?)(?!\d)(?!\s*(?:-|–|to)\s*\d)\s*(?<worded>sets?\b)?)?(?:\s*[x·•|]\s*|\s*[-–]\s*|\s+[.,:~]\s+|\s*)(?:(?<weight>\d{1,4}(?:\.\d{1,2})?)\s*(?:lbs?)?\s*x\s*(?<weightReps>\d{1,3}(?:\.\d{1,2})?)|(?<low>\d{1,3}(?:\.\d{1,2})?)\s*(?:-|–|to)\s*(?<high>\d{1,3}(?:\.\d{1,2})?)\s*(?:reps?\b)?|(?<count>\d{1,3}(?:\.\d{1,2})?)\s*reps?\b)?\s*$/i;
 
 /** Undoes the OCR glitches that show up on Boostcamp cards. */
 export function normalizeLine(line: string): string {
@@ -137,9 +150,10 @@ export function readReps(text: string): string | null {
  * fraction, a value the card never named. The companion to readReps, and the same
  * rule for a value read off the card and one typed on the review screen.
  */
-export function readSets(value: string | number | null): number | null {
-  if (value === null) return null;
-  const count = Number(String(value).trim());
+export function readSets(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === '') return null;
+  const count = Number(trimmed);
   return Number.isInteger(count) && count >= 1 && count <= MOST ? count : null;
 }
 
@@ -233,7 +247,7 @@ export function cardWarnings(card: ParsedCard): string[] {
       'No workout found in this photo. Embr reads two Boostcamp cards: the summary after you finish a workout, and the “Next up” card on the program screen.'
     );
   }
-  const sets = card.rows.reduce((sum, row) => sum + (row.sets ?? 0), 0);
+  const sets = card.rows.reduce((sum, row) => sum + (readSets(row.sets) ?? 0), 0);
   if (card.totalSets !== null && sets !== card.totalSets) {
     warnings.push(`The movements add up to ${sets} sets, but the card says ${card.totalSets}.`);
   }
@@ -250,17 +264,16 @@ function parseRow(line: string, index: number): ParsedRow | null {
   if (counted === undefined && (groups.sets === undefined || groups.worded === undefined)) {
     return null;
   }
-  // The card named a rep count, but a reading readReps refuses is not one the copy can
-  // use ("10 reps" read as "1 0 reps"), so it is left for the person like any gap.
+  // A figure the card named but a copy cannot use ("0 sets", "2.5", "10 reps" read as
+  // "1 0 reps") is left missing, the same as one the card never named. The movement
+  // keeps its row either way, and the review screen asks for the value.
+  const sets = groups.sets === undefined ? null : readSets(groups.sets);
   const reps = counted === undefined ? null : readReps(counted);
 
   return {
     id: `r${index}`,
     name: capitalize(groups.name.trim().replace(/\s+[-–·•|x]$/i, '')),
-    // A value the card did not name, or named as something a copy cannot use ("0
-    // sets"), is left empty rather than filled in. The review screen asks for it, and
-    // nothing is copied until it is there.
-    sets: groups.sets === undefined ? null : readSets(groups.sets),
+    sets: sets === null ? '' : String(sets),
     weightLb: groups.weight === undefined ? null : Number(groups.weight),
     reps: reps ?? '',
   };

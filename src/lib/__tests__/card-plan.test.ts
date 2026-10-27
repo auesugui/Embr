@@ -54,16 +54,21 @@ describe('the real plan card', () => {
 
     expect(card.format).toBe('plan');
     expect(card.rows).toEqual([
-      expect.objectContaining({ name: 'Goblet Squat', sets: 3, weightLb: null, reps: '3-12' }),
-      expect.objectContaining({ name: 'Lunge (Dumbbell)', sets: 3, weightLb: null, reps: '3-12' }),
+      expect.objectContaining({ name: 'Goblet Squat', sets: '3', weightLb: null, reps: '3-12' }),
       expect.objectContaining({
-        name: 'Single Leg Romanian Deadlift (Dumbb...',
-        sets: 3,
+        name: 'Lunge (Dumbbell)',
+        sets: '3',
         weightLb: null,
         reps: '3-12',
       }),
-      expect.objectContaining({ name: 'Standing Calf Raise', sets: 3, reps: '3-12' }),
-      expect.objectContaining({ name: 'Hanging Leg Raise', sets: 3, reps: '3-12' }),
+      expect.objectContaining({
+        name: 'Single Leg Romanian Deadlift (Dumbb...',
+        sets: '3',
+        weightLb: null,
+        reps: '3-12',
+      }),
+      expect.objectContaining({ name: 'Standing Calf Raise', sets: '3', reps: '3-12' }),
+      expect.objectContaining({ name: 'Hanging Leg Raise', sets: '3', reps: '3-12' }),
     ]);
     // The garbled pass reads the same five and nothing else: no header line, progress
     // bar or button on this card is a movement by accident.
@@ -120,45 +125,57 @@ describe('the row rule', () => {
     expect(planRow('Bent Over Row (Dumbbell) 3 70 lb x 8')).toEqual(
       expect.objectContaining({
         name: 'Bent Over Row (Dumbbell)',
-        sets: 3,
+        sets: '3',
         weightLb: 70,
         reps: '8',
       })
     );
     expect(planRow('Pull-Up (Bodyweight) 3 5 reps')).toEqual(
-      expect.objectContaining({ sets: 3, weightLb: null, reps: '5' })
+      expect.objectContaining({ sets: '3', weightLb: null, reps: '5' })
     );
   });
 
   // One table for the whole grammar: what a line gives, and what it must not.
   // A dash between two numbers is a range, so a row that names one names no sets.
-  const ROWS: [string, number | null, string, number | null][] = [
+  const ROWS: [string, string, string, number | null][] = [
+    // An empty sets or reps is the missing state: read, but not a value a copy can use.
     // line                                        sets   reps     weight
-    ['Goblet Squat 3 12 reps', 3, '12', null],
-    ['Goblet Squat 3 sets 12 reps', 3, '12', null],
-    ['Goblet Squat 3 sets · 3-12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 sets - 3-12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 sets . 3-12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 sets , 3-12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 sets : 3-12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 sets ~ 3-12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 sets * 3-12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 sets | 3-12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 sets 3-12', 3, '3-12', null],
-    ['Goblet Squat 3 sets · 3 to 12 reps', 3, '3-12', null],
-    ['Goblet Squat 3 x 8 reps', 3, '8', null],
+    ['Goblet Squat 3 12 reps', '3', '12', null],
+    ['Goblet Squat 3 sets 12 reps', '3', '12', null],
+    ['Goblet Squat 3 sets · 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets - 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets . 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets , 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets : 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets ~ 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets * 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets | 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets 3-12', '3', '3-12', null],
+    ['Goblet Squat 3 sets · 3 to 12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 x 8 reps', '3', '8', null],
     // A range and no set count: the set count is missing, not three.
-    ['Goblet Squat 3-12 reps', null, '3-12', null],
-    ['Goblet Squat 3-12', null, '3-12', null],
-    ['Goblet Squat 3 - 12 reps', null, '3-12', null],
-    ['Goblet Squat 3–12 reps', null, '3-12', null],
-    ['Goblet Squat 3 to 12 reps', null, '3-12', null],
-    ['Goblet Squat 8 reps', null, '8', null],
-    ['Goblet Squat 3 sets', 3, '', null],
+    ['Goblet Squat 3-12 reps', '', '3-12', null],
+    ['Goblet Squat 3-12', '', '3-12', null],
+    ['Goblet Squat 3 - 12 reps', '', '3-12', null],
+    ['Goblet Squat 3–12 reps', '', '3-12', null],
+    ['Goblet Squat 3 to 12 reps', '', '3-12', null],
+    ['Goblet Squat 8 reps', '', '8', null],
+    ['Goblet Squat 3 sets', '3', '', null],
     // Weight rows, including the decimal a period must not split.
-    ['Bent Over Row (Dumbbell) 3 70 lb x 8', 3, '8', 70],
-    ['Bent Over Row (Dumbbell) 70 lb x 8', null, '8', 70],
-    ['Bent Over Row (Dumbbell) 3 12.5 lb x 8', 3, '8', 12.5],
+    ['Bent Over Row (Dumbbell) 3 70 lb x 8', '3', '8', 70],
+    ['Bent Over Row (Dumbbell) 70 lb x 8', '', '8', 70],
+    ['Bent Over Row (Dumbbell) 3 12.5 lb x 8', '3', '8', 12.5],
+    // A figure the card names that a copy cannot use keeps its movement, missing.
+    ['Goblet Squat 0 sets . 8 reps', '', '8', null],
+    ['Goblet Squat 2.5 sets . 8 reps', '', '8', null],
+    ['Goblet Squat 100 sets . 8 reps', '', '8', null],
+    ['Goblet Squat 150 sets . 8 reps', '', '8', null],
+    ['Goblet Squat 3 sets . 0 reps', '3', '', null],
+    ['Goblet Squat 3 sets . 8.5 reps', '3', '', null],
+    ['Goblet Squat 3 sets . 150 reps', '3', '', null],
+    ['Goblet Squat 3 sets . 3.5-12 reps', '3', '', null],
+    ['Goblet Squat 3 sets . 12-3 reps', '3', '', null],
+    ['Goblet Squat 0 sets . 0 reps', '', '', null],
   ];
 
   it.each(ROWS)('reads "%s"', (line, sets, reps, weightLb) => {
@@ -180,9 +197,11 @@ describe('the row rule', () => {
   });
 
   it('leaves a value the card did not name empty, rather than filling it in', () => {
-    expect(planRow('Goblet Squat 3 sets')).toEqual(expect.objectContaining({ sets: 3, reps: '' }));
+    expect(planRow('Goblet Squat 3 sets')).toEqual(
+      expect.objectContaining({ sets: '3', reps: '' })
+    );
     expect(planRow('Goblet Squat 8 reps')).toEqual(
-      expect.objectContaining({ sets: null, reps: '8' })
+      expect.objectContaining({ sets: '', reps: '8' })
     );
     expect(missingValues(planRow('Goblet Squat 3 sets'))).toEqual(['reps']);
     expect(missingValues(planRow('Goblet Squat 8 reps'))).toEqual(['sets']);
@@ -195,10 +214,10 @@ describe('the row rule', () => {
     // "10 reps" read as "1 0 reps": the movement is still a movement, and 0 is not a
     // rep count, so the field is empty and flagged rather than holding a 0.
     expect(planRow('Hanging Leg Raise 1 0 reps')).toEqual(
-      expect.objectContaining({ sets: 1, reps: '' })
+      expect.objectContaining({ sets: '1', reps: '' })
     );
     expect(planRow('Goblet Squat 3 sets · 12-3 reps')).toEqual(
-      expect.objectContaining({ sets: 3, reps: '' })
+      expect.objectContaining({ sets: '3', reps: '' })
     );
   });
 
@@ -253,13 +272,19 @@ describe('the row rule', () => {
     };
 
     expect(reading.card.rows).toHaveLength(1);
-    expect(reading.card.rows[0]).toEqual(expect.objectContaining({ sets: null, reps: '8' }));
+    expect(reading.card.rows[0]).toEqual(expect.objectContaining({ sets: '', reps: '8' }));
     expect(saveProblems(reading)).toEqual(['1 value needs checking.']);
-    // A zero typed in is refused the same way, and the field keeps its last good value.
-    expect(setField(reading, 'rows.0.sets', '0').card.rows[0].sets).toBeNull();
+    // A zero typed in stays in the field, still missing, still holding the copy back.
+    const zero = setField(reading, 'rows.0.sets', '0');
+
+    expect(zero.card.rows[0].sets).toBe('0');
+    expect(saveProblems(zero)).toEqual(['1 value needs checking.']);
     expect(saveProblems(setField(reading, 'rows.0.sets', '3'))).toEqual([]);
-    // A fraction is not a set count a card prints, so that line is not a movement.
-    expect(parseCard(['Goblet Squat 2.5 sets . 8 reps']).rows).toEqual([]);
+    // A fraction keeps its movement too, with the set count to supply.
+    const fraction = parseCard(['Goblet Squat 2.5 sets . 8 reps']);
+
+    expect(fraction.rows).toHaveLength(1);
+    expect(missingValues(fraction.rows[0])).toEqual(['sets']);
   });
 
   it('holds the copy back until the person types the missing value in', () => {
@@ -273,7 +298,7 @@ describe('the row rule', () => {
 
     expect(saveProblems(noSets)).toEqual(['1 value needs checking.']);
     expect(saveProblems(setField(noSets, 'rows.0.sets', '3'))).toEqual([]);
-    expect(setField(noSets, 'rows.0.sets', '3').card.rows[0].sets).toBe(3);
+    expect(setField(noSets, 'rows.0.sets', '3').card.rows[0].sets).toBe('3');
   });
 
   it('counts a movement with no set count as none against the card total', () => {
@@ -285,7 +310,7 @@ describe('the row rule', () => {
       '43 m 4,610 lb 18',
     ]);
 
-    expect(card.rows.map((row) => row.sets)).toEqual([null, 3]);
+    expect(card.rows.map((row) => row.sets)).toEqual(['', '3']);
     expect(cardWarnings(card)).toEqual(['The movements add up to 3 sets, but the card says 18.']);
   });
 
