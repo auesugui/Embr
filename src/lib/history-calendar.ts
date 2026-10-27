@@ -171,6 +171,77 @@ export function weekRowForDay(key: string, options: GridOptions): CalendarDay[] 
 /** Scroll past this many pixels and the grid drops to one week. */
 export const COLLAPSE_AT = 80;
 
+/** One day cell's height, and the gap above each grid row. */
+export const CALENDAR_CELL_HEIGHT = 31;
+export const CALENDAR_ROW_GAP = 2;
+
+/** A grid row with its gap — the unit the collapse takes rows away in. */
+export const CALENDAR_ROW_HEIGHT = CALENDAR_CELL_HEIGHT + CALENDAR_ROW_GAP;
+
+/**
+ * The empty-month note's line and the gap above it. Collapsing hides the note
+ * along with the rows, so the list loses this height too. HistoryCalendar's
+ * note style is written from these, so the model and the pixels agree.
+ */
+export const CALENDAR_NOTE_GAP = 8;
+export const CALENDAR_NOTE_LINE = 18;
+
+/** Scroll range the collapse has to leave above COLLAPSE_AT to be stable. */
+export const COLLAPSE_MARGIN = 16;
+
+/**
+ * Height a collapse takes out of the list: every grid row but the one week it
+ * keeps, plus the note it hides. Read off the grid on screen, because a month
+ * is four, five or six rows deep — the same month's worth of pixels written
+ * down as one number is wrong eight months a year.
+ */
+export function collapseShrink(rows: number, note: boolean): number {
+  const lostRows = Math.max(rows - 1, 0) * CALENDAR_ROW_HEIGHT;
+  return note ? lostRows + CALENDAR_NOTE_GAP + CALENDAR_NOTE_LINE : lostRows;
+}
+
+export interface ScrollExtent {
+  /** The list's content height as measured now, collapsed or not. */
+  contentHeight: number;
+  /** The visible height of the list. */
+  viewportHeight: number;
+  /** Whether contentHeight was measured with the grid already collapsed. */
+  collapsed: boolean;
+  /** Rows the month grid has when it is open: four, five or six. */
+  rows: number;
+  /** Whether the card is showing its empty-month note. */
+  note: boolean;
+}
+
+/**
+ * Whether a scroll past COLLAPSE_AT may collapse the grid.
+ *
+ * Collapsing shortens the content, and the browser then clamps the offset to
+ * whatever scroll range is left. On a short list that lands under COLLAPSE_AT,
+ * the next scroll event expands the grid again, and the header flaps. So the
+ * collapse is only allowed when the collapsed list would still have enough
+ * range to hold an offset past the threshold, with COLLAPSE_MARGIN to spare.
+ *
+ * Collapsed, the measurement is already the short one and `rows` and `note`
+ * say nothing; expanded, the shrink comes off it. Nothing else above the list
+ * changes height as it collapses: the pinned header is sticky, and the month
+ * that moves into the nav bar is outside the scrolling content.
+ *
+ * Before the first layout both heights are 0 and nothing may collapse: the
+ * list has not been measured, and an unmeasured list is not known to scroll.
+ */
+export function canCollapseOnScroll({
+  contentHeight,
+  viewportHeight,
+  collapsed,
+  rows,
+  note,
+}: ScrollExtent): boolean {
+  if (contentHeight <= 0 || viewportHeight <= 0) return false;
+  const collapsedHeight = collapsed ? contentHeight : contentHeight - collapseShrink(rows, note);
+  return collapsedHeight - viewportHeight >= COLLAPSE_AT + COLLAPSE_MARGIN;
+}
+
 export interface FoldState {
   /** The chevron's choice, kept for the visit. Null while scrolling decides. */
   folded: boolean | null;
@@ -191,6 +262,44 @@ export interface FoldState {
  */
 export const isCollapsed = ({ folded, scrolled, openedByStep }: FoldState): boolean =>
   openedByStep ? false : (folded ?? scrolled);
+
+export interface ScrollFoldInput extends ScrollExtent {
+  /** The offset the scroll event reported. */
+  offset: number;
+  /** The chevron's choice. It changes neither output — see below. */
+  folded: boolean | null;
+  /** Whether a month step is holding the grid open right now. */
+  openedByStep: boolean;
+}
+
+export interface ScrollFoldState {
+  /** The list is scrolled past COLLAPSE_AT and the collapse can hold. */
+  scrolled: boolean;
+  /** Whether the step's expansion survives this event. */
+  openedByStep: boolean;
+}
+
+/**
+ * The fold state a scroll event leaves behind, both halves of it at once.
+ *
+ * Being past the threshold and being allowed to collapse are two different
+ * questions, and keeping them apart is the point of this function. Past the
+ * threshold is about the offset alone, and it is what ends a month step's
+ * expansion: a step opens the grid until you scroll, whatever the list is
+ * shaped like. Only `scrolled` may ask whether the collapse can hold. Asking
+ * it for both left a short list past the threshold with the step's override
+ * never given up, so the chevron's choice was ignored for the rest of the
+ * visit.
+ *
+ * The chevron is not applied here. It wins in isCollapsed, over this result.
+ */
+export function scrollFold(input: ScrollFoldInput): ScrollFoldState {
+  const beyond = input.offset > COLLAPSE_AT;
+  return {
+    scrolled: beyond && canCollapseOnScroll(input),
+    openedByStep: input.openedByStep && !beyond,
+  };
+}
 
 // -----------------------------------------------------------------------------
 // What the logs say

@@ -33,7 +33,6 @@ import { WeeklyVolumeStrip } from '@/components/workout/history/WeeklyVolumeStri
 import { WorkoutRow } from '@/components/workout/history/WorkoutRow';
 import { useLocalDay } from '@/hooks/useLocalDay';
 import {
-  COLLAPSE_AT,
   canStepBack,
   canStepForward,
   earliestMonth,
@@ -43,6 +42,7 @@ import {
   monthName,
   monthOfDay,
   monthTitle,
+  scrollFold,
   shiftMonth,
   trainingDayKeys,
   weekRowForDay,
@@ -59,11 +59,14 @@ import { RevealRow } from '@/components/celebration';
 /**
  * Web only, and not cosmetic: the browser holds the content still when
  * something above the viewport changes height, by moving the scroll offset by
- * the same amount. The collapse takes 132 px of grid away, so the offset would
- * drop back under the threshold and the next scroll event would expand the
- * calendar again — a header that flapped between 80 px and 212 px of scroll.
- * With anchoring off, the list slides up once as the grid shrinks and the
- * collapse holds.
+ * the same amount. The collapse takes a few rows of grid away, so the offset
+ * would drop back under the threshold and the next scroll event would expand
+ * the calendar again — a header that flapped between 80 px and 212 px of
+ * scroll. With anchoring off, the list slides up once as the grid shrinks and
+ * the collapse holds.
+ *
+ * It holds only while the collapsed list is long enough to be scrolled that
+ * far at all; a short list is what canCollapseOnScroll is for.
  */
 const NO_SCROLL_ANCHOR =
   Platform.OS === 'web' ? ({ overflowAnchor: 'none' } as unknown as ViewStyle) : null;
@@ -111,6 +114,14 @@ export default function HistoryScreen() {
     () => weekRowForDay(focusKey, { todayKey, trainedDays, selectedKey: selectedDay }),
     [focusKey, todayKey, trainedDays, selectedDay]
   );
+  // Whole Monday-first weeks, so the grid's depth is its length — four rows in
+  // a short February, six in a month that starts on a Sunday. Both this and
+  // the note are height the collapse takes away, so the scroll rule needs
+  // them, and they are read here rather than guessed at a fixed size.
+  const gridRows = grid.length / 7;
+  const emptyNote = grid.some((cell) => cell.trained)
+    ? null
+    : `No workouts in ${monthName(viewedMonth)}.`;
 
   const navigation = useNavigation();
   // Collapsed, the month moves into the nav bar so the grid's own title can go
@@ -132,11 +143,21 @@ export default function HistoryScreen() {
   const handleSelectDay = (key: string) =>
     setSelectedDay((current) => (current === key ? null : key));
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const past = event.nativeEvent.contentOffset.y > COLLAPSE_AT;
-    setScrolled(past);
-    // Passing the threshold ends a step's expansion and hands the collapse
-    // back to the scroll, which is the state the screen was in before the step.
-    if (past) setOpenedByStep(false);
+    // The event carries both measurements, so the rule needs no layout state
+    // of its own — and the heights it reads are the ones being scrolled.
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const next = scrollFold({
+      offset: contentOffset.y,
+      contentHeight: contentSize.height,
+      viewportHeight: layoutMeasurement.height,
+      collapsed,
+      rows: gridRows,
+      note: emptyNote !== null,
+      folded,
+      openedByStep,
+    });
+    setScrolled(next.scrolled);
+    setOpenedByStep(next.openedByStep);
   };
   // Stepping a month opens the grid: collapsed, the card shows the selected
   // day's own week, so a step would change nothing you can see.
@@ -199,9 +220,7 @@ export default function HistoryScreen() {
           collapsed={collapsed}
           canPrevious={canStepBack(viewedMonth, earliest)}
           canNext={canStepForward(viewedMonth, todayKey)}
-          emptyNote={
-            grid.some((cell) => cell.trained) ? null : `No workouts in ${monthName(viewedMonth)}.`
-          }
+          emptyNote={emptyNote}
           onPrevious={() => handleStep(-1)}
           onNext={() => handleStep(1)}
           onToggleCollapsed={handleFold}
