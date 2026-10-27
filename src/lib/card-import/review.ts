@@ -11,7 +11,7 @@
 // and its reps, keep what is typed: both are reached through text that is not valid
 // yet, and both are checked again before anything is copied.
 
-import { missingValues } from './parse-card';
+import { missingValues, readSets } from './parse-card';
 import type { Reading } from './reconcile';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -32,7 +32,6 @@ export function setField(reading: Reading, path: string, text: string): Reading 
   const trimmed = text.trim();
   const absent = trimmed === '' || trimmed === 'nothing';
   const number = Number(trimmed.replace(/,/g, ''));
-  const whole = Number.isInteger(number) && number >= 1 ? number : null;
 
   const movement = path.match(/^rows\.(\d+)\.(name|sets|weightLb|reps)$/);
   if (movement) {
@@ -40,7 +39,13 @@ export function setField(reading: Reading, path: string, text: string): Reading 
     if (!row) return reading;
     // Names are kept as typed, so a space between two words can be typed. Saving trims them.
     if (movement[2] === 'name' && trimmed !== '') row.name = text;
-    if (movement[2] === 'sets' && whole !== null) row.sets = whole;
+    // Sets take the same check as a set count read off the card, so the field cannot
+    // hold a count the copy would refuse. A number pad reaches every valid one
+    // directly, so an invalid keystroke keeps the last good value rather than showing.
+    if (movement[2] === 'sets') {
+      const count = readSets(trimmed);
+      if (count !== null) row.sets = count;
+    }
     // Reps are kept as typed, because "3-12" is reached through "3-", which is not a
     // rep range yet. A value readReps cannot read stays flagged and is never copied.
     if (movement[2] === 'reps') row.reps = text;

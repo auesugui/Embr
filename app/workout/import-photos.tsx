@@ -19,7 +19,7 @@ import type { MovementMatch } from '@/components/workout/photo-import/ReviewRow'
 import { getExerciseById } from '@/data';
 import { autoMatch } from '@/lib/card-import/match-exercise';
 import type { ParsedRow } from '@/lib/card-import/parse-card';
-import { readReps } from '@/lib/card-import/parse-card';
+import { readReps, readSets } from '@/lib/card-import/parse-card';
 import { readPhotos } from '@/lib/card-import/read-photos';
 import type { Reading } from '@/lib/card-import/reconcile';
 import { clearFlag, removeRow, saveProblems, setField } from '@/lib/card-import/review';
@@ -108,12 +108,14 @@ export default function ImportPhotosScreen() {
     const { exerciseId, skipped } = resolve(row);
     if (skipped || !exerciseId || inDay.has(exerciseId) || queued.has(exerciseId)) continue;
     // A movement still missing a value it would be copied with is not copied at all.
-    // saveProblems holds the whole card back until the person types it in.
+    // saveProblems holds the whole card back until the person types it in. Both values
+    // go through the same check they are flagged by, so the two cannot disagree.
+    const sets = readSets(row.sets);
     const reps = readReps(row.reps);
-    if (row.sets === null || reps === null) continue;
+    if (sets === null || reps === null) continue;
     queued.add(exerciseId);
     // Copied as the rep scheme a template holds: "3 to 12" typed is stored "3-12".
-    additions.push({ exerciseId, sets: row.sets, reps });
+    additions.push({ exerciseId, sets, reps });
   }
 
   const problems = onlyCard ? saveProblems(onlyCard) : [];

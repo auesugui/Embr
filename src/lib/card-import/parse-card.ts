@@ -89,7 +89,7 @@ const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%/;
  * progress bar, "Show less" and the finished card's footer stay out of the table.
  */
 const ROW =
-  /^(?<name>[^\d]*[A-Za-z][^\d]*?)\s*(?:(?<sets>\d{1,2})(?!\d)(?!\s*(?:-|–|to)\s*\d)\s*(?<worded>sets?\b)?)?(?:\s*[x·•|]\s*|\s*[-–]\s*|\s+[.,:~]\s+|\s*)(?:(?<weight>\d{1,4}(?:\.\d)?)\s*(?:lbs?)?\s*x\s*(?<weightReps>\d{1,3})|(?<low>\d{1,3})\s*(?:-|–|to)\s*(?<high>\d{1,3})\s*(?:reps?\b)?|(?<count>\d{1,3})\s*reps?\b)?\s*$/i;
+  /^(?<name>[^\d]*[A-Za-z][^\d]*?)\s*(?:(?<sets>\d{1,3})(?!\d)(?!\s*(?:-|–|to)\s*\d)\s*(?<worded>sets?\b)?)?(?:\s*[x·•|]\s*|\s*[-–]\s*|\s+[.,:~]\s+|\s*)(?:(?<weight>\d{1,4}(?:\.\d)?)\s*(?:lbs?)?\s*x\s*(?<weightReps>\d{1,3})|(?<low>\d{1,3})\s*(?:-|–|to)\s*(?<high>\d{1,3})\s*(?:reps?\b)?|(?<count>\d{1,3})\s*reps?\b)?\s*$/i;
 
 /** Undoes the OCR glitches that show up on Boostcamp cards. */
 export function normalizeLine(line: string): string {
@@ -103,11 +103,19 @@ export function normalizeLine(line: string): string {
     .trim();
 }
 
+/**
+ * The most sets or reps a copy can be given. A card writes either figure in two
+ * digits, and three of them is a read error rather than a workout. The grammar reads
+ * a wider number than this on purpose, so the row is still found and the figure is
+ * asked for, instead of the movement going missing with it.
+ */
+const MOST = 99;
+
 const REPS = /^(?<low>\d{1,2})(?:\s*(?:-|–|to)\s*(?<high>\d{1,2}))?$/i;
 
 /**
  * A rep count or a rep range as a template stores it, or null when the text is
- * neither. A range is two whole numbers from 1 to 99, low first; a count is one of
+ * neither. A range is two whole numbers from 1 to MOST, low first; a count is one of
  * them. Spacing, an en dash and the word "to" all come out of OCR on the same card,
  * so each reads as the same range and is written back as "3-12".
  *
@@ -122,6 +130,17 @@ export function readReps(text: string): string | null {
   if (found.high === undefined) return String(low);
   const high = Number(found.high);
   return high > low ? `${low}-${high}` : null;
+}
+
+/**
+ * A set count a copy can be given, or null for anything else: a zero, a hundred, a
+ * fraction, a value the card never named. The companion to readReps, and the same
+ * rule for a value read off the card and one typed on the review screen.
+ */
+export function readSets(value: string | number | null): number | null {
+  if (value === null) return null;
+  const count = Number(String(value).trim());
+  return Number.isInteger(count) && count >= 1 && count <= MOST ? count : null;
 }
 
 /**
@@ -238,9 +257,10 @@ function parseRow(line: string, index: number): ParsedRow | null {
   return {
     id: `r${index}`,
     name: capitalize(groups.name.trim().replace(/\s+[-–·•|x]$/i, '')),
-    // A value the card did not name is left empty rather than filled in. The review
-    // screen asks for it, and nothing is copied until it is there.
-    sets: groups.sets === undefined ? null : Number(groups.sets),
+    // A value the card did not name, or named as something a copy cannot use ("0
+    // sets"), is left empty rather than filled in. The review screen asks for it, and
+    // nothing is copied until it is there.
+    sets: groups.sets === undefined ? null : readSets(groups.sets),
     weightLb: groups.weight === undefined ? null : Number(groups.weight),
     reps: reps ?? '',
   };
@@ -253,7 +273,7 @@ function parseRow(line: string, index: number): ParsedRow | null {
  */
 export function missingValues(row: ParsedRow): ('sets' | 'reps')[] {
   const missing: ('sets' | 'reps')[] = [];
-  if (row.sets === null) missing.push('sets');
+  if (readSets(row.sets) === null) missing.push('sets');
   if (readReps(row.reps) === null) missing.push('reps');
   return missing;
 }

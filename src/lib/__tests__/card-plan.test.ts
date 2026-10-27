@@ -14,6 +14,7 @@ import {
   missingValues,
   parseCard,
   readReps,
+  readSets,
 } from '../card-import/parse-card';
 import { type Reading, reconcile } from '../card-import/reconcile';
 import { saveProblems, setField } from '../card-import/review';
@@ -199,6 +200,66 @@ describe('the row rule', () => {
     expect(planRow('Goblet Squat 3 sets · 12-3 reps')).toEqual(
       expect.objectContaining({ sets: 3, reps: '' })
     );
+  });
+
+  // One check for both figures, whichever way the value arrived. Each line is read
+  // off a card and typed into the field, and both have to agree about what is usable.
+  const FIGURES: [string, string, boolean][] = [
+    // typed      what it is                                 usable
+    ['0', 'sets', false],
+    ['1', 'sets', true],
+    ['99', 'sets', true],
+    ['100', 'sets', false],
+    ['2.5', 'sets', false],
+    ['0', 'reps', false],
+    ['1', 'reps', true],
+    ['99', 'reps', true],
+    ['100', 'reps', false],
+    ['3-12', 'reps', true],
+    ['12-3', 'reps', false],
+    ['3-3', 'reps', false],
+    ['0-12', 'reps', false],
+    ['150', 'reps', false],
+  ];
+
+  it.each(FIGURES)('reads "%s" as %s the copy can use: %s', (typed, figure, usable) => {
+    const field = figure as 'sets' | 'reps';
+    const line =
+      field === 'sets'
+        ? `Goblet Squat ${typed} sets . 8 reps`
+        : `Goblet Squat 3 sets . ${typed} reps`;
+
+    // Read off the card. A figure the grammar cannot read at all leaves no row; one it
+    // reads but a copy cannot use is flagged on the row it keeps.
+    const read = planRow(line);
+    expect(read === undefined || missingValues(read).includes(field)).toBe(!usable);
+
+    // Typed into the field by the person, against a row that is already complete.
+    const reading: Reading = {
+      card: parseCard(['Goblet Squat 3 sets . 8 reps']),
+      disagreements: [],
+    };
+    const row = setField(reading, `rows.0.${field}`, typed).card.rows[0];
+    const copied = field === 'sets' ? readSets(row.sets) : readReps(row.reps);
+
+    if (usable) expect(String(copied)).toBe(typed);
+    else expect(String(copied ?? '')).not.toBe(typed);
+  });
+
+  it('keeps a zero-set row, flags it, and copies nothing until it is corrected', () => {
+    const reading: Reading = {
+      card: parseCard(['Goblet Squat 0 sets . 8 reps']),
+      disagreements: [],
+    };
+
+    expect(reading.card.rows).toHaveLength(1);
+    expect(reading.card.rows[0]).toEqual(expect.objectContaining({ sets: null, reps: '8' }));
+    expect(saveProblems(reading)).toEqual(['1 value needs checking.']);
+    // A zero typed in is refused the same way, and the field keeps its last good value.
+    expect(setField(reading, 'rows.0.sets', '0').card.rows[0].sets).toBeNull();
+    expect(saveProblems(setField(reading, 'rows.0.sets', '3'))).toEqual([]);
+    // A fraction is not a set count a card prints, so that line is not a movement.
+    expect(parseCard(['Goblet Squat 2.5 sets . 8 reps']).rows).toEqual([]);
   });
 
   it('holds the copy back until the person types the missing value in', () => {
