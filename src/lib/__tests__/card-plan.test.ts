@@ -234,6 +234,93 @@ describe('the row rule', () => {
     expect(parseCard([line]).rows).toEqual([]);
   });
 
+  // A guard takes a line off the card, so each one has to be sure. A movement that
+  // borrows a word from the app's own text, or carries a figure big enough to look
+  // like a year, is still a movement.
+  const BORROWED = [
+    'Exercise Ball Crunch',
+    'Max Effort Row',
+    'Estimated Row',
+    'Shared Grip Row',
+    'Save-the-Day Press',
+    'Done Right Curl',
+    'Volume Raise',
+    'Duration Plank',
+    'Best Set Squat',
+    'Week Ender Press',
+  ];
+
+  it.each(BORROWED)('reads "%s" as the movement it is', (name) => {
+    expect(planRow(`${name} 3 sets . 8 reps`)).toEqual(
+      expect.objectContaining({ name, sets: '3', reps: '8' })
+    );
+  });
+
+  const OVERSIZE_LINES = [
+    ['Goblet Squat 10000 sets . 8 reps', '', '8'],
+    ['Goblet Squat 100000 sets . 8 reps', '', '8'],
+    ['Goblet Squat 3 sets . 1000000 reps', '3', ''],
+    ['Goblet Squat 12 2026', '', ''],
+  ];
+
+  it.each(OVERSIZE_LINES)('keeps the movement in "%s"', (line, sets, reps) => {
+    const card = parseCard([line as string]);
+
+    // The last one names no figure the grammar can finish, so it is not a row at all;
+    // what matters is that none of them is thrown out as a date.
+    expect(card.date).toBeNull();
+    if (sets !== '' || reps !== '') {
+      expect(card.rows[0]).toEqual(expect.objectContaining({ sets, reps }));
+    }
+  });
+
+  const DATES: [string, string | null][] = [
+    ['Workout A Oct 7, 2026', '2026-10-07'],
+    ['Workout A Oct 7,2026', '2026-10-07'],
+    ['Workout A Sep 30 2026', '2026-09-30'],
+    ['Workout A October 7, 2026', '2026-10-07'],
+    ['Workout A Oct. 7, 2026', '2026-10-07'],
+    ['Workout A Mar 12 2026', '2026-03-12'],
+    // Not dates: a movement name is not a month, and neither is a figure a year.
+    ['Goblet Squat 12 2026', null],
+    ['Goblet Squat 10000 sets', null],
+    ['Goblet Squat 32 2026', null],
+    ['Goblet Squat 12 1026', null],
+  ];
+
+  it.each(DATES)('reads the date in "%s" as %s', (line, date) => {
+    expect(parseCard([line]).date).toBe(date);
+  });
+
+  const APP_LINES = [
+    '17:11',
+    'Solid one!',
+    '44th workout in the books',
+    'New Personal Records',
+    'EXERCISE SETS BEST SET',
+    '® Max Weight Reps ® Estimated 1RM',
+    'DURATION VOLUME SETS',
+    'BOOSTCAMP',
+    'Stories',
+    'Share',
+  ];
+
+  it.each(APP_LINES)('still does not read "%s" as a movement', (line) => {
+    expect(parseCard([line]).rows).toEqual([]);
+  });
+
+  it('starts the table at the header, not at a movement that borrows its words', () => {
+    const card = parseCard([
+      'Dumbbell PPL',
+      'Workout B Oct 7,2026',
+      'EXERCISE SETS BEST SET',
+      'Exercise Ball Crunch 3 20 reps',
+      'Best Set Squat 3 60 lb x 8',
+    ]);
+
+    expect(card.rows.map((row) => row.name)).toEqual(['Exercise Ball Crunch', 'Best Set Squat']);
+  });
+
   it('reads a long or awkward line quickly, whatever it holds', () => {
     // A figure of any length cannot send the reader down an exponential path.
     const lines = [

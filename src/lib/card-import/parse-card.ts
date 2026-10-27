@@ -59,16 +59,29 @@ export interface ParsedCard {
   totalSets: number | null;
 }
 
+// =============================================================================
+// The lines that are not movements
+// =============================================================================
+// Each of these takes a line off the card, so each one only matches a line that
+// really is what it names. A guard that matched a word inside a longer line would
+// throw away a movement with it: "Exercise Ball Crunch" is a movement, "Squat 10000"
+// is a movement with a set count to check, and neither is a header or a date.
+
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-// The year ends the date, so a four-digit stretch inside a longer run of digits is not
-// one: a movement whose set count OCR read as twenty digits is still a movement.
-const DATE_LINE = /(?<mon>[A-Za-z]{3})[a-z]*\.?\s+(?<day>\d{1,2})[,.]?\s*(?<year>\d{4})\b/;
-const WEEK_LINE = /Week\s*(?<week>\d+)\s*[-–·•.]\s*Day\s*(?<day>\d+)/i;
-// The app's own text around the card: the status line, the PR sheet, the share row.
+// A real month, then a day from 1 to 31 and a four-digit year, each a word of its own.
+// A movement name followed by figures is not a date, however many digits it carries.
+const DATE_LINE =
+  /\b(?<mon>jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?<day>3[01]|[12]\d|0?[1-9])(?:st|nd|rd|th)?[,.]?\s*(?<year>(?:19|20)\d{2})\b/i;
+const WEEK_LINE = /\bWeek\s*(?<week>\d+)\s*[-–·•.]\s*Day\s*(?<day>\d+)\b/i;
+// The table header a finished card prints over its movements. Every word of the line is
+// one of the column names, so a movement that happens to use one is not a header.
+const TABLE_HEADER = /^(?:\W*\b(?:exercise|sets?|best|reps?|weight)\b\W*)+$/i;
+// The app's own text around the card: the status line, the PR sheet, the share row. It
+// only decides which line is the card's title, and never whether a line is a movement.
 const APP_TEXT =
-  /(Max|Estimated|1RM|BOOSTCAMP|DURATION|VOLUME|BEST SET|EXERCISE|Stories|Share|Save|Done|Solid one|workout in the books|Personal Records)/i;
+  /\b(Max|Estimated|1RM|BOOSTCAMP|DURATION|VOLUME|BEST SET|EXERCISE|Stories|Share|Save|Done|Solid one|workout in the books|Personal Records)\b/i;
 // A plan card's progress bar, read as a percentage with a little artwork in front of it.
-const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%/;
+const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%$/;
 
 /**
  * One movement, in one grammar that covers both cards:
@@ -188,7 +201,10 @@ export function parseCard(rawLines: string[]): ParsedCard {
     totalSets: null,
   };
 
-  const headerAt = lines.findIndex((line) => /EXERCISE/i.test(line));
+  // The table header, where a finished card's movements start. The line has to be the
+  // header itself: a movement named after a column would otherwise start the table
+  // halfway down the card and take every movement above it off the screen.
+  const headerAt = lines.findIndex((line) => TABLE_HEADER.test(line));
   const body = lines.slice(headerAt + 1);
   let firstRowAt = lines.length;
   body.forEach((line, index) => {
@@ -263,7 +279,10 @@ export function cardWarnings(card: ParsedCard): string[] {
 }
 
 function parseRow(line: string, index: number): ParsedRow | null {
-  if (APP_TEXT.test(line) || DATE_LINE.test(line) || WEEK_LINE.test(line)) return null;
+  // Only the lines that are something else: the card's date line, its week and day, and
+  // the table header. The app's own text is left to the grammar, which rejects it for
+  // having no movement in it, so a movement that borrows one of those words is safe.
+  if (DATE_LINE.test(line) || WEEK_LINE.test(line) || TABLE_HEADER.test(line)) return null;
   const groups = line.match(ROW)?.groups;
   if (!groups) return null;
 
