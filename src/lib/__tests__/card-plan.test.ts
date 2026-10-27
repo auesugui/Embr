@@ -178,6 +178,34 @@ describe('the row rule', () => {
     ['Goblet Squat 0 sets . 0 reps', '', '', null],
   ];
 
+  // However big or odd the figure OCR hands back, the movement stays and the value it
+  // could not use is the thing to supply. No size the grammar imposes, only the check.
+  const OVERSIZE = ['0', '03', '100', '1000', '12345678901234567890', '2.5', '8.125', '150'];
+
+  it.each(OVERSIZE)('keeps the movement when the set count reads "%s"', (figure) => {
+    const row = planRow(`Goblet Squat ${figure} sets . 8 reps`);
+
+    expect(row).toEqual(expect.objectContaining({ name: 'Goblet Squat', sets: '', reps: '8' }));
+    expect(missingValues(row)).toEqual(['sets']);
+  });
+
+  it.each(OVERSIZE)('keeps the movement when the rep count reads "%s"', (figure) => {
+    const row = planRow(`Goblet Squat 3 sets . ${figure} reps`);
+
+    expect(row).toEqual(expect.objectContaining({ sets: '3', reps: '' }));
+    expect(missingValues(row)).toEqual(['reps']);
+  });
+
+  it.each(OVERSIZE)('keeps the movement when a rep range reads "%s" on either end', (figure) => {
+    const low = planRow(`Goblet Squat 3 sets . ${figure}-12 reps`);
+    const high = planRow(`Goblet Squat 3 sets . 3-${figure} reps`);
+
+    for (const row of [low, high]) {
+      expect(row).toEqual(expect.objectContaining({ sets: '3', reps: '' }));
+      expect(missingValues(row)).toEqual(['reps']);
+    }
+  });
+
   it.each(ROWS)('reads "%s"', (line, sets, reps, weightLb) => {
     expect(planRow(line)).toEqual(expect.objectContaining({ sets, reps, weightLb }));
   });
@@ -186,14 +214,43 @@ describe('the row rule', () => {
     'Goblet Squat 3',
     'Goblet Squat 3 sets 12',
     'NEXT UP - WEEK 8 - DAY 3',
+    'Week 8 - Day 3',
+    'Day 3',
     'ES 96%',
+    'ES 1000%',
     'Show less ~',
+    'Start workout',
+    'EXERCISE SETS BEST SET',
     '48 m 12,480 lb 18',
+    '48 min',
+    '12,480 lb',
+    '1000',
+    'Call 555-123-4567',
     'Workout A Oct 10.2026',
+    'Dumbbell PPL',
   ];
 
   it.each(NOT_ROWS)('does not read "%s" as a movement', (line) => {
     expect(parseCard([line]).rows).toEqual([]);
+  });
+
+  it('reads a long or awkward line quickly, whatever it holds', () => {
+    // A figure of any length cannot send the reader down an exponential path.
+    const lines = [
+      '9'.repeat(5000),
+      `Goblet Squat ${'9'.repeat(5000)} sets . 8 reps`,
+      `Goblet Squat ${'9'.repeat(5000)}`,
+      `${'Goblet Squat '.repeat(400)}3 sets . 8 reps`,
+      'Goblet Squat '.repeat(400),
+      `Goblet Squat ${'9-'.repeat(2500)}9 reps`,
+      `Goblet Squat ${'. '.repeat(2500)}3 sets`,
+      `Goblet Squat 3 sets . ${'8.'.repeat(2500)}8 reps`,
+    ];
+
+    const started = Date.now();
+    for (const line of lines) expect(() => parseCard([line])).not.toThrow();
+
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   it('leaves a value the card did not name empty, rather than filling it in', () => {

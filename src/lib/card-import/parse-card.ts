@@ -60,7 +60,9 @@ export interface ParsedCard {
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-const DATE_LINE = /(?<mon>[A-Za-z]{3})[a-z]*\.?\s+(?<day>\d{1,2})[,.]?\s*(?<year>\d{4})/;
+// The year ends the date, so a four-digit stretch inside a longer run of digits is not
+// one: a movement whose set count OCR read as twenty digits is still a movement.
+const DATE_LINE = /(?<mon>[A-Za-z]{3})[a-z]*\.?\s+(?<day>\d{1,2})[,.]?\s*(?<year>\d{4})\b/;
 const WEEK_LINE = /Week\s*(?<week>\d+)\s*[-–·•.]\s*Day\s*(?<day>\d+)/i;
 // The app's own text around the card: the status line, the PR sheet, the share row.
 const APP_TEXT =
@@ -79,6 +81,9 @@ const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%/;
  *                (the number may be a half, "12.5 lb x 8")
  *     range   := number ("-"|"–"|"to") number "reps"?
  *     count   := number "reps"
+ *     number  := digits, with any decimal part. It has no size limit on purpose: how
+ *                big a figure may be is readSets and readReps's rule, and a figure
+ *                this cannot read is a value to ask for, not a movement to drop.
  *     separator := one of  x · • | - –, or a spaced . , : ~, or nothing
  *
  * Two rules settle what a figure is when it could be read twice:
@@ -102,7 +107,7 @@ const PROGRESS_LINE = /^\D{0,4}\d{1,3}\s*%/;
  * progress bar, "Show less" and the finished card's footer stay out of the table.
  */
 const ROW =
-  /^(?<name>[^\d]*[A-Za-z][^\d]*?)\s*(?:(?<sets>\d{1,3}(?:\.\d{1,2})?)(?!\d)(?!\s*(?:-|–|to)\s*\d)\s*(?<worded>sets?\b)?)?(?:\s*[x·•|]\s*|\s*[-–]\s*|\s+[.,:~]\s+|\s*)(?:(?<weight>\d{1,4}(?:\.\d{1,2})?)\s*(?:lbs?)?\s*x\s*(?<weightReps>\d{1,3}(?:\.\d{1,2})?)|(?<low>\d{1,3}(?:\.\d{1,2})?)\s*(?:-|–|to)\s*(?<high>\d{1,3}(?:\.\d{1,2})?)\s*(?:reps?\b)?|(?<count>\d{1,3}(?:\.\d{1,2})?)\s*reps?\b)?\s*$/i;
+  /^(?<name>[^\d]*[A-Za-z][^\d]*?)\s*(?:(?<sets>\d+(?:\.\d+)?)(?!\d)(?!\s*(?:-|–|to)\s*\d)\s*(?<worded>sets?\b)?)?(?:\s*[x·•|]\s*|\s*[-–]\s*|\s+[.,:~]\s+|\s*)(?:(?<weight>\d+(?:\.\d+)?)(?!\d)\s*(?:lbs?)?\s*x\s*(?<weightReps>\d+(?:\.\d+)?)(?!\d)|(?<low>\d+(?:\.\d+)?)(?!\d)\s*(?:-|–|to)\s*(?<high>\d+(?:\.\d+)?)(?!\d)\s*(?:reps?\b)?|(?<count>\d+(?:\.\d+)?)(?!\d)\s*reps?\b)?\s*$/i;
 
 /** Undoes the OCR glitches that show up on Boostcamp cards. */
 export function normalizeLine(line: string): string {
@@ -125,6 +130,8 @@ export function normalizeLine(line: string): string {
 const MOST = 99;
 
 const REPS = /^(?<low>\d{1,2})(?:\s*(?:-|–|to)\s*(?<high>\d{1,2}))?$/i;
+/** "03" is not a count any card prints, so it is a read error to ask about, not a 3. */
+const LEADING_ZERO = /^0\d/;
 
 /**
  * A rep count or a rep range as a template stores it, or null when the text is
@@ -138,6 +145,7 @@ const REPS = /^(?<low>\d{1,2})(?:\s*(?:-|–|to)\s*(?<high>\d{1,2}))?$/i;
 export function readReps(text: string): string | null {
   const found = text.trim().match(REPS)?.groups;
   if (!found) return null;
+  if (LEADING_ZERO.test(found.low) || (found.high && LEADING_ZERO.test(found.high))) return null;
   const low = Number(found.low);
   if (low < 1) return null;
   if (found.high === undefined) return String(low);
@@ -152,7 +160,7 @@ export function readReps(text: string): string | null {
  */
 export function readSets(text: string): number | null {
   const trimmed = text.trim();
-  if (trimmed === '') return null;
+  if (trimmed === '' || LEADING_ZERO.test(trimmed)) return null;
   const count = Number(trimmed);
   return Number.isInteger(count) && count >= 1 && count <= MOST ? count : null;
 }
