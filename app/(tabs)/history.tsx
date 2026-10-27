@@ -115,6 +115,14 @@ export default function HistoryScreen() {
     () => weekRowForDay(focusKey, { todayKey, trainedDays, selectedKey: selectedDay }),
     [focusKey, todayKey, trainedDays, selectedDay]
   );
+  // Whole Monday-first weeks, so the grid's depth is its length — four rows in
+  // a short February, six in a month that starts on a Sunday. Both this and
+  // the note are height the collapse takes away, so the scroll rule needs
+  // them, and they are read here rather than guessed at a fixed size.
+  const gridRows = grid.length / 7;
+  const emptyNote = grid.some((cell) => cell.trained)
+    ? null
+    : `No workouts in ${monthName(viewedMonth)}.`;
 
   const navigation = useNavigation();
   // Collapsed, the month moves into the nav bar so the grid's own title can go
@@ -145,6 +153,8 @@ export default function HistoryScreen() {
         contentHeight: contentSize.height,
         viewportHeight: layoutMeasurement.height,
         collapsed,
+        rows: gridRows,
+        note: emptyNote !== null,
       });
     setScrolled(past);
     // Passing the threshold ends a step's expansion and hands the collapse
@@ -212,9 +222,7 @@ export default function HistoryScreen() {
           collapsed={collapsed}
           canPrevious={canStepBack(viewedMonth, earliest)}
           canNext={canStepForward(viewedMonth, todayKey)}
-          emptyNote={
-            grid.some((cell) => cell.trained) ? null : `No workouts in ${monthName(viewedMonth)}.`
-          }
+          emptyNote={emptyNote}
           onPrevious={() => handleStep(-1)}
           onNext={() => handleStep(1)}
           onToggleCollapsed={handleFold}

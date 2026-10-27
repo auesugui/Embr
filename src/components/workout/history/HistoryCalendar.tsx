@@ -15,6 +15,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from '@/components/icons';
 import {
   CALENDAR_CELL_HEIGHT,
+  CALENDAR_NOTE_GAP,
+  CALENDAR_NOTE_LINE,
   CALENDAR_ROW_GAP,
   type CalendarDay,
   calendarRows,
@@ -270,10 +272,13 @@ const styles = StyleSheet.create({
     color: roles.onAccent,
     fontWeight: '700',
   },
+  // The height the collapse takes away with it, which canCollapseOnScroll has
+  // to know about — so the line and the gap are its constants, not spacing's.
   note: {
     ...textStyles.caption,
+    lineHeight: CALENDAR_NOTE_LINE,
     color: roles.textTertiary,
     textAlign: 'center',
-    marginTop: spacing[2],
+    marginTop: CALENDAR_NOTE_GAP,
   },
 });

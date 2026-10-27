@@ -8,13 +8,14 @@
 import type { WorkoutLog } from '@/types';
 
 import {
+  CALENDAR_ROW_HEIGHT,
   COLLAPSE_AT,
   COLLAPSE_MARGIN,
-  COLLAPSE_SHRINK,
   calendarRows,
   canCollapseOnScroll,
   canStepBack,
   canStepForward,
+  collapseShrink,
   earliestMonth,
   formatDayLabel,
   formatMonthDay,
@@ -204,48 +205,190 @@ describe('isCollapsed', () => {
   });
 });
 
+describe('collapseShrink', () => {
+  it('loses every row but the week it keeps', () => {
+    // A short February, the common month, and one that starts on a Sunday.
+    expect(collapseShrink(4, false)).toBe(3 * CALENDAR_ROW_HEIGHT);
+    expect(collapseShrink(5, false)).toBe(132);
+    expect(collapseShrink(6, false)).toBe(165);
+  });
+
+  it('loses the empty-month note with them', () => {
+    expect(collapseShrink(5, true)).toBe(132 + 26);
+    expect(collapseShrink(6, true)).toBe(165 + 26);
+  });
+
+  it('has nothing to lose when the grid is already one week', () => {
+    expect(collapseShrink(1, false)).toBe(0);
+    expect(collapseShrink(0, false)).toBe(0);
+  });
+});
+
 describe('canCollapseOnScroll', () => {
   // The screen the flap was measured on: a 724 px viewport, 865 px of content
   // expanded and 733 px collapsed, which leaves 9 px of scroll range.
   const VIEWPORT = 724;
-  /** Content height that leaves `range` px of scroll once collapsed. */
-  const expandedFor = (range: number) => VIEWPORT + range + COLLAPSE_SHRINK;
-  const collapsedFor = (range: number) => VIEWPORT + range;
   const needed = COLLAPSE_AT + COLLAPSE_MARGIN;
+  /** Content height that leaves `range` px of scroll once collapsed. */
+  const expandedFor = (range: number, rows: number, note = false) =>
+    VIEWPORT + range + collapseShrink(rows, note);
+  const collapsedFor = (range: number) => VIEWPORT + range;
 
-  const cases: [string, number, number, boolean, boolean][] = [
-    // name, contentHeight, viewportHeight, collapsed, allowed
-    ['the short list the flap was measured on', 865, VIEWPORT, false, false],
-    ['that same list once it has collapsed', 733, VIEWPORT, true, false],
-    ['a long list that still scrolls collapsed', 2400, VIEWPORT, false, true],
-    ['a long list measured collapsed', 2268, VIEWPORT, true, true],
-    ['one pixel short of a stable collapse', expandedFor(needed - 1), VIEWPORT, false, false],
-    ['exactly enough range to collapse', expandedFor(needed), VIEWPORT, false, true],
-    ['one pixel more than enough', expandedFor(needed + 1), VIEWPORT, false, true],
-    ['95 px of range, measured collapsed', collapsedFor(needed - 1), VIEWPORT, true, false],
-    ['96 px of range, measured collapsed', collapsedFor(needed), VIEWPORT, true, true],
-    ['97 px of range, measured collapsed', collapsedFor(needed + 1), VIEWPORT, true, true],
-    ['content that does not fill the viewport', 400, VIEWPORT, false, false],
-    ['nothing measured yet', 0, 0, false, false],
-    ['a viewport measured before the content', 0, VIEWPORT, false, false],
-    ['content measured before the viewport', 2400, 0, false, false],
+  type Case = [string, number, number, boolean, number, boolean, boolean];
+  const cases: Case[] = [
+    // name, contentHeight, viewportHeight, collapsed, rows, note, allowed
+    ['the short list the flap was measured on', 865, VIEWPORT, false, 5, false, false],
+    ['that same list once it has collapsed', 733, VIEWPORT, true, 5, false, false],
+    ['a long list that still scrolls collapsed', 2400, VIEWPORT, false, 5, false, true],
+    ['a long list measured collapsed', 2268, VIEWPORT, true, 5, false, true],
+
+    // Each month depth at the boundary, expanded: the rule has to take that
+    // month's own rows off, not a five-row month's.
+    ['a four-row month 1 px short', expandedFor(needed - 1, 4), VIEWPORT, false, 4, false, false],
+    ['a four-row month exactly at it', expandedFor(needed, 4), VIEWPORT, false, 4, false, true],
+    ['a four-row month 1 px over', expandedFor(needed + 1, 4), VIEWPORT, false, 4, false, true],
+    ['a five-row month 1 px short', expandedFor(needed - 1, 5), VIEWPORT, false, 5, false, false],
+    ['a five-row month exactly at it', expandedFor(needed, 5), VIEWPORT, false, 5, false, true],
+    ['a five-row month 1 px over', expandedFor(needed + 1, 5), VIEWPORT, false, 5, false, true],
+    ['a six-row month 1 px short', expandedFor(needed - 1, 6), VIEWPORT, false, 6, false, false],
+    ['a six-row month exactly at it', expandedFor(needed, 6), VIEWPORT, false, 6, false, true],
+    ['a six-row month 1 px over', expandedFor(needed + 1, 6), VIEWPORT, false, 6, false, true],
+
+    // The window the fixed four-row shrink got wrong: 228 px of range was
+    // enough for it, and a six-row month is left with 63 px.
+    [
+      'the six-row month the old shrink collapsed',
+      VIEWPORT + 228,
+      VIEWPORT,
+      false,
+      6,
+      false,
+      false,
+    ],
+    ['a six-row month with range to spare', VIEWPORT + 261, VIEWPORT, false, 6, false, true],
+
+    // An empty month hides its note on the way down, which is height too.
+    [
+      'an empty five-row month 1 px short',
+      expandedFor(needed - 1, 5, true),
+      VIEWPORT,
+      false,
+      5,
+      true,
+      false,
+    ],
+    [
+      'an empty five-row month exactly at it',
+      expandedFor(needed, 5, true),
+      VIEWPORT,
+      false,
+      5,
+      true,
+      true,
+    ],
+    [
+      'the same height without the note',
+      expandedFor(needed, 5, true),
+      VIEWPORT,
+      false,
+      5,
+      false,
+      true,
+    ],
+    ['a note that tips it under', expandedFor(needed, 5), VIEWPORT, false, 5, true, false],
+
+    // Collapsed, the measurement is the short one already: the depth it came
+    // from and the note it no longer shows change nothing.
+    [
+      '95 px of range, measured collapsed',
+      collapsedFor(needed - 1),
+      VIEWPORT,
+      true,
+      5,
+      false,
+      false,
+    ],
+    ['96 px of range, measured collapsed', collapsedFor(needed), VIEWPORT, true, 5, false, true],
+    [
+      '97 px of range, measured collapsed',
+      collapsedFor(needed + 1),
+      VIEWPORT,
+      true,
+      5,
+      false,
+      true,
+    ],
+    [
+      '95 px collapsed out of a four-row month',
+      collapsedFor(needed - 1),
+      VIEWPORT,
+      true,
+      4,
+      false,
+      false,
+    ],
+    [
+      '96 px collapsed out of a four-row month',
+      collapsedFor(needed),
+      VIEWPORT,
+      true,
+      4,
+      false,
+      true,
+    ],
+    [
+      '97 px collapsed out of a four-row month',
+      collapsedFor(needed + 1),
+      VIEWPORT,
+      true,
+      4,
+      false,
+      true,
+    ],
+    [
+      '95 px collapsed out of a six-row month',
+      collapsedFor(needed - 1),
+      VIEWPORT,
+      true,
+      6,
+      true,
+      false,
+    ],
+    ['96 px collapsed out of a six-row month', collapsedFor(needed), VIEWPORT, true, 6, true, true],
+    [
+      '97 px collapsed out of a six-row month',
+      collapsedFor(needed + 1),
+      VIEWPORT,
+      true,
+      6,
+      true,
+      true,
+    ],
+
+    ['content that does not fill the viewport', 400, VIEWPORT, false, 5, false, false],
+    ['nothing measured yet', 0, 0, false, 5, false, false],
+    ['a viewport measured before the content', 0, VIEWPORT, false, 5, false, false],
+    ['content measured before the viewport', 2400, 0, false, 5, false, false],
+    ['a grid not yet counted', 2400, VIEWPORT, false, 0, false, true],
   ];
 
-  it.each(cases)('%s', (_name, contentHeight, viewportHeight, collapsed, allowed) => {
-    expect(canCollapseOnScroll({ contentHeight, viewportHeight, collapsed })).toBe(allowed);
+  it.each(cases)('%s', (_name, contentHeight, viewportHeight, collapsed, rows, note, allowed) => {
+    expect(canCollapseOnScroll({ contentHeight, viewportHeight, collapsed, rows, note })).toBe(
+      allowed
+    );
   });
 
   it('asks for 96 px of range, which is the threshold plus the margin', () => {
     expect(needed).toBe(96);
-    expect(COLLAPSE_SHRINK).toBe(132);
   });
 });
 
 describe('the scroll decision handleScroll makes', () => {
   // What the screen does with the two rules together: the offset has to be
   // past the threshold and the collapse has to be able to hold.
-  const scrolledPast = (offset: number, contentHeight: number, collapsed: boolean) =>
-    offset > COLLAPSE_AT && canCollapseOnScroll({ contentHeight, viewportHeight: 724, collapsed });
+  const scrolledPast = (offset: number, contentHeight: number, collapsed: boolean, rows = 5) =>
+    offset > COLLAPSE_AT &&
+    canCollapseOnScroll({ contentHeight, viewportHeight: 724, collapsed, rows, note: false });
 
   const fold = (folded: boolean | null, scrolled: boolean, openedByStep = false) =>
     isCollapsed({ folded, scrolled, openedByStep });
@@ -267,6 +410,13 @@ describe('the scroll decision handleScroll makes', () => {
 
   it('still lets the chevron collapse a short list', () => {
     expect(fold(true, scrolledPast(100, 865, false))).toBe(true);
+  });
+
+  it('leaves a six-row month open where a five-row one would collapse', () => {
+    // 952 px of content is 228 px of range: enough once four rows go, not
+    // enough once five do. A month step is what gets you to either.
+    expect(fold(null, scrolledPast(100, 952, false, 5))).toBe(true);
+    expect(fold(null, scrolledPast(100, 952, false, 6))).toBe(false);
   });
 });
 

@@ -175,15 +175,30 @@ export const COLLAPSE_AT = 80;
 export const CALENDAR_CELL_HEIGHT = 31;
 export const CALENDAR_ROW_GAP = 2;
 
+/** A grid row with its gap — the unit the collapse takes rows away in. */
+export const CALENDAR_ROW_HEIGHT = CALENDAR_CELL_HEIGHT + CALENDAR_ROW_GAP;
+
 /**
- * Height the collapse takes away: a five-row month keeps one week, so four
- * rows go. Read off the cell HistoryCalendar draws the grid with, not written
- * as the 132 px it comes to, so restyling a row moves this with it.
+ * The empty-month note's line and the gap above it. Collapsing hides the note
+ * along with the rows, so the list loses this height too. HistoryCalendar's
+ * note style is written from these, so the model and the pixels agree.
  */
-export const COLLAPSE_SHRINK = 4 * (CALENDAR_CELL_HEIGHT + CALENDAR_ROW_GAP);
+export const CALENDAR_NOTE_GAP = 8;
+export const CALENDAR_NOTE_LINE = 18;
 
 /** Scroll range the collapse has to leave above COLLAPSE_AT to be stable. */
 export const COLLAPSE_MARGIN = 16;
+
+/**
+ * Height a collapse takes out of the list: every grid row but the one week it
+ * keeps, plus the note it hides. Read off the grid on screen, because a month
+ * is four, five or six rows deep — the same month's worth of pixels written
+ * down as one number is wrong eight months a year.
+ */
+export function collapseShrink(rows: number, note: boolean): number {
+  const lostRows = Math.max(rows - 1, 0) * CALENDAR_ROW_HEIGHT;
+  return note ? lostRows + CALENDAR_NOTE_GAP + CALENDAR_NOTE_LINE : lostRows;
+}
 
 export interface ScrollExtent {
   /** The list's content height as measured now, collapsed or not. */
@@ -192,6 +207,10 @@ export interface ScrollExtent {
   viewportHeight: number;
   /** Whether contentHeight was measured with the grid already collapsed. */
   collapsed: boolean;
+  /** Rows the month grid has when it is open: four, five or six. */
+  rows: number;
+  /** Whether the card is showing its empty-month note. */
+  note: boolean;
 }
 
 /**
@@ -203,6 +222,11 @@ export interface ScrollExtent {
  * collapse is only allowed when the collapsed list would still have enough
  * range to hold an offset past the threshold, with COLLAPSE_MARGIN to spare.
  *
+ * Collapsed, the measurement is already the short one and `rows` and `note`
+ * say nothing; expanded, the shrink comes off it. Nothing else above the list
+ * changes height as it collapses: the pinned header is sticky, and the month
+ * that moves into the nav bar is outside the scrolling content.
+ *
  * Before the first layout both heights are 0 and nothing may collapse: the
  * list has not been measured, and an unmeasured list is not known to scroll.
  */
@@ -210,9 +234,11 @@ export function canCollapseOnScroll({
   contentHeight,
   viewportHeight,
   collapsed,
+  rows,
+  note,
 }: ScrollExtent): boolean {
   if (contentHeight <= 0 || viewportHeight <= 0) return false;
-  const collapsedHeight = collapsed ? contentHeight : contentHeight - COLLAPSE_SHRINK;
+  const collapsedHeight = collapsed ? contentHeight : contentHeight - collapseShrink(rows, note);
   return collapsedHeight - viewportHeight >= COLLAPSE_AT + COLLAPSE_MARGIN;
 }
 
