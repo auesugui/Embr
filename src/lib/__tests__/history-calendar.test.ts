@@ -8,7 +8,11 @@
 import type { WorkoutLog } from '@/types';
 
 import {
+  COLLAPSE_AT,
+  COLLAPSE_MARGIN,
+  COLLAPSE_SHRINK,
   calendarRows,
+  canCollapseOnScroll,
   canStepBack,
   canStepForward,
   earliestMonth,
@@ -197,6 +201,72 @@ describe('isCollapsed', () => {
     expect(fold(null, true, false)).toBe(true);
     // And the chevron's choice is what it goes back to, when there was one.
     expect(fold(true, false, false)).toBe(true);
+  });
+});
+
+describe('canCollapseOnScroll', () => {
+  // The screen the flap was measured on: a 724 px viewport, 865 px of content
+  // expanded and 733 px collapsed, which leaves 9 px of scroll range.
+  const VIEWPORT = 724;
+  /** Content height that leaves `range` px of scroll once collapsed. */
+  const expandedFor = (range: number) => VIEWPORT + range + COLLAPSE_SHRINK;
+  const collapsedFor = (range: number) => VIEWPORT + range;
+  const needed = COLLAPSE_AT + COLLAPSE_MARGIN;
+
+  const cases: [string, number, number, boolean, boolean][] = [
+    // name, contentHeight, viewportHeight, collapsed, allowed
+    ['the short list the flap was measured on', 865, VIEWPORT, false, false],
+    ['that same list once it has collapsed', 733, VIEWPORT, true, false],
+    ['a long list that still scrolls collapsed', 2400, VIEWPORT, false, true],
+    ['a long list measured collapsed', 2268, VIEWPORT, true, true],
+    ['one pixel short of a stable collapse', expandedFor(needed - 1), VIEWPORT, false, false],
+    ['exactly enough range to collapse', expandedFor(needed), VIEWPORT, false, true],
+    ['one pixel more than enough', expandedFor(needed + 1), VIEWPORT, false, true],
+    ['95 px of range, measured collapsed', collapsedFor(needed - 1), VIEWPORT, true, false],
+    ['96 px of range, measured collapsed', collapsedFor(needed), VIEWPORT, true, true],
+    ['97 px of range, measured collapsed', collapsedFor(needed + 1), VIEWPORT, true, true],
+    ['content that does not fill the viewport', 400, VIEWPORT, false, false],
+    ['nothing measured yet', 0, 0, false, false],
+    ['a viewport measured before the content', 0, VIEWPORT, false, false],
+    ['content measured before the viewport', 2400, 0, false, false],
+  ];
+
+  it.each(cases)('%s', (_name, contentHeight, viewportHeight, collapsed, allowed) => {
+    expect(canCollapseOnScroll({ contentHeight, viewportHeight, collapsed })).toBe(allowed);
+  });
+
+  it('asks for 96 px of range, which is the threshold plus the margin', () => {
+    expect(needed).toBe(96);
+    expect(COLLAPSE_SHRINK).toBe(132);
+  });
+});
+
+describe('the scroll decision handleScroll makes', () => {
+  // What the screen does with the two rules together: the offset has to be
+  // past the threshold and the collapse has to be able to hold.
+  const scrolledPast = (offset: number, contentHeight: number, collapsed: boolean) =>
+    offset > COLLAPSE_AT && canCollapseOnScroll({ contentHeight, viewportHeight: 724, collapsed });
+
+  const fold = (folded: boolean | null, scrolled: boolean, openedByStep = false) =>
+    isCollapsed({ folded, scrolled, openedByStep });
+
+  it('leaves a short list expanded however far it is scrolled', () => {
+    expect(scrolledPast(100, 865, false)).toBe(false);
+    expect(fold(null, scrolledPast(100, 865, false))).toBe(false);
+  });
+
+  it('collapses a long list past the threshold and holds it there', () => {
+    expect(fold(null, scrolledPast(100, 2400, false))).toBe(true);
+    // Measured again after the grid shrank, the collapse still stands.
+    expect(fold(null, scrolledPast(100, 2268, true))).toBe(true);
+  });
+
+  it('expands the long list again under the threshold', () => {
+    expect(fold(null, scrolledPast(79, 2268, true))).toBe(false);
+  });
+
+  it('still lets the chevron collapse a short list', () => {
+    expect(fold(true, scrolledPast(100, 865, false))).toBe(true);
   });
 });
 

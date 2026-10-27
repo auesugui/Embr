@@ -34,6 +34,7 @@ import { WorkoutRow } from '@/components/workout/history/WorkoutRow';
 import { useLocalDay } from '@/hooks/useLocalDay';
 import {
   COLLAPSE_AT,
+  canCollapseOnScroll,
   canStepBack,
   canStepForward,
   earliestMonth,
@@ -59,11 +60,14 @@ import { RevealRow } from '@/components/celebration';
 /**
  * Web only, and not cosmetic: the browser holds the content still when
  * something above the viewport changes height, by moving the scroll offset by
- * the same amount. The collapse takes 132 px of grid away, so the offset would
- * drop back under the threshold and the next scroll event would expand the
- * calendar again — a header that flapped between 80 px and 212 px of scroll.
- * With anchoring off, the list slides up once as the grid shrinks and the
- * collapse holds.
+ * the same amount. The collapse takes a few rows of grid away, so the offset
+ * would drop back under the threshold and the next scroll event would expand
+ * the calendar again — a header that flapped between 80 px and 212 px of
+ * scroll. With anchoring off, the list slides up once as the grid shrinks and
+ * the collapse holds.
+ *
+ * It holds only while the collapsed list is long enough to be scrolled that
+ * far at all; a short list is what canCollapseOnScroll is for.
  */
 const NO_SCROLL_ANCHOR =
   Platform.OS === 'web' ? ({ overflowAnchor: 'none' } as unknown as ViewStyle) : null;
@@ -132,7 +136,16 @@ export default function HistoryScreen() {
   const handleSelectDay = (key: string) =>
     setSelectedDay((current) => (current === key ? null : key));
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const past = event.nativeEvent.contentOffset.y > COLLAPSE_AT;
+    // The event carries both measurements, so the rule needs no layout state
+    // of its own — and the heights it reads are the ones being scrolled.
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const past =
+      contentOffset.y > COLLAPSE_AT &&
+      canCollapseOnScroll({
+        contentHeight: contentSize.height,
+        viewportHeight: layoutMeasurement.height,
+        collapsed,
+      });
     setScrolled(past);
     // Passing the threshold ends a step's expansion and hands the collapse
     // back to the scroll, which is the state the screen was in before the step.

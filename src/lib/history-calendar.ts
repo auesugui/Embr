@@ -171,6 +171,51 @@ export function weekRowForDay(key: string, options: GridOptions): CalendarDay[] 
 /** Scroll past this many pixels and the grid drops to one week. */
 export const COLLAPSE_AT = 80;
 
+/** One day cell's height, and the gap above each grid row. */
+export const CALENDAR_CELL_HEIGHT = 31;
+export const CALENDAR_ROW_GAP = 2;
+
+/**
+ * Height the collapse takes away: a five-row month keeps one week, so four
+ * rows go. Read off the cell HistoryCalendar draws the grid with, not written
+ * as the 132 px it comes to, so restyling a row moves this with it.
+ */
+export const COLLAPSE_SHRINK = 4 * (CALENDAR_CELL_HEIGHT + CALENDAR_ROW_GAP);
+
+/** Scroll range the collapse has to leave above COLLAPSE_AT to be stable. */
+export const COLLAPSE_MARGIN = 16;
+
+export interface ScrollExtent {
+  /** The list's content height as measured now, collapsed or not. */
+  contentHeight: number;
+  /** The visible height of the list. */
+  viewportHeight: number;
+  /** Whether contentHeight was measured with the grid already collapsed. */
+  collapsed: boolean;
+}
+
+/**
+ * Whether a scroll past COLLAPSE_AT may collapse the grid.
+ *
+ * Collapsing shortens the content, and the browser then clamps the offset to
+ * whatever scroll range is left. On a short list that lands under COLLAPSE_AT,
+ * the next scroll event expands the grid again, and the header flaps. So the
+ * collapse is only allowed when the collapsed list would still have enough
+ * range to hold an offset past the threshold, with COLLAPSE_MARGIN to spare.
+ *
+ * Before the first layout both heights are 0 and nothing may collapse: the
+ * list has not been measured, and an unmeasured list is not known to scroll.
+ */
+export function canCollapseOnScroll({
+  contentHeight,
+  viewportHeight,
+  collapsed,
+}: ScrollExtent): boolean {
+  if (contentHeight <= 0 || viewportHeight <= 0) return false;
+  const collapsedHeight = collapsed ? contentHeight : contentHeight - COLLAPSE_SHRINK;
+  return collapsedHeight - viewportHeight >= COLLAPSE_AT + COLLAPSE_MARGIN;
+}
+
 export interface FoldState {
   /** The chevron's choice, kept for the visit. Null while scrolling decides. */
   folded: boolean | null;

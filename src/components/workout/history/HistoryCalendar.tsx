@@ -13,7 +13,13 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from '@/components/icons';
-import { type CalendarDay, calendarRows, formatDayLabel } from '@/lib/history-calendar';
+import {
+  CALENDAR_CELL_HEIGHT,
+  CALENDAR_ROW_GAP,
+  type CalendarDay,
+  calendarRows,
+  formatDayLabel,
+} from '@/lib/history-calendar';
 import { WEEK_DAY_INITIALS } from '@/lib/local-week';
 import { radius, roles, spacing, textStyles } from '@/theme';
 
@@ -217,13 +223,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 2,
-    marginTop: 2,
+    marginTop: CALENDAR_ROW_GAP,
   },
   // The transparent border holds today's ring without resizing the cell, and
   // the card's own colour shows through as the gap between ring and fill.
   cell: {
     flex: 1,
-    height: 31,
+    height: CALENDAR_CELL_HEIGHT,
     borderRadius: 9,
     borderWidth: 2,
     borderColor: 'transparent',
