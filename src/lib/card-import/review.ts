@@ -7,8 +7,11 @@
 //
 // A flag is cleared the moment its field is set, whichever reading the value came
 // from. Text that does not parse for its field is ignored, so a number field never
-// holds something that is not a number.
+// holds something that is not a number. The two free-text fields, the movement name
+// and its reps, keep what is typed: both are reached through text that is not valid
+// yet, and both are checked again before anything is copied.
 
+import { missingValues } from './parse-card';
 import type { Reading } from './reconcile';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,7 +32,6 @@ export function setField(reading: Reading, path: string, text: string): Reading 
   const trimmed = text.trim();
   const absent = trimmed === '' || trimmed === 'nothing';
   const number = Number(trimmed.replace(/,/g, ''));
-  const whole = Number.isInteger(number) && number >= 1 ? number : null;
 
   const movement = path.match(/^rows\.(\d+)\.(name|sets|weightLb|reps)$/);
   if (movement) {
@@ -37,8 +39,13 @@ export function setField(reading: Reading, path: string, text: string): Reading 
     if (!row) return reading;
     // Names are kept as typed, so a space between two words can be typed. Saving trims them.
     if (movement[2] === 'name' && trimmed !== '') row.name = text;
-    if (movement[2] === 'sets' && whole !== null) row.sets = whole;
-    if (movement[2] === 'reps' && whole !== null) row.reps = whole;
+    // The two figures a copy uses take what the person typed or chose, whether or not
+    // it reads as a value yet: "3-12" is reached through "3-", and a field that
+    // silently kept its old value would let a count nobody gave reach the copy. A
+    // reading chosen as "nothing", and an emptied field, are the same empty value.
+    // What is held is checked where it is used, not on the way in.
+    if (movement[2] === 'sets') row.sets = absent ? '' : text;
+    if (movement[2] === 'reps') row.reps = absent ? '' : text;
     if (movement[2] === 'weightLb') {
       if (absent) row.weightLb = null;
       else if (Number.isFinite(number) && number >= 0) row.weightLb = number;
@@ -50,6 +57,9 @@ export function setField(reading: Reading, path: string, text: string): Reading 
         break;
       case 'subtitle':
         card.subtitle = trimmed === '' ? null : text;
+        break;
+      case 'weekDay':
+        card.weekDay = absent ? null : text;
         break;
       case 'date':
         if (absent) card.date = null;
@@ -106,7 +116,11 @@ export function removeRow(reading: Reading, index: number): Reading {
 export function saveProblems(reading: Reading): string[] {
   const problems: string[] = [];
   if (reading.card.rows.length === 0) problems.push('Keep at least one movement.');
-  const blocking = reading.disagreements.filter((flag) => isStoredField(flag.path)).length;
+  // A value the readings disagree on and a value neither of them found are the same
+  // thing to the person: a field to settle before the movement can be copied.
+  const blocking =
+    reading.disagreements.filter((flag) => isStoredField(flag.path)).length +
+    reading.card.rows.reduce((count, row) => count + missingValues(row).length, 0);
   if (blocking > 0) {
     problems.push(`${blocking} ${blocking === 1 ? 'value needs' : 'values need'} checking.`);
   }

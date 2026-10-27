@@ -17,8 +17,9 @@ import { ExercisePickerModal } from '@/components/workout/ExercisePickerModal';
 import { ReviewCardView } from '@/components/workout/photo-import/ReviewCardView';
 import type { MovementMatch } from '@/components/workout/photo-import/ReviewRow';
 import { getExerciseById } from '@/data';
-import { matchExercise } from '@/lib/card-import/match-exercise';
+import { autoMatch } from '@/lib/card-import/match-exercise';
 import type { ParsedRow } from '@/lib/card-import/parse-card';
+import { readReps, readSets } from '@/lib/card-import/parse-card';
 import { readPhotos } from '@/lib/card-import/read-photos';
 import type { Reading } from '@/lib/card-import/reconcile';
 import { clearFlag, removeRow, saveProblems, setField } from '@/lib/card-import/review';
@@ -76,7 +77,7 @@ export default function ImportPhotosScreen() {
     const choice = choices[row.id];
     if (choice === 'skip') return { exerciseId: undefined, skipped: true };
     if (choice) return { exerciseId: choice.exerciseId, skipped: false };
-    return { exerciseId: matchExercise(row.name), skipped: false };
+    return { exerciseId: autoMatch(row.name), skipped: false };
   };
 
   const matchFor = (row: ParsedRow): MovementMatch => {
@@ -106,14 +107,22 @@ export default function ImportPhotosScreen() {
   for (const row of rows) {
     const { exerciseId, skipped } = resolve(row);
     if (skipped || !exerciseId || inDay.has(exerciseId) || queued.has(exerciseId)) continue;
+    // A movement still missing a value it would be copied with is not copied at all.
+    // saveProblems holds the whole card back until the person types it in. Both values
+    // go through the same check they are flagged by, so the two cannot disagree.
+    const sets = readSets(row.sets);
+    const reps = readReps(row.reps);
+    if (sets === null || reps === null) continue;
     queued.add(exerciseId);
-    additions.push({ exerciseId, sets: row.sets, reps: String(row.reps) });
+    // Copied as the rep scheme a template holds: "3 to 12" typed is stored "3-12".
+    additions.push({ exerciseId, sets, reps });
   }
 
+  const problems = onlyCard ? saveProblems(onlyCard) : [];
   const allClear =
     !reading &&
     onlyCard !== null &&
-    saveProblems(onlyCard).length === 0 &&
+    problems.length === 0 &&
     unsettled === 0 &&
     additions.length > 0 &&
     template !== undefined &&
@@ -170,14 +179,20 @@ export default function ImportPhotosScreen() {
     : cards.some((card) => card.reading === null)
       ? 'Remove the photo that could not be read.'
       : cards.length > 1
-        ? 'Remove the extra cards. One workout goes into one day.'
+        ? `Remove the extra ${cards.length === 2 ? 'card' : 'cards'}. One workout goes into one day.`
         : unsettled > 0
           ? `${unsettled} ${unsettled === 1 ? 'movement needs' : 'movements need'} an exercise, or a skip.`
-          : additions.length === 0 && onlyCard !== null
-            ? 'Every movement is skipped or already in this workout. Nothing to add.'
-            : allClear
-              ? ''
-              : 'Resolve the highlighted values first.';
+          : // A photo with no movements is not a card at all, and a movement still
+            // missing a value was not skipped. Both are checked before the
+            // skipped-or-present note, which would otherwise claim a photo of a wall
+            // held movements, and that a movement nobody has settled is settled.
+            rows.length === 0 && onlyCard !== null
+            ? 'Remove this photo and take one of those two cards.'
+            : problems.length > 0
+              ? 'Resolve the highlighted values first.'
+              : additions.length === 0 && onlyCard !== null
+                ? 'Every movement is skipped or already in this workout. Nothing to add.'
+                : '';
 
   return (
     <View style={styles.screen}>

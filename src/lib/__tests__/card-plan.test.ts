@@ -1,0 +1,544 @@
+// =============================================================================
+// Plan cards — the "Next up" card, and the row rule both cards share
+// =============================================================================
+// PLAN_CARD_PASSES below is not invented. It is what the reader returned for
+// Adrian's screenshot of a Boostcamp plan card, one entry per preprocessing pass,
+// captured from the live import on 2026-10-26. The first pass loses the orange
+// "NEXT UP" line and the W of the title, which is the kind of error the second
+// reading exists to catch.
+
+import { describe, expect, it } from '@jest/globals';
+import {
+  cardWarnings,
+  isCutOffName,
+  missingValues,
+  parseCard,
+  readReps,
+  readSets,
+} from '../card-import/parse-card';
+import { type Reading, reconcile } from '../card-import/reconcile';
+import { saveProblems, setField } from '../card-import/review';
+
+const PLAN_CARD_PASSES: [string[], string[]] = [
+  [
+    'de oo U2 WLLK §- BAY 3 [7 eee',
+    '~ orkout B',
+    '4 7 4 Dumbbell PPL',
+    'ES 96%',
+    'Goblet Squat 3 sets - 3-12 reps',
+    'Lunge (Dumbbell) 3 sets - 3-12 reps',
+    'Single Leg Romanian Deadlift (Dumbb... 3 sets - 3-12 reps',
+    'Standing Calf Raise 3 sets - 3-12 reps',
+    'Hanging Leg Raise 3 sets - 3-12 reps',
+    'Show less ~',
+  ],
+  [
+    'F NEXT UP - WEEK 8 - DAY 3 [7 eee',
+    'gaa Workout B',
+    '4 # J Dumbbell PPL',
+    'EE 96%',
+    'Goblet Squat 3 sets - 3-12 reps',
+    'Lunge (Dumbbell) 3 sets - 3-12 reps',
+    'Single Leg Romanian Deadlift (Dumbb... 3 sets - 3-12 reps',
+    'Standing Calf Raise 3 sets - 3-12 reps',
+    'Hanging Leg Raise 3 sets - 3-12 reps',
+    'Show less ~',
+  ],
+];
+
+const planRow = (line: string) => parseCard([line]).rows[0];
+
+describe('the real plan card', () => {
+  it('reads the five movements, each with its sets and its rep range', () => {
+    const card = parseCard(PLAN_CARD_PASSES[1]);
+
+    expect(card.format).toBe('plan');
+    expect(card.rows).toEqual([
+      expect.objectContaining({ name: 'Goblet Squat', sets: '3', weightLb: null, reps: '3-12' }),
+      expect.objectContaining({
+        name: 'Lunge (Dumbbell)',
+        sets: '3',
+        weightLb: null,
+        reps: '3-12',
+      }),
+      expect.objectContaining({
+        name: 'Single Leg Romanian Deadlift (Dumbb...',
+        sets: '3',
+        weightLb: null,
+        reps: '3-12',
+      }),
+      expect.objectContaining({ name: 'Standing Calf Raise', sets: '3', reps: '3-12' }),
+      expect.objectContaining({ name: 'Hanging Leg Raise', sets: '3', reps: '3-12' }),
+    ]);
+    // The garbled pass reads the same five and nothing else: no header line, progress
+    // bar or button on this card is a movement by accident.
+    expect(parseCard(PLAN_CARD_PASSES[0]).rows).toHaveLength(5);
+    expect(
+      parseCard(PLAN_CARD_PASSES[0]).rows.every((row) => missingValues(row).length === 0)
+    ).toBe(true);
+  });
+
+  it('names the workout, the program and the week, and reads no date and no weights', () => {
+    const card = parseCard(PLAN_CARD_PASSES[1]);
+
+    expect(card.title).toBe('Workout B');
+    expect(card.subtitle).toBe('Dumbbell PPL');
+    expect(card.weekDay).toBe('Week 8 · Day 3');
+    expect(card.date).toBeNull();
+    expect(card.durationMin).toBeNull();
+    expect(cardWarnings(card)).toEqual([]);
+  });
+
+  it('flags the name Boostcamp cut off, and nothing else about the movements', () => {
+    const [first, second] = PLAN_CARD_PASSES;
+    const reading = reconcile(parseCard(first), parseCard(second));
+
+    expect(reading.card.rows.map((row) => isCutOffName(row.name))).toEqual([
+      false,
+      false,
+      true,
+      false,
+      false,
+    ]);
+    expect(reading.disagreements.filter((flag) => flag.path.startsWith('rows.'))).toEqual([]);
+  });
+
+  it('reads the title the second pass got right, as a flag on the first pass', () => {
+    const [first, second] = PLAN_CARD_PASSES;
+    const reading = reconcile(parseCard(first), parseCard(second));
+
+    expect(reading.disagreements).toContainEqual({
+      path: 'weekDay',
+      first: 'nothing',
+      second: 'Week 8 · Day 3',
+    });
+    expect(reading.disagreements.map((flag) => flag.path)).toContain('title');
+    // The check line is settled from the flag, like every other value on the card.
+    const settled = setField(reading, 'weekDay', 'Week 8 · Day 3');
+    expect(settled.card.weekDay).toBe('Week 8 · Day 3');
+    expect(settled.disagreements.map((flag) => flag.path)).not.toContain('weekDay');
+  });
+});
+
+describe('the row rule', () => {
+  it('reads a finished weight row and a bodyweight reps row', () => {
+    expect(planRow('Bent Over Row (Dumbbell) 3 70 lb x 8')).toEqual(
+      expect.objectContaining({
+        name: 'Bent Over Row (Dumbbell)',
+        sets: '3',
+        weightLb: 70,
+        reps: '8',
+      })
+    );
+    expect(planRow('Pull-Up (Bodyweight) 3 5 reps')).toEqual(
+      expect.objectContaining({ sets: '3', weightLb: null, reps: '5' })
+    );
+  });
+
+  // One table for the whole grammar: what a line gives, and what it must not.
+  // A dash between two numbers is a range, so a row that names one names no sets.
+  const ROWS: [string, string, string, number | null][] = [
+    // An empty sets or reps is the missing state: read, but not a value a copy can use.
+    // line                                        sets   reps     weight
+    ['Goblet Squat 3 12 reps', '3', '12', null],
+    ['Goblet Squat 3 sets 12 reps', '3', '12', null],
+    ['Goblet Squat 3 sets · 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets - 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets . 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets , 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets : 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets ~ 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets * 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets | 3-12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 sets 3-12', '3', '3-12', null],
+    ['Goblet Squat 3 sets · 3 to 12 reps', '3', '3-12', null],
+    ['Goblet Squat 3 x 8 reps', '3', '8', null],
+    // A range and no set count: the set count is missing, not three.
+    ['Goblet Squat 3-12 reps', '', '3-12', null],
+    ['Goblet Squat 3-12', '', '3-12', null],
+    ['Goblet Squat 3 - 12 reps', '', '3-12', null],
+    ['Goblet Squat 3–12 reps', '', '3-12', null],
+    ['Goblet Squat 3 to 12 reps', '', '3-12', null],
+    ['Goblet Squat 8 reps', '', '8', null],
+    ['Goblet Squat 3 sets', '3', '', null],
+    // Weight rows, including the decimal a period must not split.
+    ['Bent Over Row (Dumbbell) 3 70 lb x 8', '3', '8', 70],
+    ['Bent Over Row (Dumbbell) 70 lb x 8', '', '8', 70],
+    ['Bent Over Row (Dumbbell) 3 12.5 lb x 8', '3', '8', 12.5],
+    // A figure the card names that a copy cannot use keeps its movement, missing.
+    ['Goblet Squat 0 sets . 8 reps', '', '8', null],
+    ['Goblet Squat 2.5 sets . 8 reps', '', '8', null],
+    ['Goblet Squat 100 sets . 8 reps', '', '8', null],
+    ['Goblet Squat 150 sets . 8 reps', '', '8', null],
+    ['Goblet Squat 3 sets . 0 reps', '3', '', null],
+    ['Goblet Squat 3 sets . 8.5 reps', '3', '', null],
+    ['Goblet Squat 3 sets . 150 reps', '3', '', null],
+    ['Goblet Squat 3 sets . 3.5-12 reps', '3', '', null],
+    ['Goblet Squat 3 sets . 12-3 reps', '3', '', null],
+    ['Goblet Squat 0 sets . 0 reps', '', '', null],
+  ];
+
+  // However big or odd the figure OCR hands back, the movement stays and the value it
+  // could not use is the thing to supply. No size the grammar imposes, only the check.
+  const OVERSIZE = ['0', '03', '100', '1000', '12345678901234567890', '2.5', '8.125', '150'];
+
+  it.each(OVERSIZE)('keeps the movement when the set count reads "%s"', (figure) => {
+    const row = planRow(`Goblet Squat ${figure} sets . 8 reps`);
+
+    expect(row).toEqual(expect.objectContaining({ name: 'Goblet Squat', sets: '', reps: '8' }));
+    expect(missingValues(row)).toEqual(['sets']);
+  });
+
+  it.each(OVERSIZE)('keeps the movement when the rep count reads "%s"', (figure) => {
+    const row = planRow(`Goblet Squat 3 sets . ${figure} reps`);
+
+    expect(row).toEqual(expect.objectContaining({ sets: '3', reps: '' }));
+    expect(missingValues(row)).toEqual(['reps']);
+  });
+
+  it.each(OVERSIZE)('keeps the movement when a rep range reads "%s" on either end', (figure) => {
+    const low = planRow(`Goblet Squat 3 sets . ${figure}-12 reps`);
+    const high = planRow(`Goblet Squat 3 sets . 3-${figure} reps`);
+
+    for (const row of [low, high]) {
+      expect(row).toEqual(expect.objectContaining({ sets: '3', reps: '' }));
+      expect(missingValues(row)).toEqual(['reps']);
+    }
+  });
+
+  it.each(ROWS)('reads "%s"', (line, sets, reps, weightLb) => {
+    expect(planRow(line)).toEqual(expect.objectContaining({ sets, reps, weightLb }));
+  });
+
+  const NOT_ROWS = [
+    'Goblet Squat 3',
+    'Goblet Squat 3 sets 12',
+    'NEXT UP - WEEK 8 - DAY 3',
+    'Week 8 - Day 3',
+    'Day 3',
+    'ES 96%',
+    'ES 1000%',
+    'Show less ~',
+    'Start workout',
+    'EXERCISE SETS BEST SET',
+    '48 m 12,480 lb 18',
+    '48 min',
+    '12,480 lb',
+    '1000',
+    'Call 555-123-4567',
+    'Workout A Oct 10.2026',
+    'Dumbbell PPL',
+  ];
+
+  it.each(NOT_ROWS)('does not read "%s" as a movement', (line) => {
+    expect(parseCard([line]).rows).toEqual([]);
+  });
+
+  // A guard takes a line off the card, so each one has to be sure. A movement that
+  // borrows a word from the app's own text, or carries a figure big enough to look
+  // like a year, is still a movement.
+  const BORROWED = [
+    'Exercise Ball Crunch',
+    'Max Effort Row',
+    'Estimated Row',
+    'Shared Grip Row',
+    'Save-the-Day Press',
+    'Done Right Curl',
+    'Volume Raise',
+    'Duration Plank',
+    'Best Set Squat',
+    'Week Ender Press',
+  ];
+
+  it.each(BORROWED)('reads "%s" as the movement it is', (name) => {
+    expect(planRow(`${name} 3 sets . 8 reps`)).toEqual(
+      expect.objectContaining({ name, sets: '3', reps: '8' })
+    );
+  });
+
+  const OVERSIZE_LINES = [
+    ['Goblet Squat 10000 sets . 8 reps', '', '8'],
+    ['Goblet Squat 100000 sets . 8 reps', '', '8'],
+    ['Goblet Squat 3 sets . 1000000 reps', '3', ''],
+    ['Goblet Squat 12 2026', '', ''],
+  ];
+
+  it.each(OVERSIZE_LINES)('keeps the movement in "%s"', (line, sets, reps) => {
+    const card = parseCard([line as string]);
+
+    // The last one names no figure the grammar can finish, so it is not a row at all;
+    // what matters is that none of them is thrown out as a date.
+    expect(card.date).toBeNull();
+    if (sets !== '' || reps !== '') {
+      expect(card.rows[0]).toEqual(expect.objectContaining({ sets, reps }));
+    }
+  });
+
+  const DATES: [string, string | null][] = [
+    ['Workout A Oct 7, 2026', '2026-10-07'],
+    ['Workout A Oct 7,2026', '2026-10-07'],
+    ['Workout A Sep 30 2026', '2026-09-30'],
+    ['Workout A October 7, 2026', '2026-10-07'],
+    ['Workout A Oct. 7, 2026', '2026-10-07'],
+    ['Workout A Mar 12 2026', '2026-03-12'],
+    // Not dates: a movement name is not a month, and neither is a figure a year.
+    ['Goblet Squat 12 2026', null],
+    ['Goblet Squat 10000 sets', null],
+    ['Goblet Squat 32 2026', null],
+    ['Goblet Squat 12 1026', null],
+  ];
+
+  it.each(DATES)('reads the date in "%s" as %s', (line, date) => {
+    expect(parseCard([line]).date).toBe(date);
+  });
+
+  const APP_LINES = [
+    '17:11',
+    'Solid one!',
+    '44th workout in the books',
+    'New Personal Records',
+    'EXERCISE SETS BEST SET',
+    '® Max Weight Reps ® Estimated 1RM',
+    'DURATION VOLUME SETS',
+    'BOOSTCAMP',
+    'Stories',
+    'Share',
+  ];
+
+  it.each(APP_LINES)('still does not read "%s" as a movement', (line) => {
+    expect(parseCard([line]).rows).toEqual([]);
+  });
+
+  it('starts the table at the header, not at a movement that borrows its words', () => {
+    const card = parseCard([
+      'Dumbbell PPL',
+      'Workout B Oct 7,2026',
+      'EXERCISE SETS BEST SET',
+      'Exercise Ball Crunch 3 20 reps',
+      'Best Set Squat 3 60 lb x 8',
+    ]);
+
+    expect(card.rows.map((row) => row.name)).toEqual(['Exercise Ball Crunch', 'Best Set Squat']);
+  });
+
+  it('reads a long or awkward line quickly, whatever it holds', () => {
+    // A figure of any length cannot send the reader down an exponential path.
+    const lines = [
+      '9'.repeat(5000),
+      `Goblet Squat ${'9'.repeat(5000)} sets . 8 reps`,
+      `Goblet Squat ${'9'.repeat(5000)}`,
+      `${'Goblet Squat '.repeat(400)}3 sets . 8 reps`,
+      'Goblet Squat '.repeat(400),
+      `Goblet Squat ${'9-'.repeat(2500)}9 reps`,
+      `Goblet Squat ${'. '.repeat(2500)}3 sets`,
+      `Goblet Squat 3 sets . ${'8.'.repeat(2500)}8 reps`,
+    ];
+
+    const started = Date.now();
+    for (const line of lines) expect(() => parseCard([line])).not.toThrow();
+
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('leaves a value the card did not name empty, rather than filling it in', () => {
+    expect(planRow('Goblet Squat 3 sets')).toEqual(
+      expect.objectContaining({ sets: '3', reps: '' })
+    );
+    expect(planRow('Goblet Squat 8 reps')).toEqual(
+      expect.objectContaining({ sets: '', reps: '8' })
+    );
+    expect(missingValues(planRow('Goblet Squat 3 sets'))).toEqual(['reps']);
+    expect(missingValues(planRow('Goblet Squat 8 reps'))).toEqual(['sets']);
+    expect(missingValues(planRow('Goblet Squat 3 sets · 3-12 reps'))).toEqual([]);
+    // Neither a set count nor a rep count is not a movement at all, as before.
+    expect(parseCard(['Goblet Squat 3']).rows).toEqual([]);
+  });
+
+  it('leaves a rep count the card gave but the field would refuse for the person', () => {
+    // "10 reps" read as "1 0 reps": the movement is still a movement, and 0 is not a
+    // rep count, so the field is empty and flagged rather than holding a 0.
+    expect(planRow('Hanging Leg Raise 1 0 reps')).toEqual(
+      expect.objectContaining({ sets: '1', reps: '' })
+    );
+    expect(planRow('Goblet Squat 3 sets · 12-3 reps')).toEqual(
+      expect.objectContaining({ sets: '3', reps: '' })
+    );
+  });
+
+  // One check for both figures, whichever way the value arrived. Each line is read
+  // off a card and typed into the field, and both have to agree about what is usable.
+  const FIGURES: [string, string, boolean][] = [
+    // typed      what it is                                 usable
+    ['0', 'sets', false],
+    ['1', 'sets', true],
+    ['99', 'sets', true],
+    ['100', 'sets', false],
+    ['2.5', 'sets', false],
+    ['0', 'reps', false],
+    ['1', 'reps', true],
+    ['99', 'reps', true],
+    ['100', 'reps', false],
+    ['3-12', 'reps', true],
+    ['12-3', 'reps', false],
+    ['3-3', 'reps', false],
+    ['0-12', 'reps', false],
+    ['150', 'reps', false],
+  ];
+
+  it.each(FIGURES)('reads "%s" as %s the copy can use: %s', (typed, figure, usable) => {
+    const field = figure as 'sets' | 'reps';
+    const line =
+      field === 'sets'
+        ? `Goblet Squat ${typed} sets . 8 reps`
+        : `Goblet Squat 3 sets . ${typed} reps`;
+
+    // Read off the card. A figure the grammar cannot read at all leaves no row; one it
+    // reads but a copy cannot use is flagged on the row it keeps.
+    const read = planRow(line);
+    expect(read === undefined || missingValues(read).includes(field)).toBe(!usable);
+
+    // Typed into the field by the person, against a row that is already complete.
+    const reading: Reading = {
+      card: parseCard(['Goblet Squat 3 sets . 8 reps']),
+      disagreements: [],
+    };
+    const row = setField(reading, `rows.0.${field}`, typed).card.rows[0];
+    const copied = field === 'sets' ? readSets(row.sets) : readReps(row.reps);
+
+    if (usable) expect(String(copied)).toBe(typed);
+    else expect(String(copied ?? '')).not.toBe(typed);
+  });
+
+  it('keeps a zero-set row, flags it, and copies nothing until it is corrected', () => {
+    const reading: Reading = {
+      card: parseCard(['Goblet Squat 0 sets . 8 reps']),
+      disagreements: [],
+    };
+
+    expect(reading.card.rows).toHaveLength(1);
+    expect(reading.card.rows[0]).toEqual(expect.objectContaining({ sets: '', reps: '8' }));
+    expect(saveProblems(reading)).toEqual(['1 value needs checking.']);
+    // A zero typed in stays in the field, still missing, still holding the copy back.
+    const zero = setField(reading, 'rows.0.sets', '0');
+
+    expect(zero.card.rows[0].sets).toBe('0');
+    expect(saveProblems(zero)).toEqual(['1 value needs checking.']);
+    expect(saveProblems(setField(reading, 'rows.0.sets', '3'))).toEqual([]);
+    // A fraction keeps its movement too, with the set count to supply.
+    const fraction = parseCard(['Goblet Squat 2.5 sets . 8 reps']);
+
+    expect(fraction.rows).toHaveLength(1);
+    expect(missingValues(fraction.rows[0])).toEqual(['sets']);
+  });
+
+  it('holds the copy back until the person types the missing value in', () => {
+    const reading = { card: parseCard(['Goblet Squat 3 sets']), disagreements: [] };
+
+    expect(saveProblems(reading)).toEqual(['1 value needs checking.']);
+    expect(saveProblems(setField(reading, 'rows.0.reps', '3-12'))).toEqual([]);
+    expect(setField(reading, 'rows.0.reps', '3-12').card.rows[0].reps).toBe('3-12');
+
+    const noSets = { card: parseCard(['Goblet Squat 8 reps']), disagreements: [] };
+
+    expect(saveProblems(noSets)).toEqual(['1 value needs checking.']);
+    expect(saveProblems(setField(noSets, 'rows.0.sets', '3'))).toEqual([]);
+    expect(setField(noSets, 'rows.0.sets', '3').card.rows[0].sets).toBe('3');
+  });
+
+  it('counts a movement with no set count as none against the card total', () => {
+    const card = parseCard([
+      'Workout A Oct 6,2026',
+      'EXERCISE SETS BEST SET',
+      'Goblet Squat 8 reps',
+      'Hanging Leg Raise 3 10 reps',
+      '43 m 4,610 lb 18',
+    ]);
+
+    expect(card.rows.map((row) => row.sets)).toEqual(['', '3']);
+    expect(cardWarnings(card)).toEqual(['The movements add up to 3 sets, but the card says 18.']);
+  });
+
+  it('still reads through the glitches normalizeLine undoes', () => {
+    expect(planRow('Shrug (Dumbbell) 3 451|b x 12')).toEqual(
+      expect.objectContaining({ name: 'Shrug (Dumbbell)', weightLb: 45, reps: '12' })
+    );
+    expect(planRow('incline Chest Fly (Dumbbell) 3 301bx 10')).toEqual(
+      expect.objectContaining({ name: 'Incline Chest Fly (Dumbbell)', weightLb: 30, reps: '10' })
+    );
+  });
+
+  it('leaves everything that is not a movement out of the table', () => {
+    const lines = [
+      'NEXT UP - WEEK 8 - DAY 3',
+      'Workout B',
+      'Dumbbell PPL',
+      'ES 96%',
+      'Show less ~',
+      'Start workout',
+      '48 m 12,480 lb 18',
+      'EXERCISE SETS BEST SET',
+      '® Max Weight Reps ® Estimated 1RM',
+      'Week 2 - Day 1 Sep 27,2026',
+      'Workout A Oct 10.2026',
+    ];
+
+    for (const line of lines) {
+      expect(parseCard([line]).rows).toEqual([]);
+    }
+  });
+
+  it('calls a card with no movements neither format, and says what it can read', () => {
+    const card = parseCard(['Show less ~', 'ES 96%']);
+
+    expect(card.format).toBeNull();
+    expect(cardWarnings(card)[0]).toContain('No workout found in this photo.');
+  });
+});
+
+describe('reps as a string', () => {
+  it('takes a count or a range, however OCR wrote the dash', () => {
+    expect(readReps('8')).toBe('8');
+    expect(readReps('3-12')).toBe('3-12');
+    expect(readReps('3 - 12')).toBe('3-12');
+    expect(readReps('3–12')).toBe('3-12');
+    expect(readReps('3 to 12')).toBe('3-12');
+  });
+
+  it('refuses what a template cannot hold as a rep scheme', () => {
+    expect(readReps('12-3')).toBeNull();
+    expect(readReps('3-1 2')).toBeNull();
+    expect(readReps('3--12')).toBeNull();
+    expect(readReps('3-')).toBeNull();
+    expect(readReps('0')).toBeNull();
+    expect(readReps('100-120')).toBeNull();
+    expect(readReps('ten')).toBeNull();
+  });
+
+  it('keeps a range typable, one character at a time', () => {
+    // The field is the reading, so every keystroke passes through setField. "3-12" is
+    // reached through "3-", which is not a rep range on its own.
+    let reading: Reading = { card: parseCard(['Goblet Squat 3 sets']), disagreements: [] };
+    for (const typed of ['3', '3-', '3-1', '3-12']) {
+      reading = setField(reading, 'rows.0.reps', typed);
+    }
+
+    expect(reading.card.rows[0].reps).toBe('3-12');
+    expect(saveProblems(reading)).toEqual([]);
+  });
+
+  it('flags a typed value that is not a rep count, and copies none', () => {
+    const reading: Reading = { card: parseCard(['Goblet Squat 3 sets']), disagreements: [] };
+
+    for (const typed of ['3-1 2', '3--12', '12-3', '0', '100-120', 'ten', '']) {
+      const next = setField(reading, 'rows.0.reps', typed);
+
+      expect(missingValues(next.card.rows[0])).toEqual(['reps']);
+      expect(saveProblems(next)).toEqual(['1 value needs checking.']);
+    }
+    // What the person typed stays in the field, so they can see what to correct.
+    expect(setField(reading, 'rows.0.reps', '3-1 2').card.rows[0].reps).toBe('3-1 2');
+    // A reading they choose from the flag clears it.
+    expect(setField(reading, 'rows.0.reps', '3 to 12').disagreements).toEqual([]);
+    expect(readReps(setField(reading, 'rows.0.reps', '3 to 12').card.rows[0].reps)).toBe('3-12');
+  });
+});

@@ -7,6 +7,7 @@
 // regression net for the "shadow calculator" guard.
 
 import { WORKOUT_TEMPLATES, getExerciseById, getTemplateById } from '@/data';
+import { targetRepCount } from '@/lib/blocks';
 import { appStorage } from '@/utils/storage';
 import { useTemplateStore } from '../templateStore';
 
@@ -51,6 +52,18 @@ describe('Template Store', () => {
         ['hanging_leg_raise', 3, '10'],
         ['db_bent_over_row', 4, '8'],
       ]);
+    });
+
+    it('copies a rep range as written, the way a plan card gives it', () => {
+      const { id, dayId } = newDay();
+
+      useTemplateStore
+        .getState()
+        .importExercises(id, dayId, [{ exerciseId: 'db_goblet_squat', sets: 3, reps: '3-12' }]);
+
+      expect(dayExercises(id)[0].reps).toBe('3-12');
+      // The logger reads the bottom of a range as the prescription it can log in one tap.
+      expect(targetRepCount(dayExercises(id)[0].reps)).toBe(3);
     });
 
     it('takes the rest the library gives each movement', () => {
