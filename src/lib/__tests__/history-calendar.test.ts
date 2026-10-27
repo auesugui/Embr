@@ -25,6 +25,7 @@ import {
   monthName,
   monthOfDay,
   monthTitle,
+  scrollFold,
   shiftMonth,
   trainingDayKeys,
   weekRowForDay,
@@ -383,40 +384,141 @@ describe('canCollapseOnScroll', () => {
   });
 });
 
-describe('the scroll decision handleScroll makes', () => {
-  // What the screen does with the two rules together: the offset has to be
-  // past the threshold and the collapse has to be able to hold.
-  const scrolledPast = (offset: number, contentHeight: number, collapsed: boolean, rows = 5) =>
-    offset > COLLAPSE_AT &&
-    canCollapseOnScroll({ contentHeight, viewportHeight: 724, collapsed, rows, note: false });
+describe('scrollFold', () => {
+  // One viewport, two lists: the short one the flap was measured on, which
+  // cannot hold a collapse, and a long one that can.
+  const VIEWPORT = 724;
+  const SHORT = 865;
+  const LONG = 2400;
+  /** What a scroll event leaves behind, and what the screen then shows. */
+  const settle = (
+    folded: boolean | null,
+    openedByStep: boolean,
+    beyond: boolean,
+    eligible: boolean
+  ) => {
+    const next = scrollFold({
+      offset: beyond ? 100 : 40,
+      contentHeight: eligible ? LONG : SHORT,
+      viewportHeight: VIEWPORT,
+      collapsed: false,
+      rows: 5,
+      note: false,
+      folded,
+      openedByStep,
+    });
+    return { ...next, collapsed: isCollapsed({ folded, ...next }) };
+  };
 
-  const fold = (folded: boolean | null, scrolled: boolean, openedByStep = false) =>
-    isCollapsed({ folded, scrolled, openedByStep });
+  type Case = [boolean | null, boolean, boolean, boolean, boolean, boolean, boolean];
+  // folded, openedByStep, beyond, eligible | scrolled, openedByStep, collapsed
+  const cases: Case[] = [
+    [null, false, false, false, false, false, false],
+    [null, false, false, true, false, false, false],
+    [null, false, true, false, false, false, false],
+    [null, false, true, true, true, false, true],
+    [null, true, false, false, false, true, false],
+    [null, true, false, true, false, true, false],
+    [null, true, true, false, false, false, false],
+    [null, true, true, true, true, false, true],
+
+    [true, false, false, false, false, false, true],
+    [true, false, false, true, false, false, true],
+    [true, false, true, false, false, false, true],
+    [true, false, true, true, true, false, true],
+    [true, true, false, false, false, true, false],
+    [true, true, false, true, false, true, false],
+    // The one that was broken: the chevron asked for a collapse, a month step
+    // opened the grid, and the short list is scrolled past the threshold. The
+    // step has to give up here, or the chevron is ignored for the visit.
+    [true, true, true, false, false, false, true],
+    [true, true, true, true, true, false, true],
+
+    [false, false, false, false, false, false, false],
+    [false, false, false, true, false, false, false],
+    [false, false, true, false, false, false, false],
+    [false, false, true, true, true, false, false],
+    [false, true, false, false, false, true, false],
+    [false, true, false, true, false, true, false],
+    [false, true, true, false, false, false, false],
+    [false, true, true, true, true, false, false],
+  ];
+
+  it.each(cases)(
+    'folded=%s step=%s beyond=%s eligible=%s',
+    (folded, openedByStep, beyond, eligible, scrolled, nextStep, collapsed) => {
+      expect(settle(folded, openedByStep, beyond, eligible)).toEqual({
+        scrolled,
+        openedByStep: nextStep,
+        collapsed,
+      });
+    }
+  );
+
+  it('gives up a step’s expansion on the offset alone, short list included', () => {
+    // Which is what origin/main did, and what the eligibility rule must not
+    // take away: the two answers come from the same event, not the same test.
+    expect(settle(null, true, true, false).openedByStep).toBe(false);
+    expect(settle(true, true, true, false).collapsed).toBe(true);
+  });
 
   it('leaves a short list expanded however far it is scrolled', () => {
-    expect(scrolledPast(100, 865, false)).toBe(false);
-    expect(fold(null, scrolledPast(100, 865, false))).toBe(false);
+    expect(settle(null, false, true, false)).toEqual({
+      scrolled: false,
+      openedByStep: false,
+      collapsed: false,
+    });
   });
 
   it('collapses a long list past the threshold and holds it there', () => {
-    expect(fold(null, scrolledPast(100, 2400, false))).toBe(true);
+    expect(settle(null, false, true, true).collapsed).toBe(true);
     // Measured again after the grid shrank, the collapse still stands.
-    expect(fold(null, scrolledPast(100, 2268, true))).toBe(true);
+    const held = scrollFold({
+      offset: 100,
+      contentHeight: 2268,
+      viewportHeight: VIEWPORT,
+      collapsed: true,
+      rows: 5,
+      note: false,
+      folded: null,
+      openedByStep: false,
+    });
+    expect(isCollapsed({ folded: null, ...held })).toBe(true);
   });
 
   it('expands the long list again under the threshold', () => {
-    expect(fold(null, scrolledPast(79, 2268, true))).toBe(false);
-  });
-
-  it('still lets the chevron collapse a short list', () => {
-    expect(fold(true, scrolledPast(100, 865, false))).toBe(true);
+    const back = scrollFold({
+      offset: 79,
+      contentHeight: 2268,
+      viewportHeight: VIEWPORT,
+      collapsed: true,
+      rows: 5,
+      note: false,
+      folded: null,
+      openedByStep: false,
+    });
+    expect(isCollapsed({ folded: null, ...back })).toBe(false);
   });
 
   it('leaves a six-row month open where a five-row one would collapse', () => {
     // 952 px of content is 228 px of range: enough once four rows go, not
     // enough once five do. A month step is what gets you to either.
-    expect(fold(null, scrolledPast(100, 952, false, 5))).toBe(true);
-    expect(fold(null, scrolledPast(100, 952, false, 6))).toBe(false);
+    const at = (rows: number) =>
+      scrollFold({
+        offset: 100,
+        contentHeight: 952,
+        viewportHeight: VIEWPORT,
+        collapsed: false,
+        rows,
+        note: false,
+        folded: null,
+        openedByStep: false,
+      });
+
+    expect(isCollapsed({ folded: null, ...at(5) })).toBe(true);
+    expect(isCollapsed({ folded: null, ...at(6) })).toBe(false);
+    // Either way the step is over, because the offset says so.
+    expect(at(6).openedByStep).toBe(false);
   });
 });
 

@@ -263,6 +263,44 @@ export interface FoldState {
 export const isCollapsed = ({ folded, scrolled, openedByStep }: FoldState): boolean =>
   openedByStep ? false : (folded ?? scrolled);
 
+export interface ScrollFoldInput extends ScrollExtent {
+  /** The offset the scroll event reported. */
+  offset: number;
+  /** The chevron's choice. It changes neither output — see below. */
+  folded: boolean | null;
+  /** Whether a month step is holding the grid open right now. */
+  openedByStep: boolean;
+}
+
+export interface ScrollFoldState {
+  /** The list is scrolled past COLLAPSE_AT and the collapse can hold. */
+  scrolled: boolean;
+  /** Whether the step's expansion survives this event. */
+  openedByStep: boolean;
+}
+
+/**
+ * The fold state a scroll event leaves behind, both halves of it at once.
+ *
+ * Being past the threshold and being allowed to collapse are two different
+ * questions, and keeping them apart is the point of this function. Past the
+ * threshold is about the offset alone, and it is what ends a month step's
+ * expansion: a step opens the grid until you scroll, whatever the list is
+ * shaped like. Only `scrolled` may ask whether the collapse can hold. Asking
+ * it for both left a short list past the threshold with the step's override
+ * never given up, so the chevron's choice was ignored for the rest of the
+ * visit.
+ *
+ * The chevron is not applied here. It wins in isCollapsed, over this result.
+ */
+export function scrollFold(input: ScrollFoldInput): ScrollFoldState {
+  const beyond = input.offset > COLLAPSE_AT;
+  return {
+    scrolled: beyond && canCollapseOnScroll(input),
+    openedByStep: input.openedByStep && !beyond,
+  };
+}
+
 // -----------------------------------------------------------------------------
 // What the logs say
 // -----------------------------------------------------------------------------

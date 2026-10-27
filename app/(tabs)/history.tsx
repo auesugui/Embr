@@ -33,8 +33,6 @@ import { WeeklyVolumeStrip } from '@/components/workout/history/WeeklyVolumeStri
 import { WorkoutRow } from '@/components/workout/history/WorkoutRow';
 import { useLocalDay } from '@/hooks/useLocalDay';
 import {
-  COLLAPSE_AT,
-  canCollapseOnScroll,
   canStepBack,
   canStepForward,
   earliestMonth,
@@ -44,6 +42,7 @@ import {
   monthName,
   monthOfDay,
   monthTitle,
+  scrollFold,
   shiftMonth,
   trainingDayKeys,
   weekRowForDay,
@@ -147,19 +146,18 @@ export default function HistoryScreen() {
     // The event carries both measurements, so the rule needs no layout state
     // of its own — and the heights it reads are the ones being scrolled.
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const past =
-      contentOffset.y > COLLAPSE_AT &&
-      canCollapseOnScroll({
-        contentHeight: contentSize.height,
-        viewportHeight: layoutMeasurement.height,
-        collapsed,
-        rows: gridRows,
-        note: emptyNote !== null,
-      });
-    setScrolled(past);
-    // Passing the threshold ends a step's expansion and hands the collapse
-    // back to the scroll, which is the state the screen was in before the step.
-    if (past) setOpenedByStep(false);
+    const next = scrollFold({
+      offset: contentOffset.y,
+      contentHeight: contentSize.height,
+      viewportHeight: layoutMeasurement.height,
+      collapsed,
+      rows: gridRows,
+      note: emptyNote !== null,
+      folded,
+      openedByStep,
+    });
+    setScrolled(next.scrolled);
+    setOpenedByStep(next.openedByStep);
   };
   // Stepping a month opens the grid: collapsed, the card shows the selected
   // day's own week, so a step would change nothing you can see.
