@@ -12,6 +12,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { TopInsetReset } from '@/components/ui';
 import { APP_NAME } from '@/config';
+import { startTapLog } from '@/lib/tap-log';
 import { ROUTE_TITLES } from '@/navigation/routeTitles';
 import {
   useBaselineStore,
@@ -105,6 +106,7 @@ export default function RootLayout() {
     if (Platform.OS === 'web') {
       document.title = APP_NAME;
     }
+    startTapLog();
   }, []);
 
   // The palette is resolved before this component ever runs (see
