@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SetFields } from '@/components/workout/set-input/SetFields';
 import { useKeyboardInset } from '@/hooks';
+import { tapLogMark } from '@/lib/tap-log';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { colors, radius, spacing, textStyles } from '@/theme';
 import type { Metric } from '@/types';
@@ -110,10 +111,15 @@ export function SetInputModal({
     }
   }, [visible]);
 
+  useEffect(() => {
+    tapLogMark(visible ? 'sheet-open' : 'sheet-closed', `${exerciseName} set ${setNumber}`);
+  }, [visible, exerciseName, setNumber]);
+
   const handleSave = useCallback(() => {
     const repsValue = Number.parseInt(reps, 10);
     if (Number.isNaN(repsValue) || repsValue < 1) return;
 
+    tapLogMark('save', `${reps} @ ${weight}`);
     haptics.success();
     const weightValue = weight ? Number.parseFloat(weight) : undefined;
     onSave(repsValue, weightValue);
@@ -129,12 +135,14 @@ export function SetInputModal({
   }, [onClear, onClose]);
 
   const handleClose = useCallback(() => {
+    tapLogMark('close');
     Keyboard.dismiss();
     onClose();
   }, [onClose]);
 
   // Stable increment/decrement functions
   const adjustReps = useCallback((amount: number) => {
+    tapLogMark('step-reps', String(amount));
     haptics.tap();
     setReps((prev) => {
       const current = Number.parseInt(prev, 10) || 0;
@@ -143,6 +151,7 @@ export function SetInputModal({
   }, []);
 
   const adjustWeight = useCallback((amount: number) => {
+    tapLogMark('step-weight', String(amount));
     haptics.tap();
     setWeight((prev) => {
       const current = Number.parseFloat(prev) || 0;
@@ -151,6 +160,7 @@ export function SetInputModal({
   }, []);
 
   const selectQuickWeight = useCallback((w: number) => {
+    tapLogMark('quick-weight', String(w));
     haptics.tap();
     setWeight(w.toString());
   }, []);

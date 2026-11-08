@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AvatarTooLargeError, pickAvatarFile, processAvatar } from '@/lib/avatar';
@@ -15,6 +15,7 @@ import {
   restoreBackup,
 } from '@/lib/backup';
 import { downloadTextFile, isFileIOSupported, pickTextFile, reloadApp } from '@/lib/backup-file';
+import { copyTapLog } from '@/lib/tap-log';
 import { parseWorkoutImport } from '@/lib/workout-import';
 import { showAlert } from '@/utils/alert';
 
@@ -46,6 +47,38 @@ export default function ProfileScreen() {
   // Single in-flight flag for both actions — they're mutually exclusive and a
   // double-tap mid-restore would race two writes into the same storage keys.
   const [busy, setBusy] = useState(false);
+
+  // Five quick taps on the version line offer the tap log (src/lib/tap-log.ts).
+  // Hidden on purpose: it's a temporary diagnosis, not a feature.
+  const versionTaps = useRef<number[]>([]);
+  const handleVersionTap = () => {
+    const now = Date.now();
+    versionTaps.current = [...versionTaps.current.filter((t) => now - t < 3000), now];
+    if (versionTaps.current.length < 5) return;
+    versionTaps.current = [];
+    showAlert({
+      title: 'Tap log',
+      message: 'Copy the touch log to send it for the stuck-buttons bug.',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Copy',
+          onPress: () => {
+            void copyTapLog().then((result) =>
+              showAlert({
+                title: result === 'copied' ? 'Copied' : 'Saved as a file',
+                message:
+                  result === 'copied'
+                    ? 'Paste it into the chat.'
+                    : 'Copying was blocked, so the log was saved as embr-tap-log.txt.',
+                buttons: [{ text: 'OK' }],
+              })
+            );
+          },
+        },
+      ],
+    });
+  };
 
   // Photo picking is DOM work. Embr ships as a PWA (CLAUDE.md), so the web path
   // is the one that runs; on native this says so rather than failing silently or
@@ -280,7 +313,9 @@ export default function ProfileScreen() {
       {/* App Info */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>About</Text>
-        <Text style={styles.versionText}>{APP_NAME} v1.0.0</Text>
+        <Text style={styles.versionText} onPress={handleVersionTap}>
+          {APP_NAME} v1.0.0
+        </Text>
         <Text style={styles.buildText}>Workout tracker</Text>
       </View>
     </ScrollView>
