@@ -73,7 +73,9 @@ export function formatLog(entries: TapEntry[], userAgent = ''): string {
 function isEntry(value: unknown): value is TapEntry {
   if (typeof value !== 'object' || value === null) return false;
   const { t, kind, detail } = value as Record<string, unknown>;
-  return Number.isFinite(t) && typeof kind === 'string' && typeof detail === 'string';
+  // A valid Date, not just a finite number: formatLog prints the first one.
+  const validTime = typeof t === 'number' && !Number.isNaN(new Date(t).getTime());
+  return validTime && typeof kind === 'string' && typeof detail === 'string';
 }
 
 /** Parses the stored log. A missing or corrupt value, or one bad entry, yields an empty log. */

@@ -73,6 +73,11 @@ describe('parseStored', () => {
     ).toEqual([]);
   });
 
+  it('drops a timestamp outside the Date range', () => {
+    expect(parseStored('[{"t":1e100,"kind":"a","detail":""}]')).toEqual([]);
+    expect(parseStored('[{"t":null,"kind":"a","detail":""}]')).toEqual([]);
+  });
+
   it('restores well-formed entries', () => {
     const entry = { t: 1, kind: 'touchstart', detail: 'div' };
     expect(parseStored(JSON.stringify([entry]))).toEqual([entry]);
