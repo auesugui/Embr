@@ -70,18 +70,48 @@ export function formatLog(entries: TapEntry[], userAgent = ''): string {
   return [`Embr tap log, ${new Date(start).toISOString()}, ${userAgent}`, ...lines].join('\n');
 }
 
-/** Parses the stored log, tolerating a missing or corrupt value. */
+function isEntry(value: unknown): value is TapEntry {
+  if (typeof value !== 'object' || value === null) return false;
+  const { t, kind, detail } = value as Record<string, unknown>;
+  return Number.isFinite(t) && typeof kind === 'string' && typeof detail === 'string';
+}
+
+/** Parses the stored log. A missing or corrupt value, or one bad entry, yields an empty log. */
 export function parseStored(raw: string | null): TapEntry[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as TapEntry[]).slice(-LIMIT) : [];
+    return Array.isArray(parsed) && parsed.every(isEntry) ? parsed.slice(-LIMIT) : [];
   } catch {
     return [];
   }
 }
 
+/** The fields eventDetail reads from a touch or pointer event. */
+export interface EventLike {
+  target: unknown;
+  clientX?: number;
+  clientY?: number;
+  pointerType?: string;
+  changedTouches?: ArrayLike<{ clientX: number; clientY: number }>;
+}
+
+/**
+ * Target, position and fingers down for one event. Touch events carry their own
+ * count; a click or pointercancel gets the count from the last touch event.
+ */
+export function eventDetail(event: EventLike, touchesDown: number): string {
+  const point = event.changedTouches?.[0] ?? event;
+  const at =
+    point.clientX === undefined || point.clientY === undefined
+      ? ''
+      : ` @${Math.round(point.clientX)},${Math.round(point.clientY)}`;
+  const via = event.pointerType ? ` ${event.pointerType}` : '';
+  return `${describeTarget(event.target as TargetLike)}${at} touches=${touchesDown}${via}`;
+}
+
 let entries: TapEntry[] = [];
+let touchesDown = 0;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let started = false;
 
@@ -103,16 +133,12 @@ export function tapLogMark(kind: string, detail = ''): void {
 }
 
 function onTouch(event: TouchEvent): void {
-  const touch = event.changedTouches[0];
-  const at = touch ? ` @${Math.round(touch.clientX)},${Math.round(touch.clientY)}` : '';
-  tapLogMark(
-    event.type,
-    `${describeTarget(event.target as Element)}${at} touches=${event.touches.length}`
-  );
+  touchesDown = event.touches.length;
+  tapLogMark(event.type, eventDetail(event, touchesDown));
 }
 
 function onPointer(event: PointerEvent): void {
-  tapLogMark(event.type, `${describeTarget(event.target as Element)} ${event.pointerType}`);
+  tapLogMark(event.type, eventDetail(event, touchesDown));
 }
 
 function onVisibility(): void {

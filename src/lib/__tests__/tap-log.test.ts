@@ -1,4 +1,11 @@
-import { type TargetLike, appendEntry, describeTarget, formatLog, parseStored } from '../tap-log';
+import {
+  type TargetLike,
+  appendEntry,
+  describeTarget,
+  eventDetail,
+  formatLog,
+  parseStored,
+} from '../tap-log';
 
 const el = (
   tagName: string,
@@ -56,5 +63,38 @@ describe('parseStored', () => {
     expect(parseStored(null)).toEqual([]);
     expect(parseStored('{oops')).toEqual([]);
     expect(parseStored('{"a":1}')).toEqual([]);
+  });
+
+  it('drops an array holding a malformed entry', () => {
+    expect(parseStored('[null]')).toEqual([]);
+    expect(parseStored('[{}]')).toEqual([]);
+    expect(
+      parseStored('[{"t":1,"kind":"a","detail":""},{"t":"x","kind":"b","detail":""}]')
+    ).toEqual([]);
+  });
+
+  it('restores well-formed entries', () => {
+    const entry = { t: 1, kind: 'touchstart', detail: 'div' };
+    expect(parseStored(JSON.stringify([entry]))).toEqual([entry]);
+  });
+});
+
+describe('eventDetail', () => {
+  const target = el('DIV', {}, { textContent: '+1' });
+
+  it('reads position from the changed touch of a touch event', () => {
+    expect(eventDetail({ target, changedTouches: [{ clientX: 10.4, clientY: 20.6 }] }, 1)).toBe(
+      'div "+1" @10,21 touches=1'
+    );
+  });
+
+  it('reads position and pointer type from a click or pointercancel', () => {
+    expect(eventDetail({ target, clientX: 5, clientY: 6, pointerType: 'touch' }, 0)).toBe(
+      'div "+1" @5,6 touches=0 touch'
+    );
+  });
+
+  it('omits a position the event lacks', () => {
+    expect(eventDetail({ target }, 2)).toBe('div "+1" touches=2');
   });
 });
